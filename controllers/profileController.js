@@ -82,7 +82,6 @@ exports.profileGet = async function (req, res, next) {
             }
             
             let profileData = await Profile.findOne({ _id: profileId }).populate(['friends', 'user']);
-            console.log('Found profile data:', profileData);
             
             if (profileData) {
                 return res.status(200).json(profileData);
