@@ -22,6 +22,17 @@ module.exports = function socketHandler(io) {
             console.log(`✅ Socket connected: ${socket.id} (no profile in handshake query)`);
         }
 
+
+        socket.on("agora-call-user", ({ to, channelName }) => {
+            console.log('agora-call-user', { to, channelName })
+            io.to(to).emit("agora-incoming-call", { from: profileId, channelName });
+        });
+
+
+        socket.on("agora-answer-call", ({ to, channelName }) => {
+            io.to(to).emit("agora-call-accepted", { channelName });
+        });
+
         // View post tracking
         socket.on('viewPost', async ({ visitorId, postId }) => {
             try {
