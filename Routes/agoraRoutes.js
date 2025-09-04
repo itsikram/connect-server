@@ -23,6 +23,8 @@ router.post('/token', async (req, res) => {
 
     const { channelName, uid, role = 'publisher', expireInSec = 3600 } = req.body || {};
 
+    console.log('req.body', req.body)
+
     if (!channelName) return res.status(400).json({ error: 'channelName is required' });
 
     const rtcRole = role === 'subscriber' ? RtcRole.SUBSCRIBER : RtcRole.PUBLISHER;
