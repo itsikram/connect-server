@@ -6,6 +6,7 @@ const axios = require('axios')
 
 
 const sendEmailNotification = require('../utils/sendEmailNotification')
+const { sendPushToProfile } = require('../utils/pushNotifications')
 
 module.exports = function messageSocket(io, socket, profileId) {
 
@@ -156,7 +157,27 @@ module.exports = function messageSocket(io, socket, profileId) {
 
         let { isActive, lastLogin } = await checkIsActive(receiverId)
 
-        if (!isActive) {
+        if (!isActive && String(receiverId) !== String(senderId)) {
+            // Try push notification first; fallback to email if none sent
+            try {
+                const result = await sendPushToProfile(receiverId, {
+                    title: senderName,
+                    body: updatedMessage.message,
+                    data: {
+                        type: 'chat',
+                        senderId: String(senderId),
+                        receiverId: String(receiverId),
+                        room: String(room),
+                        messageId: String(updatedMessage._id),
+                    },
+                });
+                if (result.successCount > 0) {
+                    return; // delivered via push
+                }
+            } catch (e) {
+                console.error('Push send failed, falling back to email:', e?.message || e);
+            }
+
             let receiverEmail = receiverProfile.user.email;
             return sendEmailNotification(receiverEmail, null, updatedMessage.message, senderName, senderPP);
         }

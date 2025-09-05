@@ -1,5 +1,7 @@
 const { mongoose } = require('mongoose')
 const Notification = require('../models/Notification')
+const Profile = require('../models/Profile')
+const { sendPushToProfile } = require('../utils/pushNotifications')
 
 exports.notificationSocket = async (io, socket) => {
     socket.on('fetchNotifications',async(profileId) => {
@@ -108,4 +110,58 @@ let profileId = req.body.profile
     }
     return res.json({ message: 'Failed to get notificaiton' }).status(400)
 
+}
+
+// Register a device token to the authenticated profile
+exports.registerDeviceToken = async (req, res, next) => {
+    try {
+        const token = (req.body?.token || '').trim();
+        if (!token) return res.status(400).json({ message: 'Token is required' });
+
+        const profileId = req.profile._id;
+        const updated = await Profile.findByIdAndUpdate(
+            profileId,
+            { $addToSet: { deviceTokens: token } },
+            { new: true }
+        ).select('deviceTokens');
+
+        return res.status(200).json({ message: 'Token registered', deviceTokens: updated?.deviceTokens || [] });
+    } catch (err) {
+        next(err);
+    }
+}
+
+// Unregister a device token from the authenticated profile
+exports.unregisterDeviceToken = async (req, res, next) => {
+    try {
+        const token = (req.body?.token || '').trim();
+        if (!token) return res.status(400).json({ message: 'Token is required' });
+
+        const profileId = req.profile._id;
+        const updated = await Profile.findByIdAndUpdate(
+            profileId,
+            { $pull: { deviceTokens: token } },
+            { new: true }
+        ).select('deviceTokens');
+
+        return res.status(200).json({ message: 'Token unregistered', deviceTokens: updated?.deviceTokens || [] });
+    } catch (err) {
+        next(err);
+    }
+}
+
+// Optional: send a test push to the authenticated user
+exports.sendTestPush = async (req, res, next) => {
+    try {
+        const profileId = req.profile._id;
+        const { title = 'Test Notification', body = 'This is a test', data = {} } = req.body || {};
+        const result = await sendPushToProfile(profileId, {
+            title,
+            body,
+            data,
+        });
+        return res.status(200).json({ message: 'Sent', result });
+    } catch (err) {
+        next(err);
+    }
 }

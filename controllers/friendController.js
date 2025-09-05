@@ -1,6 +1,7 @@
 const Profile = require('../models/Profile')
 const mongoose = require('mongoose')
 const { saveNotification } = require('./notificationController')
+const { sendPushToProfile } = require('../utils/pushNotifications')
 const sendEmailNotification = require('../utils/sendEmailNotification.js')
 const checkIsActive = require('../utils/checkIsActive.js')
 exports.postFrndReq = async (req, res, next) => {
@@ -63,7 +64,7 @@ exports.postFrndReq = async (req, res, next) => {
         } = await checkIsActive(profile)
 
 
-        if (isActive) {
+        if (isActive && String(profile) !== String(myProfile._id)) {
             let notificationData = {
                 receiverId: profile,
                 text: myProfile.fullName + ' Sent you friend Request',
@@ -73,7 +74,14 @@ exports.postFrndReq = async (req, res, next) => {
             }
 
             saveNotification(io, notificationData)
-        } else {
+        } else if (String(profile) !== String(myProfile._id)) {
+            try {
+                await sendPushToProfile(profile, {
+                    title: 'New friend request',
+                    body: `${myProfile.fullName} sent you a friend request`,
+                    data: { type: 'friend_request', senderId: String(myProfile._id) }
+                });
+            } catch (e) {}
             sendEmailNotification(frndProfile?.user?.email, 'You\'ve received a friend requiest', myProfile.fullName + ' Sent you friend Request On Connect', myProfile.fullName)
 
         }
@@ -254,6 +262,16 @@ exports.postFrndAccept = async (req, res, next) => {
         }
 
         saveNotification(io, notificationData)
+        try {
+            const { isActive } = await checkIsActive(profile)
+            if (!isActive) {
+                await sendPushToProfile(profile, {
+                    title: 'Friend request accepted',
+                    body: `${myProfile.fullName} accepted your friend request`,
+                    data: { type: 'friend_accept', senderId: String(myProfile._id) }
+                });
+            }
+        } catch (e) {}
 
         return res.status(200).json({
             message: 'Friend Request Accepted'

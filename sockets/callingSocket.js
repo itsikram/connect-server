@@ -3,6 +3,7 @@ const Message = require('../models/Message')
 const Profile = require('../models/Profile')
 const checkIsActive = require('../utils/checkIsActive')
 const axios = require('axios')
+const { sendPushToProfile } = require('../utils/pushNotifications')
 
 
 const sendEmailNotification = require('../utils/sendEmailNotification')
@@ -74,24 +75,38 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
     });
 
     // End call
-    socket.on('leaveVideoCall', (friendId) => {
+    socket.on('leaveVideoCall', async (friendId) => {
         try {
             const targetSocketId = onlineUsers.get(friendId);
             if (targetSocketId) {
                 io.to(targetSocketId).emit('videoCallEnd', friendId);
             }
+            try {
+                await sendPushToProfile(friendId, {
+                    title: 'Missed video call',
+                    body: 'You missed a video call',
+                    data: { type: 'missed_call', isVideo: 'true' }
+                });
+            } catch (e) {}
         } catch (err) {
             console.error('Error handling leaveVideoCall:', err, friendId);
         }
     });
 
     // End audio call
-    socket.on('leaveAudioCall', (friendId) => {
+    socket.on('leaveAudioCall', async (friendId) => {
         try {
             const targetSocketId = onlineUsers.get(friendId);
             if (targetSocketId) {
                 io.to(targetSocketId).emit('audioCallEnd', friendId);
             }
+            try {
+                await sendPushToProfile(friendId, {
+                    title: 'Missed audio call',
+                    body: 'You missed an audio call',
+                    data: { type: 'missed_call', isVideo: 'false' }
+                });
+            } catch (e) {}
         } catch (err) {
             console.error('Error handling leaveAudioCall:', err, friendId);
         }
