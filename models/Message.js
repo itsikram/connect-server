@@ -17,6 +17,7 @@ const messageSchema = new Schema({
         ref: Profile
 
     }],
+    tempId: String,
     isSeen: {
         type: Boolean,
         default: false

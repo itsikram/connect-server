@@ -54,7 +54,7 @@ exports.getProfileImages = async function (req, res, next) {
 
 exports.profileGet = async function (req, res, next) {
     try {
-        console.log('profileGet called with query:', req.query);
+        console.log('profileGet called with query:', req.query?.profileId);
         let profileId = req.query.profileId;
         
         if (!profileId) {

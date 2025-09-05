@@ -7,17 +7,16 @@ const axios = require('axios')
 
 const sendEmailNotification = require('../utils/sendEmailNotification')
 
-module.exports = function messageSocket(io, socket) {
+module.exports = function messageSocket(io, socket, profileId) {
 
-    socket.on('fetchMessages', async (profileId) => {
-
+    socket.on('fetchMessages', async () => {
 
         let profileContacts = []
         let myProfile = await Profile.findOne({ _id: profileId }).populate('friends')
 
+        console.log('fetchMessages pid', profileId,myProfile)
+
         if (!myProfile) return;
-
-
         if (myProfile?.friends !== null) {
             for (const friendProfile of myProfile.friends) {
                 const messages = await Message.find({
@@ -27,6 +26,7 @@ module.exports = function messageSocket(io, socket) {
 
                 profileContacts.push({ person: friendProfile, messages })
             }
+            console.log('profileContacts', profileContacts[0])
             io.to(profileId).emit('oldMessages', profileContacts)
         }
 
