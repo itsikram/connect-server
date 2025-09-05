@@ -54,8 +54,10 @@ exports.getProfileImages = async function (req, res, next) {
 
 exports.profileGet = async function (req, res, next) {
     try {
-        console.log('profileGet called with query:', req.query?.profileId);
-        let profileId = req.query.profileId;
+        const fromQuery = req.query?.profileId;
+        const fromParams = req.params?.profileId;
+        const profileId = fromQuery || fromParams;
+        console.log('profileGet called with id:', profileId, 'fromQuery:', fromQuery ? 'yes' : 'no');
         
         if (!profileId) {
             console.log('No profileId provided');
@@ -77,7 +79,7 @@ exports.profileGet = async function (req, res, next) {
             console.log('ProfileId is valid ObjectId, searching by _id');
             let hasProfile = await Profile.findOne({ _id: profileId });
             if (!hasProfile) {
-                console.log('Profile not found by _id');
+                console.log('Profile not found by _id', profileId);
                 return res.status(404).json({ message: 'Profile Not Found' });
             }
             

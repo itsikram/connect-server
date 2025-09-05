@@ -96,7 +96,7 @@ module.exports = function messageSocket(io, socket, profileId) {
 
     })
 
-    socket.on('speak_message', async ({msgId, friendId}) => {
+    socket.on('speak_message', async ({msgId,friendId}) => {
         let msgData = await Message.findById(msgId);
         if (msgData) {
             io.to(friendId).emit('speak_message', msgData.message);

@@ -17,6 +17,37 @@ let app = express();
 const socketHandler = require('./sockets/socketHandler')
 const httpServer = createServer(app)
 const path = require('path');
+const admin = require('firebase-admin');
+// Initialize Firebase Admin using proper server credentials
+// Prefer GOOGLE_APPLICATION_CREDENTIALS (ADC), then FIREBASE_SERVICE_ACCOUNT (JSON string),
+// then a local serviceAccountKey.json file. Avoid using google-services.json (client config).
+try {
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    admin.initializeApp({
+      credential: admin.credential.applicationDefault()
+    });
+  } else if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+  } else {
+    const fs = require('fs');
+    const saPath = path.join(__dirname, 'serviceAccountKey.json');
+    if (fs.existsSync(saPath)) {
+      const serviceAccount = require(saPath);
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+    } else {
+      // Fallback to default initialization (will use ADC if available)
+      admin.initializeApp();
+      console.warn('Firebase Admin initialized without explicit credentials. Set GOOGLE_APPLICATION_CREDENTIALS or FIREBASE_SERVICE_ACCOUNT to enable privileged APIs.');
+    }
+  }
+} catch (err) {
+  console.error('Failed to initialize Firebase Admin:', err && err.message ? err.message : err);
+}
 
 // Enable pre-flight requests
 app.options('*', cors());
