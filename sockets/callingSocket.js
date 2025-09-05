@@ -16,18 +16,73 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
     socket.on("agora-video-call", async ({ to, channelName, isAudio = false }) => {
         console.log('agora-call-user', { to, channelName })
         let myProfileData = await Profile.findById(profileId)
-        io.to(to).emit("agora-incoming-video-call", { from: profileId, channelName, isAudio, callerName: myProfileData.fullName, callerProfilePic: myProfileData.profilePic });
+        io.to(to).emit("agora-incoming-video-call", { from: profileId, channelName, isAudio: false, callerName: myProfileData.fullName, callerProfilePic: myProfileData.profilePic });
+        // Push notification so callee sees incoming call outside the app
+        try {
+            await sendPushToProfile(to, {
+                title: `Incoming video call`,
+                body: `${myProfileData.fullName} is calling…`,
+                data: {
+                    type: 'incoming_call',
+                    isAudio: 'false',
+                    from: String(profileId),
+                    callerName: myProfileData.fullName || '',
+                    callerProfilePic: myProfileData.profilePic || '',
+                    channelName: channelName || ''
+                }
+            });
+        } catch (e) {}
     });
 
-    socket.on("agora-audio-call", async ({ to, channelName, isAudio = false }) => {
+    socket.on("agora-audio-call", async ({ to, channelName, isAudio = true }) => {
         console.log('agora-incoming-audio-call', { to, channelName })
         let myProfileData = await Profile.findById(profileId)
-        io.to(to).emit("agora-incoming-audio-call", { from: profileId, channelName, isAudio, callerName: myProfileData.fullName, callerProfilePic: myProfileData.profilePic });
+        io.to(to).emit("agora-incoming-audio-call", { from: profileId, channelName, isAudio: true, callerName: myProfileData.fullName, callerProfilePic: myProfileData.profilePic });
+        // Push notification so callee sees incoming call outside the app
+        try {
+            await sendPushToProfile(to, {
+                title: `Incoming audio call`,
+                body: `${myProfileData.fullName} is calling…`,
+                data: {
+                    type: 'incoming_call',
+                    isAudio: 'true',
+                    from: String(profileId),
+                    callerName: myProfileData.fullName || '',
+                    callerProfilePic: myProfileData.profilePic || '',
+                    channelName: channelName || ''
+                }
+            });
+        } catch (e) {}
     });
 
 
-    socket.on("agora-answer-call", ({ to, channelName, isAudio = false }) => {
-        io.to(to).emit("agora-call-accepted", { channelName, isAudio });
+    socket.on("agora-answer-call", async ({ to, channelName, isAudio = false }) => {
+        try {
+            // callee = current socket's profileId
+            const calleeProfileData = await Profile.findById(profileId);
+            // caller = the 'to' user
+            const callerProfileData = await Profile.findById(to);
+
+            // Notify the caller that the callee accepted (show callee info on caller's phone)
+            io.to(to).emit("agora-call-accepted", {
+                channelName,
+                isAudio,
+                callerName: calleeProfileData?.fullName,
+                callerProfilePic: calleeProfileData?.profilePic,
+                callerId: profileId
+            });
+
+            // Also notify the callee (echo) so their app can open the call UI with caller info
+            socket.emit("agora-call-accepted", {
+                channelName,
+                isAudio,
+                callerName: callerProfileData?.fullName,
+                callerProfilePic: callerProfileData?.profilePic,
+                callerId: to
+            });
+        } catch (err) {
+            console.error('Error handling agora-answer-call:', err, { to, channelName, isAudio });
+        }
     });
 
     socket.on("agora-filter-video", ({ to, filter }) => {
@@ -88,6 +143,8 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                     data: { type: 'missed_call', isVideo: 'true' }
                 });
             } catch (e) {}
+            // Also notify the current socket so its own screens close
+            socket.emit('videoCallEnd', friendId);
         } catch (err) {
             console.error('Error handling leaveVideoCall:', err, friendId);
         }
@@ -107,6 +164,8 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                     data: { type: 'missed_call', isVideo: 'false' }
                 });
             } catch (e) {}
+            // Also notify the current socket so its own screens close
+            socket.emit('audioCallEnd', friendId);
         } catch (err) {
             console.error('Error handling leaveAudioCall:', err, friendId);
         }
