@@ -90,7 +90,6 @@ exports.getMedia = async(req,res,next) => {
 
 exports.getChatList = async(req,res,next) => {
 
-
     try{
 
     let profileId = req.query.profileId || req.profile._id

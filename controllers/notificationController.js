@@ -90,9 +90,10 @@ exports.notificationViewAll = async (req, res, next) => {
 
 exports.getNotifications = async (req, res, next) => {
     let io = req.app.get('io')
-    let receverId = req.query.receverId;
-    let notifications = await Notification.find({ receverId: receverId })
+    let receverId = req.query.receverId || req.profile._id;
+    let notifications =  await Notification.find({ receiverId: receverId }).limit(25).sort({timestamp: -1})
     if (notifications) {
+        console.log('notifications', notifications)
         return res.json(notifications).status(200)
     }
     return res.json({ message: 'Failed to get notificaiton' }).status(400)
