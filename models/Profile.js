@@ -63,6 +63,9 @@ let profileSchema = new Schema({
         type: Boolean,
         default: false
     },
+    deviceTokens: [{
+        type: String
+    }],
     user: {
         type: Schema.Types.ObjectId,
         ref: 'User'
