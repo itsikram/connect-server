@@ -17,21 +17,32 @@ module.exports = function socketHandler(io) {
             console.log('profileId', profileId);
             await Profile.findOneAndUpdate({ _id: profileId }, { isActive: true }, { new: true });
             onlineUsers.set(profileId, socket.id);
-            console.log(`✅ Socket connected: ${socket.id} (profile: ${profileId})`);
-        } else {
-            console.log(`✅ Socket connected: ${socket.id} (no profile in handshake query)`);
-        }
 
 
-        socket.on("agora-call-user", ({ to, channelName }) => {
+            
+        socket.on("agora-call-user", async ({ to, channelName, isAudio = false }) => {
             console.log('agora-call-user', { to, channelName })
-            io.to(to).emit("agora-incoming-call", { from: profileId, channelName });
+            let myProfileData = await Profile.findById(profileId)
+            io.to(to).emit("agora-incoming-call", { from: profileId, channelName, isAudio, callerName: myProfileData.fullName, callerProfilePic: myProfileData.profilePic });
         });
 
 
         socket.on("agora-answer-call", ({ to, channelName }) => {
             io.to(to).emit("agora-call-accepted", { channelName });
         });
+
+        socket.on("agora-filter-video", ({ to, filter }) => {
+            io.to(to).emit("agora-apply-video-filter", { filter });
+        });
+
+        console.log(`✅ Socket connected: ${socket.id} (profile: ${profileId})`);
+
+
+
+        } else {
+            console.log(`✅ Socket connected: ${socket.id} (no profile in handshake query)`);
+        }
+
 
         // View post tracking
         socket.on('viewPost', async ({ visitorId, postId }) => {
