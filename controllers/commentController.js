@@ -3,6 +3,8 @@ const Post = require('../models/Post')
 const Profile = require('../models/Profile')
 const CmntReply = require('../models/CmntReply')
 const {saveNotification} = require('./notificationController')
+const checkIsActive = require('../utils/checkIsActive')
+const { sendPushToProfile } = require('../utils/pushNotifications')
 const Story = require('../models/Story')
 const mongoose = require('mongoose')
 exports.postAddComment = async (req, res, next) => {
@@ -37,7 +39,7 @@ exports.postAddComment = async (req, res, next) => {
         }, { new: true }).populate('author')
 
 
-        if(updatePost.author._id !== profile) {
+        if(String(updatePost.author._id) !== String(profile)) {
             let notification = {
                 receiverId: updatePost.author._id,
                 text: `${myProfileData.fullName} Commented in your post`,
@@ -47,6 +49,16 @@ exports.postAddComment = async (req, res, next) => {
             }
 
             saveNotification(io, notification)
+            try {
+                const { isActive } = await checkIsActive(updatePost.author._id)
+                if (!isActive) {
+                    await sendPushToProfile(updatePost.author._id, {
+                        title: 'New comment',
+                        body: `${myProfileData.fullName} commented on your post`,
+                        data: { type: 'post_comment', postId: String(post) }
+                    });
+                }
+            } catch (e) {}
         }
 
 
@@ -99,7 +111,7 @@ exports.storyAddComment = async (req, res, next) => {
             }
         }, { new: true }).populate('author')
 
-        if((updateStory.author._id).toString() !== (profile).toString()) {
+        if(String(updateStory.author._id) !== String(profile)) {
             let notification = {
                 receiverId: updateStory.author._id,
                 text: `${myProfileData.fullName} Commented in your Story`,
@@ -109,6 +121,16 @@ exports.storyAddComment = async (req, res, next) => {
             }
     
             saveNotification(io, notification)
+            try {
+                const { isActive } = await checkIsActive(updateStory.author._id)
+                if (!isActive) {
+                    await sendPushToProfile(updateStory.author._id, {
+                        title: 'New comment',
+                        body: `${myProfileData.fullName} commented on your story`,
+                        data: { type: 'story_comment', storyId: String(storyId) }
+                    });
+                }
+            } catch (e) {}
         }
 
         return res.json(savedCommentData)
@@ -135,6 +157,33 @@ exports.addCommentReact = async (req, res, next) => {
             }
         }, { new: true })
         if (updatedComment) {
+            // Notify the comment author (if not self)
+            try {
+                const comment = await Comment.findById(commentId).populate('author');
+                const myProfile = req.profile;
+                if (comment && comment.author && String(comment.author._id) !== String(myProfile._id)) {
+                    const io = req.app.get('io');
+                    const notification = {
+                        receiverId: comment.author._id,
+                        text: `${myProfile.fullName} liked your comment`,
+                        link: '/post/' + String(comment.post),
+                        type: 'commentReact',
+                        icon: myProfile.profilePic
+                    };
+                    saveNotification(io, notification);
+                    try {
+                        const { isActive } = await checkIsActive(comment.author._id)
+                        if (!isActive) {
+                            await sendPushToProfile(comment.author._id, {
+                                title: 'Comment liked',
+                                body: `${myProfile.fullName} liked your comment`,
+                                data: { type: 'comment_like', postId: String(comment.post), commentId: String(comment._id) }
+                            });
+                        }
+                    } catch (e) {}
+                }
+            } catch (e) { }
+
             return res.json({ messasge: 'Comment Reacted Successfully' }).status(200)
         }
         return res.json({ messasge: 'Comment Cannot Be Reacted' }).status(400)
@@ -200,7 +249,7 @@ exports.postCommentReply = async (req, res, next) => {
 
                 if (newReplyWithAuthor) {
 
-                    if(updateComment.post.author._id !== myProfileId) {
+                    if(String(updateComment.post.author._id) !== String(myProfileId)) {
                         let notification = {
                             receiverId: updateComment.post.author._id,
                             text: `${myProfile.fullName} Replied to your comment`,
@@ -210,7 +259,42 @@ exports.postCommentReply = async (req, res, next) => {
                         }
                 
                         saveNotification(io, notification)
+                        try {
+                            const { isActive } = await checkIsActive(updateComment.post.author._id)
+                            if (!isActive) {
+                                await sendPushToProfile(updateComment.post.author._id, {
+                                    title: 'New reply',
+                                    body: `${myProfile.fullName} replied to your comment`,
+                                    data: { type: 'comment_reply', postId: String(updateComment.post) }
+                                });
+                            }
+                        } catch (e) {}
                     }
+
+                    // Also notify the original comment author (if different from replier)
+                    try {
+                        const parentComment = await Comment.findById(commentId).populate('author');
+                        if (parentComment && String(parentComment.author._id) !== String(myProfileId)) {
+                            const notifForCommentAuthor = {
+                                receiverId: parentComment.author._id,
+                                text: `${myProfile.fullName} replied to your comment`,
+                                link: '/post/' + String(updateComment.post),
+                                type: 'commentReply',
+                                icon: myProfile.profilePic
+                            };
+                            saveNotification(io, notifForCommentAuthor)
+                            try {
+                                const { isActive } = await checkIsActive(parentComment.author._id)
+                                if (!isActive) {
+                                    await sendPushToProfile(parentComment.author._id, {
+                                        title: 'New reply',
+                                        body: `${myProfile.fullName} replied to your comment`,
+                                        data: { type: 'comment_reply', postId: String(updateComment.post), commentId: String(parentComment._id) }
+                                    });
+                                }
+                            } catch (e) {}
+                        }
+                    } catch (e) {}
 
                     return res.json(newReplyWithAuthor).status(200)
 

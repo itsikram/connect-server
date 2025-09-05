@@ -2,6 +2,8 @@ const Post = require('../models/Post')
 const Story = require('../models/Story')
 const Profile = require('../models/Profile')
 const { saveNotification } = require('./notificationController')
+const checkIsActive = require('../utils/checkIsActive')
+const { sendPushToProfile } = require('../utils/pushNotifications')
 
 exports.postAddReact = async (req, res, next) => {
     try {
@@ -40,7 +42,7 @@ exports.postAddReact = async (req, res, next) => {
 
 
 
-                if ((friendProfile._id).toString() !== profile) {
+                if (String(friendProfile._id) !== String(profile)) {
                     let postReactNotification = {
                         receiverId: friendProfile._id,
                         text: `${myProfileData.fullName} Reacted your post`,
@@ -49,6 +51,16 @@ exports.postAddReact = async (req, res, next) => {
                         icon: friendProfile.profilePic
                     }
                     saveNotification(io, postReactNotification)
+                    try {
+                        const { isActive } = await checkIsActive(friendProfile._id)
+                        if (!isActive) {
+                            await sendPushToProfile(friendProfile._id, {
+                                title: 'New reaction',
+                                body: `${myProfileData.fullName} reacted to your post`,
+                                data: { type: 'post_react', postId: String(addPostReact._id) }
+                            });
+                        }
+                    } catch (e) {}
                 }
 
 
@@ -80,7 +92,7 @@ exports.postAddReact = async (req, res, next) => {
 
                 }, { new: true })
 
-                if ((friendProfile._id).toString() !== profile) {
+                if (String(friendProfile._id) !== String(profile)) {
                     let postStoryNotification = {
                         receiverId: friendProfile._id,
                         text: `${myProfileData.fullName} Reacted your Story`,
@@ -89,6 +101,16 @@ exports.postAddReact = async (req, res, next) => {
                         icon: friendProfile.profilePic
                     }
                     saveNotification(io, postStoryNotification)
+                    try {
+                        const { isActive } = await checkIsActive(friendProfile._id)
+                        if (!isActive) {
+                            await sendPushToProfile(friendProfile._id, {
+                                title: 'New reaction',
+                                body: `${myProfileData.fullName} reacted to your story`,
+                                data: { type: 'story_react', storyId: String(addStoryReact._id) }
+                            });
+                        }
+                    } catch (e) {}
                 }
 
                 return res.json(addStoryReact).status(200)
