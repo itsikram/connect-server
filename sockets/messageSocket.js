@@ -104,7 +104,7 @@ module.exports = function messageSocket(io, socket, profileId) {
         }
     });
 
-    socket.on('sendMessage', async ({ room, senderId, receiverId, message, attachment, parent, isAi = false }) => {
+    socket.on('sendMessage', async ({ room, senderId, receiverId, message, attachment, parent, isAi = false, messageType = 'text', callType, callEvent }) => {
 
 
         if (isAi) {
@@ -137,9 +137,9 @@ module.exports = function messageSocket(io, socket, profileId) {
 
         let newMessage;
         if (parent == false) {
-            newMessage = new Message({ room, senderId, receiverId, message, attachment })
+            newMessage = new Message({ room, senderId, receiverId, message, attachment, messageType, callType, callEvent })
         } else {
-            newMessage = new Message({ room, senderId, receiverId, message, attachment, parent })
+            newMessage = new Message({ room, senderId, receiverId, message, attachment, parent, messageType, callType, callEvent })
         }
         await newMessage.save();
 
@@ -224,6 +224,23 @@ module.exports = function messageSocket(io, socket, profileId) {
         }
 
     })
+
+    // Live voice relays (push-to-talk over Agora)
+    socket.on('agora-live-voice-start', ({ to, channelName }) => {
+        try {
+            io.to(to).emit('agora-live-voice-start', { from: profileId, channelName });
+        } catch (e) {
+            console.error('agora-live-voice-start relay failed:', e?.message || e);
+        }
+    });
+
+    socket.on('agora-live-voice-stop', ({ to, channelName }) => {
+        try {
+            io.to(to).emit('agora-live-voice-stop', { from: profileId, channelName });
+        } catch (e) {
+            console.error('agora-live-voice-stop relay failed:', e?.message || e);
+        }
+    });
 
 
 

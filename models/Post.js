@@ -42,6 +42,7 @@ let postSchema = new Schema({
         type: Schema.Types.ObjectId,
         ref: Profile
     },
+    faceExpression: String,
     location: String,
     feelings: String,
     type: {
