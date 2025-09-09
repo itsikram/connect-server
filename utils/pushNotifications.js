@@ -22,6 +22,9 @@ async function sendPushToTokens(tokens = [], notification = {}) {
       return acc;
     }, {}),
     tokens,
+    android: {
+      priority: 'high',
+    },
   };
 
   try {
@@ -49,6 +52,44 @@ module.exports = {
   sendPushToTokens,
   sendPushToProfile,
 };
+
+/**
+ * Send a data-only push notification to a list of device tokens
+ * Note: All values in the data payload must be strings.
+ * @param {string[]} tokens
+ * @param {Record<string,string>} data
+ */
+async function sendDataPushToTokens(tokens = [], data = {}) {
+  if (!Array.isArray(tokens) || tokens.length === 0) {
+    return { successCount: 0, failureCount: 0 };
+  }
+  const stringData = Object.entries(data || {}).reduce((acc, [k, v]) => {
+    acc[k] = typeof v === 'string' ? v : String(v);
+    return acc;
+  }, {});
+  try {
+    const res = await admin.messaging().sendEachForMulticast({ data: stringData, tokens });
+    return { successCount: res.successCount, failureCount: res.failureCount };
+  } catch (err) {
+    console.error('FCM data send error:', err && err.message ? err.message : err);
+    return { successCount: 0, failureCount: tokens.length };
+  }
+}
+
+/**
+ * Send a data-only push to a profile's registered device tokens
+ * @param {string} profileId
+ * @param {Record<string,string>} data
+ */
+async function sendDataPushToProfile(profileId, data = {}) {
+  if (!profileId) return { successCount: 0, failureCount: 0 };
+  const profile = await Profile.findById(profileId).select('deviceTokens');
+  const tokens = profile?.deviceTokens || [];
+  return sendDataPushToTokens(tokens, data);
+}
+
+module.exports.sendDataPushToTokens = sendDataPushToTokens;
+module.exports.sendDataPushToProfile = sendDataPushToProfile;
 
 
 
