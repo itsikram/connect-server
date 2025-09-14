@@ -25,16 +25,22 @@ let userSchema = new Schema({
     password: {
         type: String,
         trim: true,
-        required: true,
+        required: false, // Make password optional for Google users
+    },
+    googleId: {
+        type: String,
+        trim: true,
+        unique: true,
+        sparse: true, // Allow multiple null values
     },
     DOB: {
         type: String,
-        required: true    
+        required: false // Make optional for Google users
     },
     gender: {
         type: String,
         trim: true,
-        Required: true
+        required: false // Make optional for Google users
     },
     lastLogin :{
         type : Number,

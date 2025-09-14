@@ -285,13 +285,32 @@ exports.getSinglePost = async (req, res, next) => {
 }
 
 exports.updatePost = async (req, res, next) => {
-    let { postId, caption } = req.body
+    let { postId, caption, feelings, location, photos } = req.body
     try {
-        let updatedPost = await Post.findOneAndUpdate({ _id: postId }, {
-            caption
-        }, { new: true })
+        let updateData = { caption }
+        
+        if (feelings !== undefined) {
+            updateData.feelings = feelings
+        }
+        
+        if (location !== undefined) {
+            updateData.location = location
+        }
+        
+        if (photos !== undefined) {
+            updateData.photos = photos
+        }
 
-        res.status(200).json({ message: 'Caption Updated Successfully' })
+        let updatedPost = await Post.findOneAndUpdate({ _id: postId }, updateData, { new: true })
+
+        if (!updatedPost) {
+            return res.status(404).json({ message: 'Post not found' })
+        }
+
+        res.status(200).json({ 
+            message: 'Post Updated Successfully',
+            post: updatedPost
+        })
     } catch (error) {
         next(error)
     }

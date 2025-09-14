@@ -14,6 +14,8 @@ const searchRoutes = require('./searchRoutes')
 const path = require('path')
 const watchRoutes = require('./watchRoutes')
 const agoraRoutes = require('./agoraRoutes')
+const adminRoutes = require('./adminRoutes')
+const connectRoutes = require('./connectRoutes')
  
 let rootRoute = async (req,res) => {
     return res.sendFile(path.join(__dirname, "build", "index.html"));
@@ -74,6 +76,14 @@ const routes = [
     {
         path: '/api/agora',
         handler: agoraRoutes
+    },
+    {
+        path: '/api/admin',
+        handler: adminRoutes
+    },
+    {
+        path: '/api/connect',   
+        handler: connectRoutes
     }
 ]
  

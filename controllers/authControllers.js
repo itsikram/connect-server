@@ -10,24 +10,15 @@ const Comment = require('../models/Comment');
 const CmntReply = require('../models/CmntReply');
 const Setting = require('../models/Setting');
 const FaceEndCoding = require('../models/FaceEncoding');
+const { OAuth2Client } = require('google-auth-library');
 const SECRET_KEY = process.env.JWT_SECRET_KEY;
+const deleteUserData = require('../utils/deleteUserData')
 
 
-let deleteUserData = async (profileId) => {
-    await Story.deleteMany({ author: profileId })
-    await Post.deleteMany({
-        author: profileId
-    })
-    await Watch.deleteMany({ author: profileId })
-    await Message.deleteMany({
-        senderId: profileId,
-        receiverId: profileId
-    })
-    await Comment.deleteMany({ author: profileId })
-    await CmntReply.deleteMany({ author: profileId })
-    await Setting.deleteMany({ profile: profileId })
-    await FaceEndCoding.deleteMany({ profile: profileId })
-}
+// Google OAuth2 Client
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+
 
 
 exports.signUp = async (req, res, next) => {
@@ -219,6 +210,112 @@ exports.login = async (req, res, next) => {
     }
 
 
+}
+
+exports.googleSignIn = async (req, res, next) => {
+    const { googleId, email, name, photo, familyName, givenName, idToken } = req.body;
+    console.log('google',req.body)
+
+    try {
+        // Verify the Google ID token
+        const ticket = await googleClient.verifyIdToken({
+            idToken: idToken,
+            audience: process.env.GOOGLE_CLIENT_ID,
+        });
+
+        const payload = ticket.getPayload();
+        const googleUserId = payload['sub'];
+
+        // Verify that the Google ID matches what we received
+        if (googleUserId !== googleId) {
+            return res.status(401).json({
+                message: 'Invalid Google authentication'
+            });
+        }
+
+        // Check if user already exists
+        let user = await User.findOne({ email: email.toLowerCase() });
+
+        if (user) {
+            // User exists, check if they have Google ID associated
+            if (!user.googleId) {
+                // Add Google ID to existing user
+                user.googleId = googleId;
+                await user.save();
+            }
+
+            // Generate JWT token
+            let accessToken = jwt.sign({ user_id: user._id }, SECRET_KEY, {
+                expiresIn: '30d'
+            });
+
+            return res.status(202).json({
+                firstName: user.firstName,
+                user_id: user._id,
+                surname: user.surname,
+                profile: user.profile,
+                accessToken
+            });
+        } else {
+            // Create new user with Google authentication
+            let newUser = new User({
+                firstName: givenName || name.split(' ')[0],
+                surname: familyName || name.split(' ').slice(1).join(' ') || '',
+                email: email.toLowerCase(),
+                googleId: googleId,
+                // No password for Google users
+                password: null,
+                // Set default values for required fields
+                DOB: null,
+                gender: 'other'
+            });
+
+            let userData = await newUser.save();
+
+            // Create profile for the new user
+            let profileData = new Profile({
+                user: userData._id,
+                fullName: name,
+                displayName: familyName || name.split(' ')[0],
+                profilePic: photo || null
+            });
+
+            let profile = await profileData.save();
+
+            if (profile) {
+                // Update user with profile reference
+                let updatedUser = await User.findOneAndUpdate(
+                    { _id: userData._id }, 
+                    { profile: profile._id }, 
+                    { new: true }
+                );
+
+                if (updatedUser) {
+                    let accessToken = jwt.sign({ user_id: updatedUser._id }, SECRET_KEY, {
+                        expiresIn: '30d'
+                    });
+
+                    return res.status(201).json({
+                        firstName: updatedUser.firstName,
+                        user_id: updatedUser._id,
+                        surname: updatedUser.surname,
+                        profile: updatedUser.profile,
+                        accessToken
+                    });
+                }
+            }
+
+            return res.status(500).json({
+                message: 'Failed to create user profile'
+            });
+        }
+
+    } catch (error) {
+        console.error('Google sign-in error:', error);
+        return res.status(500).json({
+            message: 'Google authentication failed'
+        });
+    }
 }
 
 exports.deleteAccount = async (req, res, next) => {
