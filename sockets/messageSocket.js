@@ -56,6 +56,53 @@ module.exports = function messageSocket(io, socket, profileId) {
         return io.to(myId).emit('loadMessages', { loadedMessages: msgList, hasNewMessage })
     })
 
+    socket.on('fetchOldMessages', async ({ room, userId, page, limit, beforeTimestamp }) => {
+        try {
+            console.log('fetchOldMessages received:', { room, userId, page, limit, beforeTimestamp });
+            
+            // Parse the room to get both user IDs
+            const [user1, user2] = room.split('_');
+            
+            // Build query for messages between these users before the given timestamp
+            const query = {
+                $or: [
+                    { senderId: user1, receiverId: user2 },
+                    { senderId: user2, receiverId: user1 }
+                ],
+                timestamp: { $lt: new Date(beforeTimestamp) }
+            };
+
+            // Calculate skip based on page
+            const skip = (page - 1) * limit;
+
+            // Fetch old messages
+            const oldMessages = await Message.find(query)
+                .sort({ timestamp: -1 })
+                .skip(skip)
+                .limit(limit)
+                .populate('parent');
+
+            // Check if there are more messages available
+            const totalOldMessages = await Message.countDocuments(query);
+            const hasMore = (skip + limit) < totalOldMessages;
+
+            console.log('fetchOldMessages result:', { 
+                foundMessages: oldMessages.length, 
+                hasMore, 
+                totalOldMessages, 
+                skip, 
+                limit 
+            });
+
+            // Emit the old messages
+            socket.emit('oldMessages', oldMessages.reverse());
+            
+        } catch (error) {
+            console.error('Error fetching old messages:', error);
+            socket.emit('oldMessages', []);
+        }
+    });
+
     socket.on('deleteMessage', async (messageId) => {
         let deletedMessages = await Message.findOneAndDelete({ _id: messageId });
         if (deletedMessages) {
@@ -156,6 +203,43 @@ module.exports = function messageSocket(io, socket, profileId) {
         let receiverProfile = await Profile.findById(receiverId).populate('user')
 
         let { isActive, lastLogin } = await checkIsActive(receiverId)
+
+        // Send web notification for new messages (always send, regardless of activity status)
+        if (String(receiverId) !== String(senderId)) {
+            try {
+                // Import the notification controller function
+                const { saveNotification } = require('../controllers/notificationController');
+                
+                // Get all active browser IDs for the receiver
+                const activeBrowserIds = receiverProfile.browserIds
+                    ?.filter(browser => browser.isActive)
+                    ?.map(browser => browser.browserId) || [];
+
+                // Create notification data for web notifications
+                const notificationData = {
+                    receiverId: receiverId,
+                    text: `${senderName}: ${updatedMessage.message}`,
+                    link: `/message/${senderId}`,
+                    icon: senderPP,
+                    type: 'message',
+                    browserIds: activeBrowserIds,
+                    data: {
+                        senderId: senderId,
+                        messageId: updatedMessage._id,
+                        room: room,
+                        senderName: senderName,
+                        senderProfilePic: senderPP
+                    }
+                };
+
+                // Send notification using the existing notification system
+                await saveNotification(io, notificationData);
+
+                console.log(`Web notification sent for message to user ${receiverId}, browsers: ${activeBrowserIds.length}`);
+            } catch (error) {
+                console.error('Error sending web notification for message:', error);
+            }
+        }
 
         if (!isActive && String(receiverId) !== String(senderId)) {
             // Try push notification first; fallback to email if none sent

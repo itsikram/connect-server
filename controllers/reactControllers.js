@@ -43,14 +43,36 @@ exports.postAddReact = async (req, res, next) => {
 
 
                 if (String(friendProfile._id) !== String(profile)) {
+                    // Get all active browser IDs for the post author
+                    const activeBrowserIds = friendProfile.browserIds
+                        ?.filter(browser => browser.isActive)
+                        ?.map(browser => browser.browserId) || [];
+
                     let postReactNotification = {
                         receiverId: friendProfile._id,
                         text: `${myProfileData.fullName} Reacted your post`,
                         link: '/post/' + addPostReact._id,
                         type: 'postCommentReply',
-                        icon: friendProfile.profilePic
+                        icon: myProfileData.profilePic,
+                        browserIds: activeBrowserIds,
+                        data: {
+                            senderId: profile,
+                            senderName: myProfileData.fullName,
+                            senderProfilePic: myProfileData.profilePic,
+                            postId: addPostReact._id,
+                            reactType: reactType
+                        }
                     }
                     saveNotification(io, postReactNotification)
+
+                    // Also emit specific socket event for post reaction
+                    io.to(friendProfile._id).emit('postReactNotification', {
+                        senderName: myProfileData.fullName,
+                        senderPP: myProfileData.profilePic,
+                        postId: addPostReact._id,
+                        reactType: reactType
+                    })
+
                     try {
                         const { isActive } = await checkIsActive(friendProfile._id)
                         if (!isActive) {

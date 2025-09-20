@@ -16,6 +16,7 @@ const watchRoutes = require('./watchRoutes')
 const agoraRoutes = require('./agoraRoutes')
 const adminRoutes = require('./adminRoutes')
 const connectRoutes = require('./connectRoutes')
+const webNotificationRoutes = require('./webNotificationRoutes')
  
 let rootRoute = async (req,res) => {
     return res.sendFile(path.join(__dirname, "build", "index.html"));
@@ -84,6 +85,10 @@ const routes = [
     {
         path: '/api/connect',   
         handler: connectRoutes
+    },
+    {
+        path: '/api/web-notification',
+        handler: webNotificationRoutes
     }
 ]
  

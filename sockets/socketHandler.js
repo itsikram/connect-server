@@ -14,11 +14,34 @@ module.exports = function socketHandler(io) {
 
     io.on('connection', async (socket) => {
         const profileId = socket.handshake.query?.profile;
+        const browserId = socket.handshake.query?.browserId;
+        
         if (profileId !== 'undefined') {
             socket.join(profileId);
             console.log('profileId', profileId);
             await Profile.findOneAndUpdate({ _id: profileId }, { isActive: true }, { new: true });
             onlineUsers.set(profileId, socket.id);
+
+            // Join browser-specific room if browserId is provided
+            if (browserId && browserId !== 'undefined') {
+                socket.join(`browser_${browserId}`);
+                console.log(`Browser ${browserId} joined room for profile ${profileId}`);
+                
+                // Update browser activity in database
+                try {
+                    await Profile.findOneAndUpdate(
+                        { _id: profileId, 'browserIds.browserId': browserId },
+                        { 
+                            $set: { 
+                                'browserIds.$.lastActive': new Date(),
+                                'browserIds.$.isActive': true
+                            }
+                        }
+                    );
+                } catch (err) {
+                    console.error('Error updating browser activity:', err);
+                }
+            }
 
             // Message & notification socket modules
             try {
@@ -29,7 +52,7 @@ module.exports = function socketHandler(io) {
                 console.error('Error initializing message/notification sockets:', err);
             }
 
-            console.log(`✅ Socket connected: ${socket.id} (profile: ${profileId})`);
+            console.log(`✅ Socket connected: ${socket.id} (profile: ${profileId}, browser: ${browserId || 'none'})`);
 
 
         } else {

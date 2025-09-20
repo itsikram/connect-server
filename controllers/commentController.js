@@ -40,15 +40,38 @@ exports.postAddComment = async (req, res, next) => {
 
 
         if(String(updatePost.author._id) !== String(profile)) {
+            // Get all active browser IDs for the post author
+            const activeBrowserIds = updatePost.author.browserIds
+                ?.filter(browser => browser.isActive)
+                ?.map(browser => browser.browserId) || [];
+
             let notification = {
                 receiverId: updatePost.author._id,
                 text: `${myProfileData.fullName} Commented in your post`,
                 link: '/post/'+post,
                 type: 'postComment',
-                icon: myProfileData.profilePic
+                icon: myProfileData.profilePic,
+                browserIds: activeBrowserIds,
+                data: {
+                    senderId: profile,
+                    senderName: myProfileData.fullName,
+                    senderProfilePic: myProfileData.profilePic,
+                    postId: post,
+                    commentId: savedCommentData._id,
+                    commentBody: body
+                }
             }
 
             saveNotification(io, notification)
+
+            // Also emit specific socket event for post comment
+            io.to(updatePost.author._id).emit('postCommentNotification', {
+                senderName: myProfileData.fullName,
+                senderPP: myProfileData.profilePic,
+                postId: post,
+                commentBody: body
+            })
+
             try {
                 const { isActive } = await checkIsActive(updatePost.author._id)
                 if (!isActive) {

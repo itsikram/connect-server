@@ -140,8 +140,10 @@ exports.getAllStories = async(req,res,next) => {
             {
                 path: 'author',
                 model: Profile,
+                select: ['profilePic', 'fullName', 'user'],
                 populate: {
-                    path: 'user'
+                    path: 'user',
+                    select: ['firstName', 'surname']
                 }
             },
             {
@@ -158,6 +160,7 @@ exports.getAllStories = async(req,res,next) => {
             }
         ]).limit(10).sort({'createdAt': -1})
 
+        console.log('getAllStories response:', JSON.stringify(newsFeedStories, null, 2));
         res.json(newsFeedStories).status(200)
         
     } catch (error) {

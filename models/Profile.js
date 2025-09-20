@@ -66,6 +66,21 @@ let profileSchema = new Schema({
     deviceTokens: [{
         type: String
     }],
+    browserIds: [{
+        browserId: {
+            type: String,
+            unique: true
+        },
+        userAgent: String,
+        lastActive: {
+            type: Date,
+            default: Date.now
+        },
+        isActive: {
+            type: Boolean,
+            default: true
+        }
+    }],
     user: {
         type: Schema.Types.ObjectId,
         ref: 'User'

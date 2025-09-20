@@ -20,21 +20,31 @@ exports.saveNotification = async (io, data) => {
     let notificationLink = data.link || '/';
     let notificationIcon = data.icon || null;
     let notificationType = data.type || null;
+    let browserIds = data.browserIds || [];
+    
     let notification = new Notification({
         receiverId,
         text: notificationText,
         link: notificationLink,
         icon: notificationIcon,
         type: notificationType,
-
+        data: {
+            ...data.data,
+            browserIds: browserIds
+        }
     })
     let newNotification = await notification.save()
 
     if (newNotification) {
         io.to(receiverId).emit('newNotification', newNotification)
-        // return res.json({message: 'New Notification Created'}).json(200)
+        
+        // If browser IDs are specified, also emit to specific browser channels
+        if (browserIds.length > 0) {
+            browserIds.forEach(browserId => {
+                io.to(`browser_${browserId}`).emit('browserNotification', newNotification);
+            });
+        }
     }
-    // return res.json({message: 'Notification Creation Failed'}).json(400)
 }
 
 exports.postNotification = async (req, res, next) => {

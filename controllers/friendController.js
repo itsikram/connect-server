@@ -64,17 +64,37 @@ exports.postFrndReq = async (req, res, next) => {
         } = await checkIsActive(profile)
 
 
-        if (isActive && String(profile) !== String(myProfile._id)) {
+        if (String(profile) !== String(myProfile._id)) {
+            // Get all active browser IDs for the receiver
+            const activeBrowserIds = frndProfile.browserIds
+                ?.filter(browser => browser.isActive)
+                ?.map(browser => browser.browserId) || [];
+
             let notificationData = {
                 receiverId: profile,
                 text: myProfile.fullName + ' Sent you friend Request',
                 link: '/' + myProfile._id,
                 icon: myProfile.profilePic,
-                type: 'friendReq'
+                type: 'friendReq',
+                browserIds: activeBrowserIds,
+                data: {
+                    senderId: myProfile._id,
+                    senderName: myProfile.fullName,
+                    senderProfilePic: myProfile.profilePic
+                }
             }
 
             saveNotification(io, notificationData)
-        } else if (String(profile) !== String(myProfile._id)) {
+
+            // Also emit specific socket event for friend request
+            io.to(profile).emit('friendRequestNotification', {
+                senderName: myProfile.fullName,
+                senderPP: myProfile.profilePic,
+                senderId: myProfile._id
+            })
+        }
+
+        if (!isActive && String(profile) !== String(myProfile._id)) {
             try {
                 await sendPushToProfile(profile, {
                     title: 'New friend request',
@@ -253,15 +273,35 @@ exports.postFrndAccept = async (req, res, next) => {
             }
         }, { new: true })
 
+        // Get the friend's profile to access browser IDs
+        const friendProfile = await Profile.findById(profile);
+        const activeBrowserIds = friendProfile?.browserIds
+            ?.filter(browser => browser.isActive)
+            ?.map(browser => browser.browserId) || [];
+
         let notificationData = {
             receiverId: profile,
             text: myProfile.fullName + ' Accepted your friend Request',
             link: '/' + myProfile._id,
             icon: myProfile.profilePic,
-            type: 'friendReqAccept'
+            type: 'friendReqAccept',
+            browserIds: activeBrowserIds,
+            data: {
+                senderId: myProfile._id,
+                senderName: myProfile.fullName,
+                senderProfilePic: myProfile.profilePic
+            }
         }
 
         saveNotification(io, notificationData)
+
+        // Also emit specific socket event for friend request acceptance
+        io.to(profile).emit('friendRequestAcceptNotification', {
+            senderName: myProfile.fullName,
+            senderPP: myProfile.profilePic,
+            senderId: myProfile._id
+        })
+
         try {
             const { isActive } = await checkIsActive(profile)
             if (!isActive) {
