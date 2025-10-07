@@ -268,9 +268,46 @@ module.exports = function messageSocket(io, socket, profileId) {
 
     });
 
-    socket.on('emotion_change', async ({ profileId, emotion, friendId }) => {
-        let updateProfile = await Profile.findOneAndUpdate({ _id: profileId }, { lastEmotion: emotion }, { new: true })
-        io.to(friendId).emit('emotion_change', updateProfile.lastEmotion);
+    socket.on('emotion_change', async ({ profileId, emotion, friendId, emotionText, emoji, confidence, quality }) => {
+        console.log('emotion_change', profileId, emotion, friendId, emotionText, emoji, confidence, quality)
+        
+        try {
+            // Add null checks and better error handling
+            if (!profileId || !emotion || !friendId) {
+                console.error('Missing required parameters for emotion_change:', { profileId, emotion, friendId });
+                return;
+            }
+
+            let updateProfile = await Profile.findOneAndUpdate(
+                { _id: profileId }, 
+                { 
+                    lastEmotion: emotion,
+                    lastEmotionText: emotionText || emotion,
+                    lastEmotionEmoji: emoji,
+                    lastEmotionConfidence: confidence,
+                    lastEmotionQuality: quality
+                }, 
+                { new: true }
+            );
+            
+            if (updateProfile) {
+                // Emit emotion change with all the data
+                io.to(friendId).emit('emotion_change', {
+                    profileId: updateProfile._id,
+                    emotion: updateProfile.lastEmotion,
+                    emotionText: updateProfile.lastEmotionText,
+                    emoji: updateProfile.lastEmotionEmoji,
+                    confidence: updateProfile.lastEmotionConfidence,
+                    quality: updateProfile.lastEmotionQuality,
+                    timestamp: new Date()
+                });
+                console.log('Emotion change emitted successfully:', updateProfile.lastEmotion);
+            } else {
+                console.error('Failed to update profile for emotion_change:', profileId);
+            }
+        } catch (error) {
+            console.error('Error in emotion_change handler:', error);
+        }
     })
 
     socket.on('typing', ({ room, isTyping, type, receiverId }) => {

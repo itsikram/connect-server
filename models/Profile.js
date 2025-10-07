@@ -38,6 +38,10 @@ let profileSchema = new Schema({
         ref: 'Profile'
     }],
     lastEmotion: String,
+    lastEmotionText: String,
+    lastEmotionEmoji: String,
+    lastEmotionConfidence: Number,
+    lastEmotionQuality: Number,
     friendReqs: [{
         type: Schema.Types.ObjectId,
         ref: 'Profile'

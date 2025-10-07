@@ -236,10 +236,23 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
     // End call
     socket.on('leaveVideoCall', async (friendId) => {
         try {
+            console.log(`Server: Received leaveVideoCall from ${profileId} for friend ${friendId}`);
+            
+            // Emit to the friend (other user)
             const targetSocketId = onlineUsers.get(friendId);
+            console.log(`Server: Target socket ID for ${friendId}: ${targetSocketId}`);
             if (targetSocketId) {
-                io.to(targetSocketId).emit('videoCallEnd', friendId);
+                console.log(`Server: Emitting videoCallEnd to ${friendId} (socket: ${targetSocketId})`);
+                io.to(targetSocketId).emit('videoCallEnd', profileId);
+            } else {
+                console.log(`Server: No socket found for friend ${friendId}`);
             }
+
+            // IMPORTANT: Also emit back to the current user for confirmation
+            // This ensures both users receive the end event regardless of platform (web/app)
+            console.log(`Server: Emitting videoCallEnd confirmation to ${profileId} (socket: ${socket.id})`);
+            socket.emit('videoCallEnd', friendId);
+            
             // Clear any pending missed-call timers for this caller<->friend pair
             try {
                 for (const [key, entry] of callTimeouts.entries()) {
@@ -288,8 +301,6 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                 }
             } catch (e) {
             }
-            // Also notify the current socket so its own screens close
-            socket.emit('videoCallEnd', friendId);
         } catch (err) {
             console.error('Error handling leaveVideoCall:', err, friendId);
         }
@@ -298,10 +309,26 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
     // End audio call
     socket.on('leaveAudioCall', async (friendId) => {
         try {
+            console.log(`Server: Received leaveAudioCall from ${profileId} for friend ${friendId}`);
+            console.log(`Server: Current onlineUsers map:`, Array.from(onlineUsers.entries()));
+            
+            // Emit to the friend (other user)
             const targetSocketId = onlineUsers.get(friendId);
+            console.log(`Server: Target socket ID for ${friendId}: ${targetSocketId}`);
             if (targetSocketId) {
-                io.to(targetSocketId).emit('audioCallEnd', friendId);
+                console.log(`Server: About to emit audioCallEnd to ${friendId} (socket: ${targetSocketId})`);
+                io.to(targetSocketId).emit('audioCallEnd', profileId);
+                console.log(`Server: audioCallEnd event emitted successfully to socket ${targetSocketId}`);
+            } else {
+                console.log(`Server: No socket found for friend ${friendId}`);
+                console.log(`Server: Available users in onlineUsers:`, Array.from(onlineUsers.keys()));
             }
+
+            // IMPORTANT: Also emit back to the current user for confirmation
+            // This ensures both users receive the end event regardless of platform (web/app)
+            console.log(`Server: Emitting audioCallEnd confirmation to ${profileId} (socket: ${socket.id})`);
+            socket.emit('audioCallEnd', friendId);
+            
             // Clear any pending missed-call timers for this caller<->friend pair
             try {
                 for (const [key, entry] of callTimeouts.entries()) {
@@ -349,8 +376,6 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                 }
             } catch (e) {
             }
-            // Also notify the current socket so its own screens close
-            socket.emit('audioCallEnd', friendId);
         } catch (err) {
             console.error('Error handling leaveAudioCall:', err, friendId);
         }

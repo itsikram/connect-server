@@ -9,6 +9,7 @@ let isAuth = async(req,res,next) => {
 
     try {
         let token = req.headers.authorization
+        console.log('token', token)
         let {user_id} = jwt.verify(token,SECRET_KEY)
         let profileData = await Profile.findOne({user: user_id}).populate('user')
         if(!profileData) {
