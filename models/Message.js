@@ -8,7 +8,7 @@ const messageSchema = new Schema({
     receiverId: String,
     message: String,
     // Optional message metadata
-    messageType: { type: String, enum: ['text', 'call'], default: 'text' },
+    messageType: { type: String, enum: ['text', 'call', 'audio'], default: 'text' },
     callType: { type: String, enum: ['audio', 'video'], required: false },
     callEvent: { type: String, enum: ['missed', 'ended', 'declined', 'started'], required: false },
     parent: {

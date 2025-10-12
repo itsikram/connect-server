@@ -182,6 +182,29 @@ module.exports = function messageSocket(io, socket, profileId) {
 
         }
 
+        // Prevent messaging if either user has blocked the other
+        try {
+            const [senderProfile, receiverProfile] = await Promise.all([
+                Profile.findById(senderId).select('blockedUsers'),
+                Profile.findById(receiverId).select('blockedUsers'),
+            ]);
+            const senderBlockedReceiver = senderProfile?.blockedUsers?.some(id => String(id) === String(receiverId));
+            const receiverBlockedSender = receiverProfile?.blockedUsers?.some(id => String(id) === String(senderId));
+            if (senderBlockedReceiver || receiverBlockedSender) {
+                // Inform sender the message is blocked
+                io.to(String(senderId)).emit('message_blocked', {
+                    room,
+                    senderId,
+                    receiverId,
+                    reason: senderBlockedReceiver ? 'You blocked this user' : 'You are blocked by this user'
+                });
+                return;
+            }
+        } catch (e) {
+            // If check fails, proceed to avoid false positives, but log
+            console.error('block check failed', e?.message || e);
+        }
+
         let newMessage;
         if (parent == false) {
             newMessage = new Message({ room, senderId, receiverId, message, attachment, messageType, callType, callEvent })
@@ -246,7 +269,7 @@ module.exports = function messageSocket(io, socket, profileId) {
             try {
                 const result = await sendPushToProfile(receiverId, {
                     title: senderName,
-                    body: updatedMessage.message,
+                    body: (updatedMessage.messageType === 'audio' && updatedMessage.attachment) ? 'Voice message' : updatedMessage.message,
                     data: {
                         type: 'chat',
                         senderId: String(senderId),
@@ -268,47 +291,77 @@ module.exports = function messageSocket(io, socket, profileId) {
 
     });
 
-    socket.on('emotion_change', async ({ profileId, emotion, friendId, emotionText, emoji, confidence, quality }) => {
-        console.log('emotion_change', profileId, emotion, friendId, emotionText, emoji, confidence, quality)
-        
+    // Unified handler to emit emotion change to one, many, or all friends
+    async function handleEmotionChange(payload) {
+        const { profileId, emotion, friendId, friendIds, broadcast, emotionText, emoji, confidence, quality } = payload || {};
+        console.log('emotion_change', profileId, emotion, friendId || friendIds || (broadcast ? 'broadcast' : null), emotionText, emoji, confidence, quality)
+
         try {
-            // Add null checks and better error handling
-            if (!profileId || !emotion || !friendId) {
-                console.error('Missing required parameters for emotion_change:', { profileId, emotion, friendId });
+            if (!profileId || !emotion) {
+                console.error('Missing required parameters for emotion_change:', { profileId, emotion });
                 return;
             }
 
-            let updateProfile = await Profile.findOneAndUpdate(
-                { _id: profileId }, 
-                { 
+            const updateProfile = await Profile.findOneAndUpdate(
+                { _id: profileId },
+                {
                     lastEmotion: emotion,
                     lastEmotionText: emotionText || emotion,
                     lastEmotionEmoji: emoji,
                     lastEmotionConfidence: confidence,
                     lastEmotionQuality: quality
-                }, 
+                },
                 { new: true }
             );
-            
-            if (updateProfile) {
-                // Emit emotion change with all the data
-                io.to(friendId).emit('emotion_change', {
-                    profileId: updateProfile._id,
-                    emotion: updateProfile.lastEmotion,
-                    emotionText: updateProfile.lastEmotionText,
-                    emoji: updateProfile.lastEmotionEmoji,
-                    confidence: updateProfile.lastEmotionConfidence,
-                    quality: updateProfile.lastEmotionQuality,
-                    timestamp: new Date()
-                });
-                console.log('Emotion change emitted successfully:', updateProfile.lastEmotion);
-            } else {
+
+            if (!updateProfile) {
                 console.error('Failed to update profile for emotion_change:', profileId);
+                return;
             }
+
+            // Resolve target recipients
+            let targets = [];
+            if (Array.isArray(friendIds) && friendIds.length > 0) {
+                targets = friendIds.map(String);
+            } else if (friendId && friendId !== 'all') {
+                targets = [String(friendId)];
+            } else {
+                // broadcast to all friends
+                const me = await Profile.findById(profileId).select('friends');
+                if (me?.friends && me.friends.length > 0) {
+                    targets = me.friends.map((id) => String(id));
+                }
+            }
+
+            if (!targets || targets.length === 0) {
+                console.warn('No targets resolved for emotion_change');
+                return;
+            }
+
+            const data = {
+                profileId: updateProfile._id,
+                emotion: updateProfile.lastEmotion,
+                emotionText: updateProfile.lastEmotionText,
+                emoji: updateProfile.lastEmotionEmoji,
+                confidence: updateProfile.lastEmotionConfidence,
+                quality: updateProfile.lastEmotionQuality,
+                timestamp: new Date()
+            };
+
+            // Emit to each target room (friend profileId is used as room)
+            targets.forEach((toId) => {
+                try { io.to(toId).emit('emotion_change', data); } catch (e) { console.error('Emit emotion_change failed for', toId, e?.message || e); }
+            });
+
+            console.log(`Emotion change emitted to ${targets.length} friend(s):`, updateProfile.lastEmotion);
         } catch (error) {
             console.error('Error in emotion_change handler:', error);
         }
-    })
+    }
+
+    socket.on('emotion_change', handleEmotionChange);
+    // Back-compat alias some clients may send
+    socket.on('change_emotion', handleEmotionChange);
 
     socket.on('typing', ({ room, isTyping, type, receiverId }) => {
         console.log('typing', room, isTyping, type, receiverId)

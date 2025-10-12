@@ -129,6 +129,13 @@ exports.postBlockFrnd = async (req, res, next) => {
         })
 
         if (updateProfile) {
+            // Emit real-time block to both users (each user's personal room is their profileId)
+            try {
+                const io = req.app.get('io');
+                io.to(String(profile._id)).emit('userBlocked', { by: String(profile._id), target: String(friendId) });
+                io.to(String(friendId)).emit('blockedByUser', { by: String(profile._id), target: String(friendId) });
+            } catch (e) {}
+
             return res.status(200).json({ message: 'User Block Successfully' })
         }
 
@@ -153,6 +160,13 @@ exports.postUnblockFrnd = async (req, res, next) => {
         })
 
         if (updateProfile) {
+            // Emit real-time unblock to both users
+            try {
+                const io = req.app.get('io');
+                io.to(String(profile._id)).emit('userUnblocked', { by: String(profile._id), target: String(friendId) });
+                io.to(String(friendId)).emit('unblockedByUser', { by: String(profile._id), target: String(friendId) });
+            } catch (e) {}
+
             return res.status(200).json({ message: 'User Unlock Successfully' })
         }
 

@@ -51,16 +51,29 @@ exports.uploadVideo = async (req, res, next) => {
 
 
 exports.uploadFile = async (req, res, next) => {
-
     try {
-        // return console.log(req.file)
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
 
-        res.status(200).json({
-            url: req.file.path, // the cloudinary URL
-            public_id: req.file.filename, // public ID for deletion
-        });
+        // Upload any file type (audio/video/image/document) using resource_type auto
+        const uploadStream = cloudinary.uploader.upload_stream(
+            {
+                resource_type: 'auto',
+                folder: 'chat-uploads'
+            },
+            (error, result) => {
+                if (error) {
+                    return res.status(500).json({ error });
+                }
+                // Return full Cloudinary response so client can use secure_url
+                return res.status(200).json(result);
+            }
+        )
+
+        streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
     } catch (err) {
-        res.status(500).json({ error: 'Upload failed' });
+        return res.status(500).json({ error: 'Upload failed' });
     }
 
 }

@@ -116,6 +116,48 @@ exports.getChatList = async(req,res,next) => {
         next(error)
     }
 }
+exports.getChatHistory = async(req,res,next) => {
+    try {
+        let profileId = req.query.profileId || req.profile._id
+        let friendId = req.query.friendId
+        let limit = parseInt(req.query.limit) || 20
+                
+        // Build query for messages between these users
+        const query = {
+            $or: [
+                { senderId: profileId, receiverId: friendId },
+                { senderId: friendId, receiverId: profileId }
+            ]
+        };
+
+        // Fetch messages (most recent first, then reverse for chronological order)
+        const messages = await Message.find(query)
+            .sort({ timestamp: -1 })
+            .limit(limit)
+            .populate('parent');
+
+        // Check if there are more messages available
+        const totalMessages = await Message.countDocuments(query);
+        const hasMore = totalMessages > limit;
+
+        console.log('getChatHistory result:', { 
+            foundMessages: messages.length, 
+            hasMore, 
+            totalMessages, 
+            limit 
+        });
+
+        // Return messages in chronological order (oldest first)
+        res.status(200).json({
+            messages: messages.reverse(),
+            hasMore
+        });
+        
+    } catch (error) {
+        console.error('Error fetching chat history:', error);
+        res.status(400).json({ messages: [], hasMore: false });
+    }
+}
 
 
 
