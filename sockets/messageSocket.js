@@ -6,7 +6,7 @@ const axios = require('axios')
 
 
 const sendEmailNotification = require('../utils/sendEmailNotification')
-const { sendPushToProfile } = require('../utils/pushNotifications')
+const { sendPushToProfile, sendDataPushToProfile } = require('../utils/pushNotifications')
 
 module.exports = function messageSocket(io, socket, profileId) {
 
@@ -146,8 +146,23 @@ module.exports = function messageSocket(io, socket, profileId) {
 
     socket.on('speak_message', async ({msgId,friendId}) => {
         let msgData = await Message.findById(msgId);
+
+        console.log('speak_message',msgData)
         if (msgData) {
+            // Emit over socket for online clients
             io.to(friendId).emit('speak_message', msgData.message);
+
+            // Also send a data-only FCM push so it speaks when the app is killed
+            try {
+                await sendDataPushToProfile(String(friendId), {
+                    type: 'speak_message',
+                    message: String(msgData.message || ''),
+                    priority: 'high',
+                    interrupt: 'true'
+                });
+            } catch (e) {
+                console.error('FCM speak_message send failed:', e?.message || e)
+            }
         }
     });
 
