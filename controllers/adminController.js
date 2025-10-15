@@ -230,6 +230,37 @@ exports.updateProfile = async (req, res, next) => {
     }
 }
 
+// Admin: Set a user's password without requiring current password
+exports.setUserPassword = async (req, res, next) => {
+    try {
+        const { id } = req.params; // profile id
+        const { newPassword, confirmPassword } = req.body || {};
+
+        if (!newPassword || !confirmPassword) {
+            return res.status(400).json({ message: 'New password and confirm password are required' });
+        }
+
+        if (newPassword !== confirmPassword) {
+            return res.status(400).json({ message: 'New password and confirm password do not match' });
+        }
+
+        // Find profile and associated user
+        const profile = await Profile.findById(id).populate('user');
+        if (!profile || !profile.user) {
+            return res.status(404).json({ message: 'Profile or user not found' });
+        }
+
+        // Hash and set the new password
+        const hashed = await bcrypt.hash(newPassword, 10);
+        profile.user.password = hashed;
+        await profile.user.save();
+
+        return res.status(200).json({ message: 'Password updated successfully' });
+    } catch (error) {
+        next(error);
+    }
+}
+
 exports.deleteProfile = async (req, res, next) => {
     let profileId = req.params.id || false
 
@@ -497,6 +528,75 @@ exports.deleteWatch = async (req, res, next) => {
             message: 'Watch and all associated comments and replies deleted successfully',
             deletedComments: comments.length,
             deletedReplies: comments.reduce((total, comment) => total + comment.replies.length, 0)
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+
+// Admin: aggregated stats and recent activity
+exports.getStats = async (req, res, next) => {
+    try {
+        const [
+            totalUsers,
+            totalProfiles,
+            activeProfiles,
+            totalPosts,
+            totalWatches,
+            totalComments
+        ] = await Promise.all([
+            User.countDocuments({}),
+            Profile.countDocuments({}),
+            Profile.countDocuments({ isActive: true }),
+            Post.countDocuments({}),
+            Watch.countDocuments({}),
+            Comment.countDocuments({})
+        ]);
+
+        // Fetch recent items
+        const [recentProfiles, recentPosts, recentWatches] = await Promise.all([
+            Profile.find({}).sort({ createdAt: -1 }).limit(5).populate('user', 'firstName surname'),
+            Post.find({}).sort({ createdAt: -1 }).limit(5).populate('author', 'fullName displayName profilePic'),
+            Watch.find({}).sort({ createdAt: -1 }).limit(5).populate('author', 'fullName displayName profilePic')
+        ]);
+
+        const recentActivities = [
+            ...recentProfiles.map(p => ({
+                id: String(p._id),
+                user: p.fullName || (p.user ? `${p.user.firstName} ${p.user.surname}` : 'Unknown'),
+                action: 'Created profile',
+                time: p.createdAt,
+                type: 'user'
+            })),
+            ...recentPosts.map(post => ({
+                id: String(post._id),
+                user: post.author?.fullName || 'Unknown',
+                action: 'Posted new content',
+                time: post.createdAt,
+                type: 'post'
+            })),
+            ...recentWatches.map(w => ({
+                id: String(w._id),
+                user: w.author?.fullName || 'Unknown',
+                action: 'Published a watch',
+                time: w.createdAt,
+                type: 'watch'
+            }))
+        ]
+        // Sort combined list by time desc and cap to 10
+        .sort((a, b) => new Date(b.time) - new Date(a.time))
+        .slice(0, 10);
+
+        return res.status(200).json({
+            totals: {
+                users: totalUsers,
+                profiles: totalProfiles,
+                activeProfiles,
+                posts: totalPosts,
+                watches: totalWatches,
+                comments: totalComments
+            },
+            recentActivities
         });
     } catch (error) {
         next(error);

@@ -322,6 +322,7 @@ module.exports = function messageSocket(io, socket, profileId) {
             // Resolve target recipients
             let targets = [];
             if (Array.isArray(friendIds) && friendIds.length > 0) {
+                console.log('friendIds.map(String)',friendIds.map(String))
                 targets = friendIds.map(String);
             } else if (friendId && friendId !== 'all') {
                 targets = [String(friendId)];
