@@ -1,18 +1,29 @@
 const {Schema,model } = require('mongoose')
 const User = require('./User')
+const config = require('../config/config.json');
 
 
 let profileSchema = new Schema({
     username: {
         type: String,
-        minLength: 5,
-        maxLength: 50,
-        trim: true
+        trim: true,
+        validate: {
+            validator: function(value) {
+                return !value || (value.length >= 5 && value.length <= 50);
+            },
+            message: 'Username must be between 5 and 50 characters'
+        },
+        default: ''
     },
     nickname: {
         type: String,
-        minLength: 2,
-        maxLength: 50
+        validate: {
+            validator: function(value) {
+                return !value || (value.length >= 2 && value.length <= 50);
+            },
+            message: 'Nickname must be between 2 and 50 characters'
+        },
+        default: ''
     },
     fullName: {
         type: String,
@@ -22,11 +33,11 @@ let profileSchema = new Schema({
     },
     coverPic: {
         type: String,
-        default: 'https://programmerikram.com/wp-content/uploads/2025/03/default-cover.png'
+        default: config?.defaultCover
     },
     profilePic: {
         type: String,
-        default: 'https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png'
+        default: config?.defaultProfile
     },
     bio: {
         type: String,

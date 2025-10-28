@@ -15,33 +15,45 @@ module.exports = function socketHandler(io) {
     io.on('connection', async (socket) => {
         const profileId = socket.handshake.query?.profile;
         const browserId = socket.handshake.query?.browserId;
-        
+
         if (profileId !== 'undefined') {
             socket.join(profileId);
             console.log('profileId', profileId);
-            await Profile.findOneAndUpdate({ _id: profileId }, { isActive: true }, { new: true });
+            // await Profile.findOneAndUpdate({ _id: profileId }, { isActive: true }, { new: true });
+            // await User.findOneAndUpdate({ profile: profileId }, { lastLogin: Date.now() }, { new: true });
+            let profileFriends = await Profile.findById(profileId) || []
             onlineUsers.set(profileId, socket.id);
 
             // Join browser-specific room if browserId is provided
             if (browserId && browserId !== 'undefined') {
                 socket.join(`browser_${browserId}`);
                 console.log(`Browser ${browserId} joined room for profile ${profileId}`);
-                
+
                 // Update browser activity in database
                 try {
-                    await Profile.findOneAndUpdate(
-                        { _id: profileId, 'browserIds.browserId': browserId },
-                        { 
-                            $set: { 
-                                'browserIds.$.lastActive': new Date(),
-                                'browserIds.$.isActive': true
-                            }
-                        }
-                    );
+                    // await Profile.findOneAndUpdate(
+                    //     { _id: profileId, 'browserIds.browserId': browserId },
+                    //     {
+                    //         $set: {
+                    //             'browserIds.$.lastActive': new Date(),
+                    //             'browserIds.$.isActive': true
+                    //         }
+                    //     }
+                    // );
+
+                    // Emit friend_active to all friends
+                    if (profileFriends && profileFriends.friends && profileFriends.friends.length > 0) {
+                        profileFriends.friends.forEach(friend => {
+                            console.log('friend_online', String(friend), profileId);
+                            io.to(String(friend)).emit('friend_online', { profileId });
+                        });
+                    }
                 } catch (err) {
                     console.error('Error updating browser activity:', err);
                 }
             }
+
+
 
             // Message & notification socket modules
             try {
@@ -86,7 +98,7 @@ module.exports = function socketHandler(io) {
                         body: `${myProfileData.fullName} bumped you`,
                         data: { type: 'bump', senderId: String(myProfile) }
                     });
-                } catch (e) {}
+                } catch (e) { }
             } catch (err) {
                 console.error('bump emit error', err);
             }
@@ -109,6 +121,14 @@ module.exports = function socketHandler(io) {
 
             if (profileId !== 'undefined') {
                 try {
+
+                    let profileFriends =  await Profile.findById(profileId);
+                    if (profileFriends && profileFriends.friends && profileFriends.friends.length > 0) {
+                        profileFriends.friends.forEach(friend => {
+                            console.log('friend_offline', String(friend), profileId);
+                            io.to(String(friend)).emit('friend_offline', { profileId });
+                        });
+                    }
                     await User.findOneAndUpdate(
                         { profile: profileId },
                         { lastLogin: Date.now() },

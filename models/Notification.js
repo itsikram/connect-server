@@ -1,5 +1,6 @@
 const {Schema,model} = require('mongoose')
 const Profile = require('./Profile')
+const config = require('../config/config.json');
 const NotificationSchema = new Schema({
     receiverId: {
         type: Schema.Types.ObjectId,
@@ -11,7 +12,7 @@ const NotificationSchema = new Schema({
     },
     icon: {
         type: String,
-        default: 'https://programmerikram.com/wp-content/uploads/2025/03/ics_logo.png'
+        default: config?.logo
     },
     link: String,
     type: String,

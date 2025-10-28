@@ -1,0 +1,12 @@
+{
+    "logo": "/assets/images/logo.png",
+    "siteUrl": "https://connect-zfgx.onrender.com/",
+    "defaultCover": "/assets/images/default-cover.png",
+    "defaultProfile": "/assets/images/default-profile-pic.png",
+    "chessBackground": "https://images.unsplash.com/photo-1518546305927-5a555bb7020d?auto=format&fit=crop&w=1500&q=60",
+    "luduBackground": "https://images.unsplash.com/photo-1518546305927-5a555bb7020d?auto=format&fit=crop&w=1500&q=60",
+    "defaultNotificationSound": "/assets/audio/notification_sound.mp3",
+    "defaultRingtone": "/assets/audio/default-ringtone.mp3",
+    "callingBeep": "/assets/audio/calling-beep.mp3",
+    "mailApiUrl": "https://storefrontsignonline.com/wp-json/connect/v1/send-mail"
+}

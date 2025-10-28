@@ -160,7 +160,6 @@ exports.getAllStories = async(req,res,next) => {
             }
         ]).limit(10).sort({'createdAt': -1})
 
-        console.log('getAllStories response:', JSON.stringify(newsFeedStories, null, 2));
         res.json(newsFeedStories).status(200)
         
     } catch (error) {

@@ -1,6 +1,7 @@
 const { mongoose } = require('mongoose');
 const Profile = require('../models/Profile');
 const Notification = require('../models/Notification');
+const config = require('../config/config.json');
 
 // Register browser ID for a profile
 exports.registerBrowserId = async (req, res, next) => {
@@ -43,7 +44,8 @@ exports.registerBrowserId = async (req, res, next) => {
             });
         }
 
-        await profile.save();
+        // Use save with validateBeforeSave option to skip validation
+        await profile.save({ validateBeforeSave: false });
 
         res.json({
             success: true,
@@ -91,7 +93,8 @@ exports.unregisterBrowserId = async (req, res, next) => {
             browser => browser.browserId !== browserId
         );
 
-        await profile.save();
+        // Use save with validateBeforeSave option to skip validation
+        await profile.save({ validateBeforeSave: false });
 
         res.json({
             success: true,
@@ -192,7 +195,7 @@ exports.sendNotificationToBrowsers = async (req, res, next) => {
             receiverId: profileId,
             text: notificationData.text || 'New notification',
             title: notificationData.title || 'Connect',
-            icon: notificationData.icon || 'https://programmerikram.com/wp-content/uploads/2025/03/ics_logo.png',
+            icon: notificationData.icon || config?.logo,
             link: notificationData.link || '/',
             type: notificationData.type || 'general',
             data: {
@@ -267,7 +270,7 @@ exports.sendNotificationToAllBrowsers = async (req, res, next) => {
             receiverId: profileId,
             text: notificationData.text || 'New notification',
             title: notificationData.title || 'Connect',
-            icon: notificationData.icon || 'https://programmerikram.com/wp-content/uploads/2025/03/ics_logo.png',
+            icon: notificationData.icon || config?.logo,
             link: notificationData.link || '/',
             type: notificationData.type || 'general',
             data: {
@@ -332,7 +335,8 @@ exports.updateBrowserActivity = async (req, res, next) => {
         if (browserIndex !== -1) {
             profile.browserIds[browserIndex].lastActive = new Date();
             profile.browserIds[browserIndex].isActive = true;
-            await profile.save();
+            // Use save with validateBeforeSave option to skip validation
+            await profile.save({ validateBeforeSave: false });
         }
 
         res.json({
@@ -365,7 +369,7 @@ exports.sendTestNotification = async (req, res, next) => {
         const notificationData = {
             title: 'Test Notification',
             text: message || 'This is a test notification from the server',
-            icon: 'https://programmerikram.com/wp-content/uploads/2025/03/ics_logo.png',
+            icon: config?.logo,
             link: '/',
             type: 'test',
             requireInteraction: true

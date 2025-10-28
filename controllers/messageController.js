@@ -159,6 +159,89 @@ exports.getChatHistory = async(req,res,next) => {
     }
 }
 
+exports.getOldMessages = async(req,res,next) => {
+    try {
+        let profileId = req.query.profileId || req.profile._id
+        let friendId = req.query.friendId
+        let limit = parseInt(req.query.limit) || 20
+        let beforeTimestamp = req.query.beforeTimestamp
+        
+        // Validate required parameters
+        if (!friendId) {
+            return res.status(400).json({ 
+                messages: [], 
+                hasMore: false,
+                error: 'friendId is required'
+            });
+        }
+        
+        if (!beforeTimestamp) {
+            return res.status(400).json({ 
+                messages: [], 
+                hasMore: false,
+                error: 'beforeTimestamp is required'
+            });
+        }
+        
+        // Validate timestamp
+        const timestamp = new Date(beforeTimestamp);
+        if (isNaN(timestamp.getTime())) {
+            return res.status(400).json({ 
+                messages: [], 
+                hasMore: false,
+                error: 'Invalid timestamp format'
+            });
+        }
+        
+        // Ensure limit is within reasonable bounds
+        if (limit > 100) limit = 100;
+        if (limit < 1) limit = 20;
+                
+        // Build query for messages between these users before the given timestamp
+        const query = {
+            $or: [
+                { senderId: profileId, receiverId: friendId },
+                { senderId: friendId, receiverId: profileId }
+            ],
+            timestamp: { $lt: timestamp }
+        };
+
+        // Fetch old messages (most recent first, then reverse for chronological order)
+        const messages = await Message.find(query)
+            .sort({ timestamp: -1 })
+            .limit(limit + 1) // Fetch one extra to check if there are more
+            .populate('parent');
+
+        // Check if there are more messages available
+        const hasMore = messages.length > limit;
+        const resultMessages = messages.slice(0, limit); // Take only the limit
+
+        console.log('getOldMessages result:', { 
+            profileId,
+            friendId,
+            beforeTimestamp,
+            foundMessages: resultMessages.length, 
+            hasMore, 
+            totalFetched: messages.length,
+            limit 
+        });
+
+        // Return messages in chronological order (oldest first)
+        res.status(200).json({
+            messages: resultMessages.reverse(),
+            hasMore
+        });
+        
+    } catch (error) {
+        console.error('Error fetching old messages:', error);
+        res.status(500).json({ 
+            messages: [], 
+            hasMore: false,
+            error: error.message 
+        });
+    }
+}
+
 
 
 

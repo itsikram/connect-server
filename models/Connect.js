@@ -12,6 +12,14 @@ let connectSchema = new Schema({
         type: String,
         trim: true,
     },
+    apkUrl: {
+        type: String,
+        trim: true,
+    },
+    ipaUrl: {
+        type: String,
+        trim: true,
+    },
     siteDescription: {
         type: String,
         trim: true,

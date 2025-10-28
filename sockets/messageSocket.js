@@ -7,6 +7,7 @@ const axios = require('axios')
 
 const sendEmailNotification = require('../utils/sendEmailNotification')
 const { sendPushToProfile, sendDataPushToProfile } = require('../utils/pushNotifications')
+const config = require('../config/config.json');
 
 module.exports = function messageSocket(io, socket, profileId) {
 
@@ -27,7 +28,6 @@ module.exports = function messageSocket(io, socket, profileId) {
 
                 profileContacts.push({ person: friendProfile, messages })
             }
-            console.log('profileContacts', profileContacts[0])
             io.to(profileId).emit('oldMessages', profileContacts)
         }
 
@@ -188,7 +188,7 @@ module.exports = function messageSocket(io, socket, profileId) {
                 const reply = response.data.choices[0].message.content;
                 console.log('ai reply', response.data)
 
-                return io.to(room).emit('newMessage', { reply, senderName: 'Chat Gpt', senderPP: 'https://programmerikram.com/wp-content/uploads/2025/05/ics_logo.png' });
+                return io.to(room).emit('newMessage', { reply, senderName: 'Chat Gpt', senderPP: config?.logo });
 
 
             } catch (error) {
@@ -232,7 +232,7 @@ module.exports = function messageSocket(io, socket, profileId) {
         let profileData = await Profile.findById(senderId).populate('user');
         if (!profileData) return;
         let senderName = profileData.user?.firstName + ' ' + profileData.user?.surname;
-        let senderPP = profileData.profilePic || 'https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png';
+        let senderPP = profileData.profilePic || config?.defaultProfile;
         io.to(room).emit('newMessage', { updatedMessage, senderName, senderPP, chatPage: true });
 
         let friendProfile = await Profile.findById(senderId).populate('user')
@@ -416,19 +416,19 @@ module.exports = function messageSocket(io, socket, profileId) {
     })
 
     // Live voice relays (push-to-talk over Agora)
-    socket.on('agora-live-voice-start', ({ to, channelName }) => {
+    socket.on('live-voice-start', ({ to, channelName }) => {
         try {
-            io.to(to).emit('agora-live-voice-start', { from: profileId, channelName });
+            io.to(to).emit('live-voice-start', { from: profileId, channelName });
         } catch (e) {
-            console.error('agora-live-voice-start relay failed:', e?.message || e);
+            console.error('live-voice-start relay failed:', e?.message || e);
         }
     });
 
-    socket.on('agora-live-voice-stop', ({ to, channelName }) => {
+    socket.on('live-voice-stop', ({ to, channelName }) => {
         try {
-            io.to(to).emit('agora-live-voice-stop', { from: profileId, channelName });
+            io.to(to).emit('live-voice-stop', { from: profileId, channelName });
         } catch (e) {
-            console.error('agora-live-voice-stop relay failed:', e?.message || e);
+            console.error('live-voice-stop relay failed:', e?.message || e);
         }
     });
 
