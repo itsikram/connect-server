@@ -5,6 +5,7 @@ const Post = require('../models/Post')
 const Watch = require('../models/Watch')
 const Comment = require('../models/Comment')
 const CmntReply = require('../models/CmntReply')
+const Report = require('../models/Report')
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const SECRET_KEY = process.env.JWT_SECRET_KEY;
@@ -600,6 +601,52 @@ exports.getStats = async (req, res, next) => {
         });
     } catch (error) {
         next(error);
+    }
+}
+
+// Reports (Admin)
+exports.getReportedPosts = async (req, res, next) => {
+    try {
+        const reports = await Report.find({ type: 'post' })
+            .populate({ path: 'targetPost', populate: { path: 'author', select: 'fullName displayName profilePic' } })
+            .populate({ path: 'reportedBy', select: 'fullName displayName profilePic', populate: { path: 'user', select: 'firstName surname' } })
+            .sort({ createdAt: -1 })
+            .limit(200)
+        return res.status(200).json(reports)
+    } catch (error) {
+        next(error)
+    }
+}
+
+exports.getReportedProfiles = async (req, res, next) => {
+    try {
+        const reports = await Report.find({ type: 'profile' })
+            .populate({ path: 'targetProfile', populate: { path: 'user', select: 'firstName surname email' } })
+            .populate({ path: 'reportedBy', select: 'fullName displayName profilePic', populate: { path: 'user', select: 'firstName surname' } })
+            .sort({ createdAt: -1 })
+            .limit(200)
+        return res.status(200).json(reports)
+    } catch (error) {
+        next(error)
+    }
+}
+
+exports.updateReportStatus = async (req, res, next) => {
+    try {
+        const { id } = req.params
+        const { status } = req.body || {}
+        if (!['open', 'reviewed', 'dismissed'].includes(status)) {
+            return res.status(400).json({ message: 'Invalid status' })
+        }
+        const updated = await Report.findByIdAndUpdate(id, { status }, { new: true })
+            .populate('targetPost')
+            .populate('targetProfile')
+        if (!updated) {
+            return res.status(404).json({ message: 'Report not found' })
+        }
+        return res.status(200).json(updated)
+    } catch (error) {
+        next(error)
     }
 }
 

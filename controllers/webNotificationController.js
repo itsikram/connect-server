@@ -116,6 +116,100 @@ exports.unregisterBrowserId = async (req, res, next) => {
     }
 };
 
+// Unregister all browser IDs for the authenticated profile
+exports.unregisterAllBrowsers = async (req, res, next) => {
+    try {
+        const profileId = req?.profile?._id;
+
+        if (!profileId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Unauthorized'
+            });
+        }
+
+        // Find the profile
+        const profile = await Profile.findById(profileId);
+        if (!profile) {
+            return res.status(404).json({
+                success: false,
+                message: 'Profile not found'
+            });
+        }
+
+        // Clear all registered browsers/devices
+        profile.browserIds = [];
+
+        // Use save with validateBeforeSave option to skip validation
+        await profile.save({ validateBeforeSave: false });
+
+        res.json({
+            success: true,
+            message: 'All browsers unregistered successfully',
+            data: {
+                profileId,
+                remainingBrowsers: profile.browserIds.length
+            }
+        });
+
+    } catch (error) {
+        console.error('Error unregistering all browsers:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: error.message
+        });
+    }
+};
+// Unregister browser ID from a profile
+exports.unregisterBrowserId = async (req, res, next) => {
+    try {
+        const { profileId, browserId } = req.body;
+
+        if (!profileId || !browserId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Profile ID and Browser ID are required'
+            });
+        }
+
+        // Find the profile
+        const profile = await Profile.findById(profileId);
+        if (!profile) {
+            return res.status(404).json({
+                success: false,
+                message: 'Profile not found'
+            });
+        }
+
+        // Remove browser ID
+        profile.browserIds = profile.browserIds.filter(
+            browser => browser.browserId !== browserId
+        );
+
+        // Use save with validateBeforeSave option to skip validation
+        await profile.save({ validateBeforeSave: false });
+
+        res.json({
+            success: true,
+            message: 'Browser ID unregistered successfully',
+            data: {
+                profileId,
+                browserId,
+                remainingBrowsers: profile.browserIds.length
+            }
+        });
+
+    } catch (error) {
+        console.error('Error unregistering browser ID:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: error.message
+        });
+    }
+};
+
 // Get browser IDs for a profile
 exports.getBrowserIds = async (req, res, next) => {
     try {

@@ -7,6 +7,7 @@ const Post = require('../models/Post');
 const checkIsActive = require('../utils/checkIsActive');
 const callingSocket = require('./callingSocket');
 const { sendPushToProfile } = require('../utils/pushNotifications');
+const ludoSocket = require('./ludoSocket');
 
 module.exports = function socketHandler(io) {
     // profileId -> socketId
@@ -60,6 +61,7 @@ module.exports = function socketHandler(io) {
                 messageSocket(io, socket, profileId);
                 notificationSocket(io, socket, profileId);
                 callingSocket(io, socket, profileId, onlineUsers);
+                ludoSocket(io, socket, profileId);
             } catch (err) {
                 console.error('Error initializing message/notification sockets:', err);
             }

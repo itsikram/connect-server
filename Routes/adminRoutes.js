@@ -1,5 +1,5 @@
 const Router = require("express").Router();
-const {signUp,login,deleteAccount,getProfiles,getProfile,updateProfile,deleteProfile,getPosts,getPost,updatePost,deletePost,getWatches,getWatch,updateWatch,deleteWatch,setUserPassword,getStats} = require('../controllers/adminController')
+const {signUp,login,deleteAccount,getProfiles,getProfile,updateProfile,deleteProfile,getPosts,getPost,updatePost,deletePost,getWatches,getWatch,updateWatch,deleteWatch,setUserPassword,getStats,getReportedPosts,getReportedProfiles,updateReportStatus} = require('../controllers/adminController')
 const {uploadImage} = require('../controllers/uploadControllers')
 const multer = require('multer');
 
@@ -25,5 +25,9 @@ Router.delete('/watches/:id',deleteWatch)
 Router.post('/upload',upload.single('image'),uploadImage)
 // Admin summary stats and recent activities
 Router.get('/stats', getStats)
+// Reports
+Router.get('/reports/posts', getReportedPosts)
+Router.get('/reports/profiles', getReportedProfiles)
+Router.put('/reports/:id/status', updateReportStatus)
 
 module.exports = Router;

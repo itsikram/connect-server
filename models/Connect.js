@@ -40,6 +40,15 @@ let connectSchema = new Schema({
         default: 'UTC'
     },
     isMaintenanceMode: Boolean,
+    appVersion: {
+        type: String,
+        trim: true,
+        default: ''
+    },
+    isNewVersionAvailable: {
+        type: Boolean,
+        default: false
+    },
     
 },{timestamps: true})
 

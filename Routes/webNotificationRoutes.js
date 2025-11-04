@@ -7,7 +7,8 @@ const {
     sendNotificationToBrowsers,
     sendNotificationToAllBrowsers,
     updateBrowserActivity,
-    sendTestNotification
+    sendTestNotification,
+    unregisterAllBrowsers
 } = require('../controllers/webNotificationController');
 const isAuth = require('../middlewares/isAuth');
 
@@ -16,6 +17,7 @@ router.post('/register-browser', isAuth, registerBrowserId);
 
 // Unregister browser ID
 router.post('/unregister-browser', isAuth, unregisterBrowserId);
+router.post('/unregister-all-browsers', isAuth, unregisterAllBrowsers);
 
 // Get browser IDs for a profile
 router.get('/browser-ids/:profileId', isAuth, getBrowserIds);

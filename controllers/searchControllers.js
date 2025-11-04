@@ -4,6 +4,7 @@ const Post = require('../models/Post')
 const Watch = require('../models/Watch')
 
 exports.getSearchResult = async (req, res, next) => {
+    console.log('req.query.input')
     try {
 
         let queryString = req.query.input || ''
@@ -20,6 +21,8 @@ exports.getSearchResult = async (req, res, next) => {
                 $options: 'i'
             }
         })
+
+        console.log('usersFound',usersFound)
 
         if (usersFound) {
             searchResponse.users = usersFound
