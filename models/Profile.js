@@ -53,6 +53,14 @@ let profileSchema = new Schema({
     lastEmotionEmoji: String,
     lastEmotionConfidence: Number,
     lastEmotionQuality: Number,
+    lastLocation: {
+        type: Object,
+        default: {
+            latitude: 0,
+            longitude: 0,
+            timestamp: Date.now()
+        }
+    },
     friendReqs: [{
         type: Schema.Types.ObjectId,
         ref: 'Profile'

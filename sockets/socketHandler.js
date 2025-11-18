@@ -117,6 +117,62 @@ module.exports = function socketHandler(io) {
             }
         });
 
+        // Location update handler
+        socket.on('location_update', async ({ profileId: senderProfileId, location }) => {
+            try {
+                if (!senderProfileId || !location) {
+                    console.error('Invalid location_update data:', { senderProfileId, location });
+                    return;
+                }
+
+                // Update profile location in database
+                const updatedProfile = await Profile.findByIdAndUpdate(
+                    { _id: senderProfileId },
+                    {
+                        lastLocation: {
+                            latitude: location.latitude,
+                            longitude: location.longitude,
+                            timestamp: location.timestamp || Date.now(),
+                            accuracy: location.accuracy,
+                        }
+                    },
+                    { new: true }
+                );
+
+                if (!updatedProfile) {
+                    console.error('Profile not found for location update:', senderProfileId);
+                    return;
+                }
+
+                // Get user's friends to broadcast location update
+                const profile = await Profile.findById(senderProfileId).select('friends');
+                if (profile && profile.friends && profile.friends.length > 0) {
+                    console.log('📍 Broadcasting location update to', profile.friends.length, 'friends');
+                    // Emit location update to all friends
+                    profile.friends.forEach(friendId => {
+                        const friendIdStr = String(friendId);
+                        const locationUpdateData = {
+                            profileId: senderProfileId,
+                            location: {
+                                latitude: location.latitude,
+                                longitude: location.longitude,
+                                timestamp: location.timestamp || Date.now(),
+                                accuracy: location.accuracy,
+                            }
+                        };
+                        io.to(friendIdStr).emit('friend_location_update', locationUpdateData);
+                        console.log('📍 Location update sent to friend room:', friendIdStr, 'for profile:', senderProfileId);
+                    });
+                } else {
+                    console.log('📍 No friends found for profile:', senderProfileId);
+                }
+
+                console.log('📍 Location updated for profile:', senderProfileId);
+            } catch (err) {
+                console.error('Error handling location_update:', err);
+            }
+        });
+
         // Disconnect
         socket.on('disconnect', async () => {
             console.log(`🔌 Socket disconnected: ${socket.id}`);

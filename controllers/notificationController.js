@@ -160,6 +160,43 @@ exports.unregisterDeviceToken = async (req, res, next) => {
     }
 }
 
+// Unregister all device tokens except the current one (if provided)
+exports.unregisterAllOtherDeviceTokens = async (req, res, next) => {
+    try {
+        const profileId = req.profile._id;
+        const currentToken = (req.body?.currentToken || '').trim();
+
+        const profile = await Profile.findById(profileId);
+        if (!profile) {
+            return res.status(404).json({ message: 'Profile not found' });
+        }
+
+        // If currentToken is provided, keep it; otherwise, remove all tokens
+        const previousCount = profile.deviceTokens?.length || 0;
+        if (currentToken) {
+            // Remove all tokens except the current one
+            profile.deviceTokens = profile.deviceTokens.filter(token => token === currentToken);
+        } else {
+            // Remove all tokens
+            profile.deviceTokens = [];
+        }
+
+        const remainingCount = profile.deviceTokens?.length || 0;
+        const unregisteredCount = previousCount - remainingCount;
+
+        await profile.save({ validateBeforeSave: false });
+
+        return res.status(200).json({ 
+            message: 'All other device tokens unregistered', 
+            deviceTokens: profile.deviceTokens || [],
+            remainingCount: remainingCount,
+            unregisteredCount: unregisteredCount
+        });
+    } catch (err) {
+        next(err);
+    }
+}
+
 // Optional: send a test push to the authenticated user
 exports.sendTestPush = async (req, res, next) => {
     try {

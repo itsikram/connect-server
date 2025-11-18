@@ -10,6 +10,10 @@ let settingSchema = new Schema({
         trim: true,
     },
     isShareEmotion: Boolean,
+    isShareLocation: {
+        type: Boolean,
+        default: true
+    },
     showIsTyping: Boolean,
     ringtone: {
         type: Number,

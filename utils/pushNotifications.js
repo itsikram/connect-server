@@ -12,10 +12,13 @@ async function sendPushToTokens(tokens = [], notification = {}) {
     return { successCount: 0, failureCount: 0 };
   }
 
+  // Ensure body is never empty - fallback to data.message or a default message
+  const notificationBody = notification.body || notification.data?.message || 'You have a new message';
+  
   const payload = {
     notification: {
       title: notification.title || 'Notification',
-      body: notification.body || '',
+      body: notificationBody,
     },
     data: Object.entries(notification.data || {}).reduce((acc, [k, v]) => {
       acc[k] = typeof v === 'string' ? v : String(v);

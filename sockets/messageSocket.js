@@ -9,6 +9,10 @@ const sendEmailNotification = require('../utils/sendEmailNotification')
 const { sendPushToProfile, sendDataPushToProfile } = require('../utils/pushNotifications')
 const config = require('../config/config.json');
 
+// Track recently processed messages to prevent duplicate notifications
+const recentMessageNotifications = new Map(); // messageId -> timestamp
+const NOTIFICATION_DEDUP_WINDOW = 5000; // 5 seconds
+
 module.exports = function messageSocket(io, socket, profileId) {
 
     socket.on('fetchMessages', async () => {
@@ -245,35 +249,54 @@ module.exports = function messageSocket(io, socket, profileId) {
         // Send web notification for new messages (always send, regardless of activity status)
         if (String(receiverId) !== String(senderId)) {
             try {
-                // Import the notification controller function
-                const { saveNotification } = require('../controllers/notificationController');
+                // Deduplication: Check if we've already sent a notification for this message recently
+                const messageId = String(updatedMessage._id);
+                const now = Date.now();
+                const lastNotificationTime = recentMessageNotifications.get(messageId);
                 
-                // Get all active browser IDs for the receiver
-                const activeBrowserIds = receiverProfile.browserIds
-                    ?.filter(browser => browser.isActive)
-                    ?.map(browser => browser.browserId) || [];
-
-                // Create notification data for web notifications
-                const notificationData = {
-                    receiverId: receiverId,
-                    text: `${senderName}: ${updatedMessage.message}`,
-                    link: `/message/${senderId}`,
-                    icon: senderPP,
-                    type: 'message',
-                    browserIds: activeBrowserIds,
-                    data: {
-                        senderId: senderId,
-                        messageId: updatedMessage._id,
-                        room: room,
-                        senderName: senderName,
-                        senderProfilePic: senderPP
+                if (lastNotificationTime && (now - lastNotificationTime) < NOTIFICATION_DEDUP_WINDOW) {
+                    console.log(`Skipping duplicate notification for message ${messageId} (sent ${now - lastNotificationTime}ms ago)`);
+                } else {
+                    // Mark this message as notified
+                    recentMessageNotifications.set(messageId, now);
+                    
+                    // Clean up old entries (older than dedup window)
+                    for (const [msgId, timestamp] of recentMessageNotifications.entries()) {
+                        if (now - timestamp > NOTIFICATION_DEDUP_WINDOW) {
+                            recentMessageNotifications.delete(msgId);
+                        }
                     }
-                };
+                    
+                    // Import the notification controller function
+                    const { saveNotification } = require('../controllers/notificationController');
+                    
+                    // Get all active browser IDs for the receiver
+                    const activeBrowserIds = receiverProfile.browserIds
+                        ?.filter(browser => browser.isActive)
+                        ?.map(browser => browser.browserId) || [];
 
-                // Send notification using the existing notification system
-                await saveNotification(io, notificationData);
+                    // Create notification data for web notifications
+                    const notificationData = {
+                        receiverId: receiverId,
+                        text: `${senderName}: ${updatedMessage.message}`,
+                        link: `/message/${senderId}`,
+                        icon: senderPP,
+                        type: 'message',
+                        browserIds: activeBrowserIds,
+                        data: {
+                            senderId: senderId,
+                            messageId: updatedMessage._id,
+                            room: room,
+                            senderName: senderName,
+                            senderProfilePic: senderPP
+                        }
+                    };
 
-                console.log(`Web notification sent for message to user ${receiverId}, browsers: ${activeBrowserIds.length}`);
+                    // Send notification using the existing notification system
+                    await saveNotification(io, notificationData);
+
+                    console.log(`Web notification sent for message to user ${receiverId}, browsers: ${activeBrowserIds.length}`);
+                }
             } catch (error) {
                 console.error('Error sending web notification for message:', error);
             }
@@ -282,15 +305,18 @@ module.exports = function messageSocket(io, socket, profileId) {
         if (!isActive && String(receiverId) !== String(senderId)) {
             // Try push notification first; fallback to email if none sent
             try {
+                const messageBody = (updatedMessage.messageType === 'audio' && updatedMessage.attachment) ? 'Voice message' : updatedMessage.message;
                 const result = await sendPushToProfile(receiverId, {
                     title: senderName,
-                    body: (updatedMessage.messageType === 'audio' && updatedMessage.attachment) ? 'Voice message' : updatedMessage.message,
+                    body: messageBody,
                     data: {
                         type: 'chat',
                         senderId: String(senderId),
                         receiverId: String(receiverId),
                         room: String(room),
                         messageId: String(updatedMessage._id),
+                        message: String(messageBody || ''), // Include message body in data payload for background handler
+                        senderName: String(senderName || ''),
                     },
                 });
                 if (result.successCount > 0) {
