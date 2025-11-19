@@ -1,7 +1,8 @@
 // Minimal Ludo game socket relay for online play and device migration
 
-const games = new Map(); // gameId -> { createdAt: number, lastPlayers: object }
+const games = new Map(); // gameId -> { createdAt: number, lastPlayers: object, onlinePlayers: Set<profileId>, offlinePlayers: Map<profileId, timestamp> }
 const userInvites = new Map(); // profileId -> [{ gameId, by, name, avatar, slotIndex, playerCount, ts }]
+const playerSockets = new Map(); // profileId -> Set<socketId> (track all sockets for a profile)
 
 function ludoSocket(io, socket, profileId) {
     // Derive profileId from handshake if not provided
@@ -16,6 +17,32 @@ function ludoSocket(io, socket, profileId) {
         });
         socket.on('disconnect', (reason) => {
             try { console.log('[LUDO][server] disconnect', { socketId: socket?.id, reason }); } catch (_e2) {}
+            // Track offline players
+            if (effectiveProfileId) {
+                const pid = String(effectiveProfileId);
+                // Remove socket from player's socket set
+                const sockets = playerSockets.get(pid);
+                if (sockets) {
+                    sockets.delete(socket.id);
+                    // If no more sockets for this player, mark as offline in all their games
+                    if (sockets.size === 0) {
+                        playerSockets.delete(pid);
+                        // Find all games this player is in and mark them offline
+                        games.forEach((game, gameId) => {
+                            if (game.onlinePlayers.has(pid)) {
+                                game.onlinePlayers.delete(pid);
+                                game.offlinePlayers.set(pid, Date.now());
+                                // Notify other players in the game
+                                io.to(`ludo_${gameId}`).emit('ludo:player:offline', { 
+                                    profileId: pid, 
+                                    gameId,
+                                    timestamp: Date.now() 
+                                });
+                            }
+                        });
+                    }
+                }
+            }
         });
     } catch (_e) {}
     // Join a per-user room so we can DM invites by profile id
@@ -26,8 +53,27 @@ function ludoSocket(io, socket, profileId) {
             const size = io?.sockets?.adapter?.rooms?.get?.(room)?.size || 0;
             console.log('[LUDO][server] joined user room', { room, size, socketId: socket?.id });
         } catch (_e) {}
+        // Track socket for this player
+        const pid = String(effectiveProfileId);
+        if (!playerSockets.has(pid)) {
+            playerSockets.set(pid, new Set());
+        }
+        playerSockets.get(pid).add(socket.id);
+        // Mark player as online in any games they're in
+        games.forEach((game, gameId) => {
+            if (game.offlinePlayers.has(pid)) {
+                game.offlinePlayers.delete(pid);
+                game.onlinePlayers.add(pid);
+                // Notify other players in the game
+                io.to(`ludo_${gameId}`).emit('ludo:player:online', { 
+                    profileId: pid, 
+                    gameId,
+                    timestamp: Date.now() 
+                });
+            }
+        });
         // On connect, send any pending invites to this user
-        const invites = userInvites.get(String(effectiveProfileId)) || [];
+        const invites = userInvites.get(pid) || [];
         if (invites.length > 0) {
             socket.emit('ludo:invites', { invites });
         }
@@ -37,7 +83,19 @@ function ludoSocket(io, socket, profileId) {
         const room = `ludo_${gameId}`;
         socket.join(room);
         if (!games.has(gameId)) {
-            games.set(gameId, { createdAt: Date.now() });
+            games.set(gameId, { 
+                createdAt: Date.now(),
+                onlinePlayers: new Set(),
+                offlinePlayers: new Map() // profileId -> timestamp when went offline
+            });
+        }
+        // Mark player as online
+        if (effectiveProfileId) {
+            const game = games.get(gameId);
+            if (game) {
+                game.onlinePlayers.add(String(effectiveProfileId));
+                game.offlinePlayers.delete(String(effectiveProfileId));
+            }
         }
         return room;
     };
@@ -132,10 +190,29 @@ function ludoSocket(io, socket, profileId) {
         const { gameId } = payload;
         if (!gameId) return;
         // cache latest snapshot for late joiners
-        const existing = games.get(gameId) || { createdAt: Date.now() };
-        games.set(gameId, { ...existing, lastPlayers: payload });
+        const existing = games.get(gameId) || { 
+            createdAt: Date.now(),
+            onlinePlayers: new Set(),
+            offlinePlayers: new Map()
+        };
+        // Enhance payload with online/offline status
+        const enhancedPayload = { ...payload };
+        if (Array.isArray(payload.players)) {
+            enhancedPayload.players = payload.players.map(p => {
+                const pid = String(p.profileId || '');
+                const isOnline = pid && existing.onlinePlayers.has(pid);
+                const isOffline = pid && existing.offlinePlayers.has(pid);
+                return {
+                    ...p,
+                    isActive: isOnline || (!pid), // Bots (no profileId) are always active
+                    isOffline: isOffline,
+                    offlineSince: isOffline ? existing.offlinePlayers.get(pid) : undefined
+                };
+            });
+        }
+        games.set(gameId, { ...existing, lastPlayers: enhancedPayload });
         try { console.log('[LUDO][server] ludo:players snapshot', { gameId, players: Array.isArray(payload?.players) ? payload.players.length : 'n/a', selectedPlayerCount: payload?.selectedPlayerCount, currentPlayer: payload?.currentPlayer }); } catch (_e) {}
-        io.to(`ludo_${gameId}`).emit('ludo:players', { ...payload, serverTs: Date.now() });
+        io.to(`ludo_${gameId}`).emit('ludo:players', { ...enhancedPayload, serverTs: Date.now() });
     });
 
     // Client requests full pending invites list
@@ -154,8 +231,80 @@ function ludoSocket(io, socket, profileId) {
         try {
             const g = games.get(gameId);
             if (g && g.lastPlayers) {
+                // Enhance with current online/offline status
+                const enhanced = { ...g.lastPlayers };
+                if (Array.isArray(enhanced.players)) {
+                    enhanced.players = enhanced.players.map(p => {
+                        const pid = String(p.profileId || '');
+                        const isOnline = pid && g.onlinePlayers.has(pid);
+                        const isOffline = pid && g.offlinePlayers.has(pid);
+                        return {
+                            ...p,
+                            isActive: isOnline || (!pid),
+                            isOffline: isOffline,
+                            offlineSince: isOffline ? g.offlinePlayers.get(pid) : undefined
+                        };
+                    });
+                }
                 console.log('[LUDO][server] ludo:players:get -> emit snapshot', { gameId });
-                socket.emit('ludo:players', { ...g.lastPlayers, serverTs: Date.now() });
+                socket.emit('ludo:players', { ...enhanced, serverTs: Date.now() });
+            }
+        } catch (_e) {}
+    });
+
+    // Host requests to replace offline player with bot
+    socket.on('ludo:replace:bot', (payload = {}) => {
+        const { gameId, playerIndex } = payload || {};
+        if (!gameId || typeof playerIndex !== 'number') return;
+        try {
+            const g = games.get(gameId);
+            if (g && g.lastPlayers && Array.isArray(g.lastPlayers.players)) {
+                const player = g.lastPlayers.players[playerIndex];
+                if (player && player.profileId) {
+                    // Remove from offline tracking
+                    const pid = String(player.profileId);
+                    g.offlinePlayers.delete(pid);
+                    g.onlinePlayers.delete(pid);
+                    // Update player to bot (remove profileId)
+                    g.lastPlayers.players[playerIndex] = {
+                        ...player,
+                        profileId: null,
+                        isActive: true,
+                        isOffline: false,
+                        isBot: true
+                    };
+                    // Broadcast update
+                    io.to(`ludo_${gameId}`).emit('ludo:players', { ...g.lastPlayers, serverTs: Date.now() });
+                    console.log('[LUDO][server] ludo:replace:bot', { gameId, playerIndex });
+                }
+            }
+        } catch (_e) {}
+    });
+
+    // Host requests to remove offline player
+    socket.on('ludo:remove:player', (payload = {}) => {
+        const { gameId, playerIndex } = payload || {};
+        if (!gameId || typeof playerIndex !== 'number') return;
+        try {
+            const g = games.get(gameId);
+            if (g && g.lastPlayers && Array.isArray(g.lastPlayers.players)) {
+                const player = g.lastPlayers.players[playerIndex];
+                if (player && player.profileId) {
+                    // Remove from tracking
+                    const pid = String(player.profileId);
+                    g.offlinePlayers.delete(pid);
+                    g.onlinePlayers.delete(pid);
+                    // Clear the slot
+                    g.lastPlayers.players[playerIndex] = {
+                        ...player,
+                        profileId: null,
+                        name: `Player ${playerIndex + 1}`,
+                        isActive: false
+                    };
+                    // Broadcast update
+                    io.to(`ludo_${gameId}`).emit('ludo:players', { ...g.lastPlayers, serverTs: Date.now() });
+                    console.log('[LUDO][server] ludo:remove:player', { gameId, playerIndex });
+                }
             }
         } catch (_e) {}
     });
