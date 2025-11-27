@@ -15,37 +15,51 @@ exports.registerBrowserId = async (req, res, next) => {
             });
         }
 
-        // Find the profile
-        const profile = await Profile.findById(profileId);
-        if (!profile) {
+        // Check if profile exists
+        const profileExists = await Profile.findById(profileId);
+        if (!profileExists) {
             return res.status(404).json({
                 success: false,
                 message: 'Profile not found'
             });
         }
 
-        // Check if browser ID already exists
-        const existingBrowserIndex = profile.browserIds.findIndex(
-            browser => browser.browserId === browserId
+        // Use atomic update to avoid version conflicts
+        // First, try to update existing browser ID
+        const updateResult = await Profile.updateOne(
+            {
+                _id: profileId,
+                'browserIds.browserId': browserId
+            },
+            {
+                $set: {
+                    'browserIds.$.lastActive': new Date(),
+                    'browserIds.$.isActive': true,
+                    'browserIds.$.userAgent': userAgent
+                }
+            }
         );
 
-        if (existingBrowserIndex !== -1) {
-            // Update existing browser ID
-            profile.browserIds[existingBrowserIndex].lastActive = new Date();
-            profile.browserIds[existingBrowserIndex].isActive = true;
-            profile.browserIds[existingBrowserIndex].userAgent = userAgent;
-        } else {
-            // Add new browser ID
-            profile.browserIds.push({
-                browserId,
-                userAgent,
-                lastActive: new Date(),
-                isActive: true
-            });
+        // If no document was updated, the browser ID doesn't exist, so add it
+        if (updateResult.matchedCount === 0) {
+            await Profile.updateOne(
+                { _id: profileId },
+                {
+                    $push: {
+                        browserIds: {
+                            browserId,
+                            userAgent,
+                            lastActive: new Date(),
+                            isActive: true
+                        }
+                    }
+                }
+            );
         }
 
-        // Use save with validateBeforeSave option to skip validation
-        await profile.save({ validateBeforeSave: false });
+        // Get updated profile to return total browsers count
+        const updatedProfile = await Profile.findById(profileId).select('browserIds');
+        const totalBrowsers = updatedProfile?.browserIds?.length || 0;
 
         res.json({
             success: true,
@@ -53,7 +67,7 @@ exports.registerBrowserId = async (req, res, next) => {
             data: {
                 profileId,
                 browserId,
-                totalBrowsers: profile.browserIds.length
+                totalBrowsers
             }
         });
 
@@ -79,22 +93,28 @@ exports.unregisterBrowserId = async (req, res, next) => {
             });
         }
 
-        // Find the profile
-        const profile = await Profile.findById(profileId);
-        if (!profile) {
+        // Check if profile exists
+        const profileExists = await Profile.findById(profileId);
+        if (!profileExists) {
             return res.status(404).json({
                 success: false,
                 message: 'Profile not found'
             });
         }
 
-        // Remove browser ID
-        profile.browserIds = profile.browserIds.filter(
-            browser => browser.browserId !== browserId
+        // Use atomic update to remove browser ID
+        await Profile.updateOne(
+            { _id: profileId },
+            {
+                $pull: {
+                    browserIds: { browserId: browserId }
+                }
+            }
         );
 
-        // Use save with validateBeforeSave option to skip validation
-        await profile.save({ validateBeforeSave: false });
+        // Get updated profile to return remaining browsers count
+        const updatedProfile = await Profile.findById(profileId).select('browserIds');
+        const remainingBrowsers = updatedProfile?.browserIds?.length || 0;
 
         res.json({
             success: true,
@@ -102,7 +122,7 @@ exports.unregisterBrowserId = async (req, res, next) => {
             data: {
                 profileId,
                 browserId,
-                remainingBrowsers: profile.browserIds.length
+                remainingBrowsers
             }
         });
 
@@ -128,80 +148,36 @@ exports.unregisterAllBrowsers = async (req, res, next) => {
             });
         }
 
-        // Find the profile
-        const profile = await Profile.findById(profileId);
-        if (!profile) {
+        // Check if profile exists
+        const profileExists = await Profile.findById(profileId);
+        if (!profileExists) {
             return res.status(404).json({
                 success: false,
                 message: 'Profile not found'
             });
         }
 
-        // Clear all registered browsers/devices
-        profile.browserIds = [];
-
-        // Use save with validateBeforeSave option to skip validation
-        await profile.save({ validateBeforeSave: false });
+        // Use atomic update to clear all browser IDs
+        await Profile.updateOne(
+            { _id: profileId },
+            {
+                $set: {
+                    browserIds: []
+                }
+            }
+        );
 
         res.json({
             success: true,
             message: 'All browsers unregistered successfully',
             data: {
                 profileId,
-                remainingBrowsers: profile.browserIds.length
+                remainingBrowsers: 0
             }
         });
 
     } catch (error) {
         console.error('Error unregistering all browsers:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Internal server error',
-            error: error.message
-        });
-    }
-};
-// Unregister browser ID from a profile
-exports.unregisterBrowserId = async (req, res, next) => {
-    try {
-        const { profileId, browserId } = req.body;
-
-        if (!profileId || !browserId) {
-            return res.status(400).json({
-                success: false,
-                message: 'Profile ID and Browser ID are required'
-            });
-        }
-
-        // Find the profile
-        const profile = await Profile.findById(profileId);
-        if (!profile) {
-            return res.status(404).json({
-                success: false,
-                message: 'Profile not found'
-            });
-        }
-
-        // Remove browser ID
-        profile.browserIds = profile.browserIds.filter(
-            browser => browser.browserId !== browserId
-        );
-
-        // Use save with validateBeforeSave option to skip validation
-        await profile.save({ validateBeforeSave: false });
-
-        res.json({
-            success: true,
-            message: 'Browser ID unregistered successfully',
-            data: {
-                profileId,
-                browserId,
-                remainingBrowsers: profile.browserIds.length
-            }
-        });
-
-    } catch (error) {
-        console.error('Error unregistering browser ID:', error);
         res.status(500).json({
             success: false,
             message: 'Internal server error',
@@ -413,25 +389,28 @@ exports.updateBrowserActivity = async (req, res, next) => {
             });
         }
 
-        const profile = await Profile.findById(profileId);
-        if (!profile) {
+        // Check if profile exists
+        const profileExists = await Profile.findById(profileId);
+        if (!profileExists) {
             return res.status(404).json({
                 success: false,
                 message: 'Profile not found'
             });
         }
 
-        // Update browser activity
-        const browserIndex = profile.browserIds.findIndex(
-            browser => browser.browserId === browserId
+        // Use atomic update to update browser activity
+        await Profile.updateOne(
+            {
+                _id: profileId,
+                'browserIds.browserId': browserId
+            },
+            {
+                $set: {
+                    'browserIds.$.lastActive': new Date(),
+                    'browserIds.$.isActive': true
+                }
+            }
         );
-
-        if (browserIndex !== -1) {
-            profile.browserIds[browserIndex].lastActive = new Date();
-            profile.browserIds[browserIndex].isActive = true;
-            // Use save with validateBeforeSave option to skip validation
-            await profile.save({ validateBeforeSave: false });
-        }
 
         res.json({
             success: true,

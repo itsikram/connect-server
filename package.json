@@ -19,6 +19,8 @@
   "dependencies": {
     "@distube/ytdl-core": "^4.16.9",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@tensorflow/tfjs": "^4.22.0",
+    "@vladmandic/face-api": "^1.7.15",
     "agora-access-token": "^2.0.4",
     "axios": "^1.9.0",
     "bcrypt": "^5.1.0",
