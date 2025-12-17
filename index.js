@@ -117,17 +117,6 @@ app.get('*', (req, res) => {
 
 mongoose.connect(process.env.PROD_MONGODB_URI, {}).then(async(e) => {
 
-  // Preload emotion detection models in background for faster first request
-  const emotionDetection = require('./utils/emotionDetection');
-  emotionDetection.preloadModels()
-    .then(() => {
-      console.log('[Server] Emotion detection models preloaded and ready');
-    })
-    .catch((err) => {
-      console.warn('[Server] Failed to preload emotion detection models:', err.message);
-      console.warn('[Server] Models will be loaded on first request (slower first detection)');
-    });
-
   httpServer.listen(PORT, (e) => {
     console.log(`Server is running on port ${PORT}`)
   })

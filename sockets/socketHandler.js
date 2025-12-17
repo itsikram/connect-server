@@ -8,6 +8,7 @@ const checkIsActive = require('../utils/checkIsActive');
 const callingSocket = require('./callingSocket');
 const { sendPushToProfile } = require('../utils/pushNotifications');
 const ludoSocket = require('./ludoSocket');
+const chessSocket = require('./chessSocket');
 
 module.exports = function socketHandler(io) {
     // profileId -> socketId
@@ -62,6 +63,7 @@ module.exports = function socketHandler(io) {
                 notificationSocket(io, socket, profileId);
                 callingSocket(io, socket, profileId, onlineUsers);
                 ludoSocket(io, socket, profileId);
+                chessSocket(io, socket, profileId);
             } catch (err) {
                 console.error('Error initializing message/notification sockets:', err);
             }

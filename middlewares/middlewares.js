@@ -9,8 +9,8 @@ const middilewares = [
     morgan("dev"),
     express.static('public'),
     express.static(path.join(__dirname, "/routes/build")),
-    bodyParser.urlencoded({extended: true}),
-    bodyParser.json(),
+    bodyParser.urlencoded({extended: true, limit: '10mb'}),
+    bodyParser.json({limit: '10mb'}), // Increased limit for base64 image payloads (emotion detection)
     cors({
         origin: '*',
         

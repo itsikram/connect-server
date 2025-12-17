@@ -334,8 +334,8 @@ module.exports = function messageSocket(io, socket, profileId) {
 
     // Unified handler to emit emotion change to one, many, or all friends
     async function handleEmotionChange(payload) {
-        const { profileId, emotion, friendId, friendIds, broadcast, emotionText, emoji, confidence, quality } = payload || {};
-        console.log('emotion_change', profileId, emotion, friendId || friendIds || (broadcast ? 'broadcast' : null), emotionText, emoji, confidence, quality)
+        const { profileId, emotion, friendId, friendIds, broadcast, emotionText, emoji, confidence, quality, expression, expressionData, detectedExpressions, emotionScores } = payload || {};
+        console.log('emotion_change', profileId, emotion, friendId || friendIds || (broadcast ? 'broadcast' : null), emotionText, emoji, confidence, quality, expression)
 
         try {
             if (!profileId || !emotion) {
@@ -387,6 +387,11 @@ module.exports = function messageSocket(io, socket, profileId) {
                 emoji: updateProfile.lastEmotionEmoji,
                 confidence: updateProfile.lastEmotionConfidence,
                 quality: updateProfile.lastEmotionQuality,
+                // Include expression data from payload (forward to clients)
+                expression: expression || 'none',
+                expressionData: expressionData || {},
+                detectedExpressions: detectedExpressions || [],
+                emotionScores: emotionScores || {},
                 timestamp: new Date()
             };
 
