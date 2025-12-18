@@ -226,6 +226,111 @@ exports.updateProfile = async (req, res, next) => {
 
 }
 
+// Get nearby profiles based on location
+exports.getNearbyProfiles = async (req, res, next) => {
+    try {
+        const { latitude, longitude, radius = 50, profileId } = req.query;
+
+        // Validate required parameters
+        if (!latitude || !longitude) {
+            return res.status(400).json({ 
+                message: 'Latitude and longitude are required' 
+            });
+        }
+
+        const userLat = parseFloat(latitude);
+        const userLng = parseFloat(longitude);
+        const maxRadius = parseFloat(radius); // in kilometers
+
+        if (isNaN(userLat) || isNaN(userLng) || isNaN(maxRadius)) {
+            return res.status(400).json({ 
+                message: 'Invalid latitude, longitude, or radius values' 
+            });
+        }
+
+        // Get current user's friends list if profileId is provided
+        let userFriends = [];
+        if (profileId) {
+            try {
+                const currentUser = await Profile.findById(profileId).select('friends');
+                if (currentUser && currentUser.friends) {
+                    userFriends = currentUser.friends.map(fid => String(fid));
+                }
+            } catch (err) {
+                console.warn('Error fetching current user friends:', err);
+            }
+        }
+
+        // Find all profiles with valid locations
+        const allProfiles = await Profile.find({
+            'lastLocation.latitude': { $exists: true, $ne: null, $ne: 0 },
+            'lastLocation.longitude': { $exists: true, $ne: null, $ne: 0 }
+        }).select('_id fullName displayName profilePic username bio lastLocation');
+
+        // Calculate distance for each profile and filter by radius
+        const nearbyProfiles = [];
+        
+        for (const profile of allProfiles) {
+            // Skip current user if profileId is provided
+            if (profileId && String(profile._id) === String(profileId)) {
+                continue;
+            }
+
+            const profileLat = profile.lastLocation.latitude;
+            const profileLng = profile.lastLocation.longitude;
+
+            // Calculate distance using Haversine formula
+            const R = 6371; // Earth's radius in km
+            const dLat = (profileLat - userLat) * Math.PI / 180;
+            const dLng = (profileLng - userLng) * Math.PI / 180;
+            const a = 
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(userLat * Math.PI / 180) * Math.cos(profileLat * Math.PI / 180) *
+                Math.sin(dLng / 2) * Math.sin(dLng / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            const distance = R * c;
+
+            // Only include profiles within the radius
+            if (distance <= maxRadius) {
+                const profileIdStr = String(profile._id);
+                nearbyProfiles.push({
+                    _id: profile._id,
+                    fullName: profile.fullName || profile.displayName || 'User',
+                    displayName: profile.displayName,
+                    profilePic: profile.profilePic,
+                    username: profile.username,
+                    bio: profile.bio,
+                    lastLocation: {
+                        latitude: profileLat,
+                        longitude: profileLng,
+                        timestamp: profile.lastLocation.timestamp
+                    },
+                    distance: parseFloat(distance.toFixed(2)),
+                    isFriend: userFriends.includes(profileIdStr)
+                });
+            }
+        }
+
+        // Sort by distance (nearest first)
+        nearbyProfiles.sort((a, b) => a.distance - b.distance);
+
+        console.log(`📍 Found ${nearbyProfiles.length} nearby profiles within ${maxRadius}km`);
+
+        return res.status(200).json({
+            success: true,
+            count: nearbyProfiles.length,
+            profiles: nearbyProfiles
+        });
+
+    } catch (error) {
+        console.error('Error in getNearbyProfiles:', error);
+        return res.status(500).json({ 
+            message: 'Internal server error',
+            error: error.message 
+        });
+    }
+}
+
 
 
 
