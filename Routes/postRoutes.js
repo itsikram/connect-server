@@ -9,7 +9,7 @@ Router.post('/share', isAuth, sharePost)
 Router.post('/delete', isAuth, deletePost)
 Router.post('/update', isAuth, updatePost)
 Router.get('/myPosts',isAuth,getMyPosts)
-Router.get('/newsFeed',getNewsFeed)
+Router.get('/newsFeed',isAuth,getNewsFeed)
 Router.get('/single',getSinglePost)
 
 module.exports = Router;

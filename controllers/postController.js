@@ -14,13 +14,15 @@ exports.createPost = async (req, res, next) => {
         let thumbnail_url = req.body.photos
         let feelings = req.body.feelings
         let location = req.body.location
+        let audience = req.body.audience ? parseInt(req.body.audience) : 3
         // return console.log(req.body)
         let post = new Post({
             caption,
             photos: thumbnail_url,
             author: profileId,
             feelings,
-            location
+            location,
+            audience
 
         })
 
@@ -322,8 +324,48 @@ exports.getNewsFeed = async (req, res, next) => {
     let pageNumber = req.query.pageNumber
     let limit = 3
     try {
+        if (!profile || !profile._id) {
+            return res.status(401).json({ message: 'Unauthorized' })
+        }
+        
+        // Get current user's profile with friends list
+        const currentProfile = await Profile.findById(profile._id).select('friends blockedUsers')
+        if (!currentProfile) {
+            return res.status(404).json({ message: 'Profile not found' })
+        }
+        const currentUserId = currentProfile._id
+        const friendsList = currentProfile.friends || []
+        const blockedUsers = currentProfile.blockedUsers || []
 
-        let newsFeedPosts = await Post.find().populate([
+        // Build audience filter query
+        // Audience values: 1 = Public, 2 = Friends, 3 = Only Me
+        const audienceFilter = {
+            $and: [
+                {
+                    $or: [
+                        // Public posts (audience = 1) - everyone can see
+                        { audience: 1 },
+                        // Friends posts (audience = 2) - only friends can see
+                        // Check if author is in current user's friends list (bidirectional friendship)
+                        {
+                            audience: 2,
+                            author: { $in: friendsList }
+                        },
+                        // Only Me posts (audience = 3) - only author can see
+                        {
+                            audience: 3,
+                            author: currentUserId
+                        }
+                    ]
+                },
+                // Exclude posts from blocked users
+                {
+                    author: { $nin: blockedUsers }
+                }
+            ]
+        }
+
+        let newsFeedPosts = await Post.find(audienceFilter).populate([
             {
                 path: 'author',
                 model: Profile,
@@ -363,7 +405,7 @@ exports.getNewsFeed = async (req, res, next) => {
 
         ]).skip((pageNumber - 1) * limit).limit(limit).sort({ 'createdAt': -1 })
 
-        let nextPosts = await Post.find().skip((pageNumber) * limit).limit(limit).sort({ 'createdAt': -1 })
+        let nextPosts = await Post.find(audienceFilter).skip((pageNumber) * limit).limit(limit).sort({ 'createdAt': -1 })
 
         let hasNewPost = nextPosts.length == 0 ? false : true
         res.status(200).json({ posts: newsFeedPosts, hasNewPost })
