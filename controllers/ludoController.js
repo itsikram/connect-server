@@ -43,27 +43,13 @@ exports.saveGameState = async (req, res, next) => {
                 })
             }
 
-            // Filter winners to remove invalid profileIds (like "local")
-            const validWinners = (winners || existingGame.winners || []).map(winner => {
-                const cleanWinner = { ...winner };
-                // Remove profileId if it's not a valid ObjectId (24 hex characters)
-                if (cleanWinner.profileId && 
-                    (cleanWinner.profileId === 'local' || 
-                     typeof cleanWinner.profileId !== 'string' || 
-                     cleanWinner.profileId.length !== 24 || 
-                     !/^[0-9a-fA-F]{24}$/.test(cleanWinner.profileId))) {
-                    delete cleanWinner.profileId;
-                }
-                return cleanWinner;
-            });
-            
             // Update game state
             existingGame.players = players
             existingGame.currentPlayer = currentPlayer || existingGame.currentPlayer
             existingGame.diceValue = diceValue !== undefined ? diceValue : existingGame.diceValue
             existingGame.gameStarted = gameStarted !== undefined ? gameStarted : existingGame.gameStarted
             existingGame.gameEnded = gameEnded !== undefined ? gameEnded : existingGame.gameEnded
-            existingGame.winners = validWinners
+            existingGame.winners = winners || existingGame.winners
             existingGame.selectedPlayerCount = selectedPlayerCount || existingGame.selectedPlayerCount
             existingGame.lastUpdated = new Date()
 
@@ -75,20 +61,6 @@ exports.saveGameState = async (req, res, next) => {
                 game: updatedGame
             })
         } else {
-            // Filter winners to remove invalid profileIds (like "local")
-            const validWinners = (winners || []).map(winner => {
-                const cleanWinner = { ...winner };
-                // Remove profileId if it's not a valid ObjectId (24 hex characters)
-                if (cleanWinner.profileId && 
-                    (cleanWinner.profileId === 'local' || 
-                     typeof cleanWinner.profileId !== 'string' || 
-                     cleanWinner.profileId.length !== 24 || 
-                     !/^[0-9a-fA-F]{24}$/.test(cleanWinner.profileId))) {
-                    delete cleanWinner.profileId;
-                }
-                return cleanWinner;
-            });
-            
             // Create new game
             const newGame = new LudoGame({
                 gameId,
@@ -98,7 +70,7 @@ exports.saveGameState = async (req, res, next) => {
                 diceValue: diceValue || 0,
                 gameStarted: gameStarted || false,
                 gameEnded: gameEnded || false,
-                winners: validWinners,
+                winners: winners || [],
                 selectedPlayerCount: selectedPlayerCount || 4,
                 lastUpdated: new Date()
             })
