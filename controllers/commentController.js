@@ -235,6 +235,8 @@ exports.removeCommentReact = async (req, res, next) => {
 }
 
 exports.postCommentReply = async (req, res, next) => {
+
+    console.log('add comment')
     try {
         let commentId = req.body.commentId
         let authorId = req.body.authorId
@@ -244,7 +246,9 @@ exports.postCommentReply = async (req, res, next) => {
         let io = req.app.get('io')
 
 
-        if (!commentId || !authorId) return next();
+        if (!commentId || !authorId) {
+            return res.status(400).json({ message: 'commentId and authorId are required' });
+        }
 
         let newReplyData = new CmntReply({
             body: replyMsg,

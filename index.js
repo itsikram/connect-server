@@ -103,9 +103,47 @@ app.use('/api/agora', agoraRoutes);
 
 app.set('io',io)
 
-app.use(express.static(path.join(__dirname, 'build')));
+// Middleware to disable caching for localhost
+app.use((req, res, next) => {
+  const hostname = req.hostname || req.get('host')?.split(':')[0];
+  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+  
+  if (isLocalhost) {
+    res.set({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
+  }
+  next();
+});
+
+app.use(express.static(path.join(__dirname, 'build'), {
+  setHeaders: (res, filePath, stat) => {
+    // For static files, check if request is from localhost via the middleware above
+    // This will be set by the middleware, so we check if headers are already set
+    // If not set, add no-cache headers as a safety measure
+    if (!res.get('Cache-Control')) {
+      res.set({
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      });
+    }
+  }
+}));
 
 app.get('*', (req, res) => {
+  const hostname = req.hostname || req.get('host')?.split(':')[0];
+  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+  
+  if (isLocalhost) {
+    res.set({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
+  }
   res.sendFile(path.join(__dirname, 'build', 'index.html'));
 });
 
@@ -117,7 +155,7 @@ app.get('*', (req, res) => {
 
 mongoose.connect(process.env.PROD_MONGODB_URI, {}).then(async(e) => {
 
-  httpServer.listen(PORT, (e) => {
+  httpServer.listen(PORT,'0.0.0.0', (e) => {
     console.log(`Server is running on port ${PORT}`)
   })
 }).catch(e => {

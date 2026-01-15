@@ -287,7 +287,7 @@ exports.getSinglePost = async (req, res, next) => {
 }
 
 exports.updatePost = async (req, res, next) => {
-    let { postId, caption, feelings, location, photos } = req.body
+    let { postId, caption, feelings, location, photos, audience } = req.body
     try {
         let updateData = { caption }
         
@@ -301,6 +301,10 @@ exports.updatePost = async (req, res, next) => {
         
         if (photos !== undefined) {
             updateData.photos = photos
+        }
+        
+        if (audience !== undefined) {
+            updateData.audience = audience
         }
 
         let updatedPost = await Post.findOneAndUpdate({ _id: postId }, updateData, { new: true })
