@@ -2,6 +2,7 @@ const { isValidObjectId } = require('mongoose');
 const Message = require('../models/Message')
 const Profile = require('../models/Profile')
 const checkIsActive = require('../utils/checkIsActive')
+const updateLastActive = require('../utils/updateLastActive')
 const axios = require('axios')
 
 
@@ -232,6 +233,9 @@ module.exports = function messageSocket(io, socket, profileId) {
         }
         await newMessage.save();
 
+        // Update last active time for sending message
+        await updateLastActive(senderId);
+
         let updatedMessage = await Message.findOne({ _id: newMessage._id }).populate('parent')
         let profileData = await Profile.findById(senderId).populate('user');
         if (!profileData) return;
@@ -410,10 +414,16 @@ module.exports = function messageSocket(io, socket, profileId) {
     // Back-compat alias some clients may send
     socket.on('change_emotion', handleEmotionChange);
 
-    socket.on('typing', ({ room, isTyping, type, receiverId }) => {
+    socket.on('typing', async ({ room, isTyping, type, receiverId, senderId }) => {
         console.log('typing', room, isTyping, type, receiverId)
         if (isTyping) {
             socket.to(room).emit('typing', { receiverId, isTyping: true, type });
+            // Update last active time for typing activity (only when actively typing)
+            // Use senderId from event or fallback to profileId from socket context
+            const activeProfileId = senderId || profileId;
+            if (activeProfileId) {
+                await updateLastActive(activeProfileId);
+            }
         } else {
             socket.to(room).emit('typing', { receiverId, isTyping: false });
         }
@@ -431,6 +441,10 @@ module.exports = function messageSocket(io, socket, profileId) {
             let msg = await Message.findOneAndUpdate({ _id: message._id }, { isSeen: true }, { new: true });
             if (msg) {
                 io.to(message.room).emit('seenMessage', msg);
+                // Update last active time for viewing messages (use profileId from socket context)
+                if (profileId) {
+                    await updateLastActive(profileId);
+                }
             }
         }
     });

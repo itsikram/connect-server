@@ -101,13 +101,37 @@ exports.getChatList = async(req,res,next) => {
 
     if (myProfile?.friends !== null) {
         for (const friendProfile of myProfile.friends) {
+            // Fetch last message in either direction (sent or received)
             const messages = await Message.find({
-                senderId: friendProfile._id,
-                receiverId: profileId
+                $or: [
+                    { senderId: friendProfile._id, receiverId: profileId },
+                    { senderId: profileId, receiverId: friendProfile._id }
+                ]
             }).limit(1).sort({ timestamp: -1 })
 
             profileContacts.push({ person: friendProfile, messages })
         }
+        
+        // Sort contacts by last message timestamp (most recent first)
+        profileContacts.sort((a, b) => {
+            const aTimestamp = a.messages?.[0]?.timestamp 
+                ? new Date(a.messages[0].timestamp).getTime() 
+                : 0;
+            const bTimestamp = b.messages?.[0]?.timestamp 
+                ? new Date(b.messages[0].timestamp).getTime() 
+                : 0;
+            
+            // If both have messages, sort by timestamp (most recent first)
+            if (aTimestamp > 0 && bTimestamp > 0) {
+                return bTimestamp - aTimestamp;
+            }
+            // If only one has messages, prioritize it
+            if (aTimestamp > 0) return -1;
+            if (bTimestamp > 0) return 1;
+            // If neither has messages, maintain original order
+            return 0;
+        });
+        
         res.json(profileContacts).status(200)
     }else{
         res.json({message: 'No Friends Found'}).status(200)
