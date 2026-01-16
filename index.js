@@ -144,7 +144,9 @@ app.get('*', (req, res) => {
       'Expires': '0'
     });
   }
-  res.sendFile(path.join(__dirname, 'build', 'index.html'));
+  
+  // res.sendFile(path.join(__dirname, 'build', 'index.html'));
+  return res.json({ message: 'working fine' });
 });
 
 // app.get('/', async (req, res) => {
