@@ -18,6 +18,12 @@ const adminRoutes = require('./adminRoutes')
 const connectRoutes = require('./connectRoutes')
 const webNotificationRoutes = require('./webNotificationRoutes')
 const ludoRoutes = require('./ludoRoutes')
+const notesRoutes = require('./notesRoutes')
+const tasksRoutes = require('./tasksRoutes')
+const timerRoutes = require('./timerRoutes')
+const flashcardsRoutes = require('./flashcardsRoutes')
+const calendarRoutes = require('./calendarRoutes')
+const habitsRoutes = require('./habitsRoutes')
  
 let rootRoute = async (req,res) => {
     return res.sendFile(path.join(__dirname, "build", "index.html"));
@@ -94,6 +100,30 @@ const routes = [
     {
         path: '/api/ludo',
         handler: ludoRoutes
+    },
+    {
+        path: '/api/notes',
+        handler: notesRoutes
+    },
+    {
+        path: '/api/tasks',
+        handler: tasksRoutes
+    },
+    {
+        path: '/api/timer',
+        handler: timerRoutes
+    },
+    {
+        path: '/api/flashcards',
+        handler: flashcardsRoutes
+    },
+    {
+        path: '/api/calendar',
+        handler: calendarRoutes
+    },
+    {
+        path: '/api/habits',
+        handler: habitsRoutes
     }
 ]
  
