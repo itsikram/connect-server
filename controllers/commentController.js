@@ -85,7 +85,17 @@ exports.postAddComment = async (req, res, next) => {
         }
 
 
-        return res.json(savedCommentData).status(200)
+        // Populate the comment with author and user details before returning
+        const populatedComment = await Comment.findById(savedCommentData._id).populate({
+            path: 'author',
+            select: ['profilePic', 'user', 'fullName', 'displayName'],
+            populate: {
+                path: 'user',
+                select: ['firstName', 'surname']
+            }
+        });
+
+        return res.json(populatedComment).status(200)
 
     } catch (error) {
         next(error)
@@ -99,7 +109,14 @@ exports.updateComment = async(req,res,next) => {
 
         let UpdatedComment = await Comment.findOneAndUpdate({ _id: commentId }, {
             body
-        }, { new: true })
+        }, { new: true }).populate({
+            path: 'author',
+            select: ['profilePic', 'user', 'fullName', 'displayName'],
+            populate: {
+                path: 'user',
+                select: ['firstName', 'surname']
+            }
+        })
         if (UpdatedComment) {
             return res.json(UpdatedComment).status(200)
         }
@@ -156,7 +173,17 @@ exports.storyAddComment = async (req, res, next) => {
             } catch (e) {}
         }
 
-        return res.json(savedCommentData)
+        // Populate the comment with author and user details before returning
+        const populatedComment = await Comment.findById(savedCommentData._id).populate({
+            path: 'author',
+            select: ['profilePic', 'user', 'fullName', 'displayName'],
+            populate: {
+                path: 'user',
+                select: ['firstName', 'surname']
+            }
+        });
+
+        return res.json(populatedComment)
 
     } catch (error) {
         next(error)
@@ -272,7 +299,14 @@ exports.postCommentReply = async (req, res, next) => {
 
             }])
             if (updateComment) {
-                let newReplyWithAuthor = await CmntReply.findOne({ _id: newReply._id }).populate('author')
+                let newReplyWithAuthor = await CmntReply.findOne({ _id: newReply._id }).populate({
+                    path: 'author',
+                    select: ['profilePic', 'user', 'fullName', 'displayName'],
+                    populate: {
+                        path: 'user',
+                        select: ['firstName', 'surname']
+                    }
+                })
 
                 if (newReplyWithAuthor) {
 
