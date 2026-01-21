@@ -24,4 +24,5 @@ const photosUpload = multer({
         }
     }
 })
+
 module.exports = photosUpload
