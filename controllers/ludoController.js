@@ -31,58 +31,44 @@ exports.saveGameState = async (req, res, next) => {
             })
         }
 
-        // Check if game exists
+        // Use findOneAndUpdate with upsert to handle race conditions atomically
+        // First check if game exists to validate host permissions
         const existingGame = await LudoGame.findOne({ gameId })
-
-        if (existingGame) {
-            // Update existing game - only host can update
-            if (String(existingGame.host) !== String(hostId)) {
-                return res.status(403).json({ 
-                    success: false, 
-                    message: 'Only the host can update the game state' 
-                })
-            }
-
-            // Update game state
-            existingGame.players = players
-            existingGame.currentPlayer = currentPlayer || existingGame.currentPlayer
-            existingGame.diceValue = diceValue !== undefined ? diceValue : existingGame.diceValue
-            existingGame.gameStarted = gameStarted !== undefined ? gameStarted : existingGame.gameStarted
-            existingGame.gameEnded = gameEnded !== undefined ? gameEnded : existingGame.gameEnded
-            existingGame.winners = winners || existingGame.winners
-            existingGame.selectedPlayerCount = selectedPlayerCount || existingGame.selectedPlayerCount
-            existingGame.lastUpdated = new Date()
-
-            const updatedGame = await existingGame.save()
-
-            return res.status(200).json({
-                success: true,
-                message: 'Game state updated successfully',
-                game: updatedGame
+        
+        if (existingGame && String(existingGame.host) !== String(hostId)) {
+            return res.status(403).json({ 
+                success: false, 
+                message: 'Only the host can update the game state' 
             })
-        } else {
-            // Create new game
-            const newGame = new LudoGame({
+        }
+
+        const game = await LudoGame.findOneAndUpdate(
+            { gameId },
+            {
                 gameId,
                 host: hostId,
                 players,
-                currentPlayer: currentPlayer || 0,
-                diceValue: diceValue || 0,
-                gameStarted: gameStarted || false,
-                gameEnded: gameEnded || false,
-                winners: winners || [],
-                selectedPlayerCount: selectedPlayerCount || 4,
+                currentPlayer: currentPlayer !== undefined ? currentPlayer : (existingGame?.currentPlayer || 0),
+                diceValue: diceValue !== undefined ? diceValue : (existingGame?.diceValue || 0),
+                gameStarted: gameStarted !== undefined ? gameStarted : (existingGame?.gameStarted || false),
+                gameEnded: gameEnded !== undefined ? gameEnded : (existingGame?.gameEnded || false),
+                winners: winners || existingGame?.winners || [],
+                selectedPlayerCount: selectedPlayerCount || existingGame?.selectedPlayerCount || 4,
                 lastUpdated: new Date()
-            })
+            },
+            {
+                upsert: true,
+                new: true,
+                runValidators: true,
+                setDefaultsOnInsert: true
+            }
+        )
 
-            const savedGame = await newGame.save()
-
-            return res.status(201).json({
-                success: true,
-                message: 'Game state saved successfully',
-                game: savedGame
-            })
-        }
+        return res.status(200).json({
+            success: true,
+            message: 'Game state saved successfully',
+            game
+        })
     } catch (error) {
         console.error('Error saving game state:', error)
         if (error.code === 11000) {

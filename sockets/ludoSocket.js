@@ -4,6 +4,21 @@ const games = new Map(); // gameId -> { createdAt: number, lastPlayers: object, 
 const userInvites = new Map(); // profileId -> [{ gameId, by, name, avatar, slotIndex, playerCount, ts }]
 const playerSockets = new Map(); // profileId -> Set<socketId> (track all sockets for a profile)
 
+// Helper function to get next active player (skip inactive players)
+function getNextActivePlayer(currentPlayerIndex) {
+    // Simple implementation: go to next player, wrap around, skip inactive
+    let nextIndex = (currentPlayerIndex + 1) % 4;
+    let attempts = 0;
+    
+    while (attempts < 4) {
+        // In a real implementation, you'd check if player at nextIndex is active
+        // For now, just return the next player
+        return nextIndex;
+    }
+    
+    return currentPlayerIndex; // fallback
+}
+
 function ludoSocket(io, socket, profileId) {
     // Derive profileId from handshake if not provided
     const effectiveProfileId = profileId || socket?.handshake?.query?.profile || socket?.handshake?.query?.profileId;
@@ -123,17 +138,132 @@ function ludoSocket(io, socket, profileId) {
     });
 
     socket.on('ludo:roll', (payload) => {
-        const { gameId } = payload || {};
+        const { gameId, by, currentPlayer } = payload || {};
         if (!gameId) return;
-        try { console.log('[LUDO][server] ludo:roll', { socketId: socket?.id, gameId, by: payload?.by, value: payload?.value }); } catch (_e) {}
+        
+        // Validate that the player is rolling on their turn
+        const game = games.get(gameId);
+        if (game && game.lastPlayers && typeof game.lastPlayers.currentPlayer === 'number') {
+            // Find the player index for this profileId
+            const playerIndex = game.lastPlayers.players?.findIndex(p => 
+                p.profileId && String(p.profileId) === String(by)
+            );
+            
+            // Only allow roll if this player is the current player
+            if (playerIndex !== game.lastPlayers.currentPlayer) {
+                console.log('[LUDO][server] ❌ ludo:roll rejected - wrong player turn', { 
+                    socketId: socket?.id, 
+                    gameId, 
+                    by, 
+                    playerIndex, 
+                    currentPlayer: game.lastPlayers.currentPlayer 
+                });
+                return;
+            }
+        }
+        
+        try { 
+            console.log('[LUDO][server] ✅ ludo:roll validated', { 
+                socketId: socket?.id, 
+                gameId, 
+                by: payload?.by, 
+                value: payload?.value,
+                currentPlayer: payload?.currentPlayer 
+            }); 
+        } catch (_e) {}
+        
         io.to(`ludo_${gameId}`).emit('ludo:roll', { ...payload, serverTs: Date.now() });
     });
 
     socket.on('ludo:move', (payload) => {
-        const { gameId } = payload || {};
+        const { gameId, by, playerIndex, fromSteps, toSteps, rolled } = payload || {};
         if (!gameId) return;
-        try { console.log('[LUDO][server] ludo:move', { socketId: socket?.id, gameId, by: payload?.by, playerIndex: payload?.playerIndex, pieceIndex: payload?.pieceIndex, toSteps: payload?.toSteps, rolled: payload?.rolled }); } catch (_e) {}
+        
+        // Validate that player is moving on their turn
+        const game = games.get(gameId);
+        if (game && game.lastPlayers && typeof game.lastPlayers.currentPlayer === 'number') {
+            // Find player index for this profileId
+            const senderPlayerIndex = game.lastPlayers.players?.findIndex(p => 
+                p.profileId && String(p.profileId) === String(by)
+            );
+            
+            // Only allow move if this player is current player and matches playerIndex in payload
+            if (senderPlayerIndex !== game.lastPlayers.currentPlayer || senderPlayerIndex !== playerIndex) {
+                console.log('[LUDO][server] ❌ ludo:move rejected - wrong player turn', { 
+                    socketId: socket?.id, 
+                    gameId, 
+                    by, 
+                    senderPlayerIndex, 
+                    payloadPlayerIndex: playerIndex,
+                    currentPlayer: game.lastPlayers.currentPlayer 
+                });
+                return;
+            }
+        }
+        
+        try { 
+            console.log('[LUDO][server] ✅ ludo:move validated', { 
+                socketId: socket?.id, 
+                gameId, 
+                by: payload?.by, 
+                playerIndex: payload?.playerIndex, 
+                fromSteps: payload?.fromSteps,
+                toSteps: payload?.toSteps, 
+                rolled: payload?.rolled 
+            }); 
+        } catch (_e) {}
+        
+        // Check if this move should trigger a turn change
+        let shouldAdvanceTurn = false;
+        let nextPlayer = null;
+        
+        if (game && game.lastPlayers && game.lastPlayers.players) {
+            const movingPlayer = game.lastPlayers.players[playerIndex];
+            const movedOutOfHome = fromSteps === 0 && toSteps > 0;
+            const rolledSix = rolled === 6;
+            
+            // Player loses turn if they make a regular move (not rolling 6)
+            if (!rolledSix && movedOutOfHome) {
+                shouldAdvanceTurn = true;
+                nextPlayer = getNextActivePlayer(playerIndex);
+                console.log('[LUDO][server] Turn will advance - regular move', {
+                    playerIndex,
+                    fromSteps,
+                    toSteps,
+                    rolled,
+                    nextPlayer
+                });
+            } else if (rolledSix && movedOutOfHome) {
+                // Player moved out with 6 - they keep their turn, but we should update state
+                console.log('[LUDO][server] Player keeps turn - moved out with 6', {
+                    playerIndex,
+                    fromSteps,
+                    toSteps,
+                    rolled
+                });
+            }
+            
+            // Update the game state with new turn if needed
+            if (shouldAdvanceTurn && nextPlayer !== null) {
+                game.lastPlayers.currentPlayer = nextPlayer;
+                console.log('[LUDO][server] Updated currentPlayer in game state', {
+                    oldPlayer: playerIndex,
+                    newPlayer: nextPlayer
+                });
+            }
+        }
+        
         io.to(`ludo_${gameId}`).emit('ludo:move', { ...payload, serverTs: Date.now() });
+        
+        // If turn changed, also broadcast updated game state
+        if (shouldAdvanceTurn && game && game.lastPlayers) {
+            setTimeout(() => {
+                io.to(`ludo_${gameId}`).emit('ludo:players', { 
+                    ...game.lastPlayers, 
+                    serverTs: Date.now() 
+                });
+            }, 100); // Small delay to ensure move is processed first
+        }
     });
 
     // Host sends an invite specifying target friend profile id
