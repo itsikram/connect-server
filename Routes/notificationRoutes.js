@@ -1,5 +1,5 @@
 const Router = require('express').Router()
-const {getNotifications,deleteAllNotifications,postNotification,notificationView,notificationViewAll, registerDeviceToken, unregisterDeviceToken, unregisterAllOtherDeviceTokens, sendTestPush} = require('../controllers/notificationController')
+const {getNotifications,deleteAllNotifications,postNotification,notificationView,notificationViewAll, registerDeviceToken, unregisterDeviceToken, unregisterAllOtherDeviceTokens, sendTestPush,getNewNotifications} = require('../controllers/notificationController')
 const isAuth = require('../middlewares/isAuth')
 
 
@@ -11,6 +11,7 @@ Router.post('/token/unregister-all-others', isAuth, unregisterAllOtherDeviceToke
 Router.post('/send-test', isAuth, sendTestPush)
 Router.post('/viewall',isAuth, notificationViewAll)
 Router.get('/',isAuth,getNotifications)
+Router.get('/new',isAuth,getNewNotifications)
 Router.post('/deleteall',deleteAllNotifications)
 
 module.exports = Router;

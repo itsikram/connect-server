@@ -93,6 +93,7 @@ exports.getChatList = async(req,res,next) => {
     try{
 
     let profileId = req.query.profileId || req.profile._id
+    const now = new Date();
 
     let profileContacts = []
     let myProfile = await Profile.findOne({ _id: profileId }).populate('friends')
@@ -109,7 +110,16 @@ exports.getChatList = async(req,res,next) => {
                 ]
             }).limit(1).sort({ timestamp: -1 })
 
-            profileContacts.push({ person: friendProfile, messages })
+            // Check online status based on lastActive timestamp
+            const lastActive = friendProfile.lastActive ? new Date(friendProfile.lastActive) : null;
+            const isOnline = lastActive && (now - lastActive) < 5 * 60 * 1000; // Active if last seen within 5 minutes
+
+            profileContacts.push({ 
+                person: friendProfile, 
+                messages,
+                isOnline: isOnline,
+                lastSeen: lastActive
+            })
         }
         
         // Sort contacts by last message timestamp (most recent first)
@@ -270,3 +280,203 @@ exports.getOldMessages = async(req,res,next) => {
 
 
 // Generate a unique room ID using user IDs
+
+// HTTP-based message sending
+exports.sendMessage = async (req, res, next) => {
+    try {
+        const io = req.app.get('io');
+        const { room, senderId, receiverId, message, attachment, parent, isAi = false, messageType = 'text', callType, callEvent } = req.body;
+
+        // Prevent messaging if either user has blocked the other
+        const [senderProfile, receiverProfile] = await Promise.all([
+            Profile.findById(senderId).select('blockedUsers'),
+            Profile.findById(receiverId).select('blockedUsers'),
+        ]);
+        
+        const senderBlockedReceiver = senderProfile?.blockedUsers?.some(id => String(id) === String(receiverId));
+        const receiverBlockedSender = receiverProfile?.blockedUsers?.some(id => String(id) === String(senderId));
+        
+        if (senderBlockedReceiver || receiverBlockedSender) {
+            return res.status(403).json({
+                message: 'Message blocked',
+                reason: senderBlockedReceiver ? 'You blocked this user' : 'You are blocked by this user'
+            });
+        }
+
+        let newMessage;
+        if (parent == false) {
+            newMessage = new Message({ room, senderId, receiverId, message, attachment, messageType, callType, callEvent });
+        } else {
+            newMessage = new Message({ room, senderId, receiverId, message, attachment, parent, messageType, callType, callEvent });
+        }
+        await newMessage.save();
+
+        // Update last active time for sending message
+        await updateLastActive(senderId);
+
+        let updatedMessage = await Message.findOne({ _id: newMessage._id }).populate('parent');
+        let profileData = await Profile.findById(senderId).populate('user');
+        
+        if (!profileData) {
+            return res.status(404).json({ message: 'Sender profile not found' });
+        }
+        
+        let senderName = profileData.user?.firstName + ' ' + profileData.user?.surname;
+        let senderPP = profileData.profilePic || '/default-avatar.png';
+        
+        // Emit via socket for real-time updates
+        io.to(room).emit('newMessage', { updatedMessage, senderName, senderPP, chatPage: true });
+        
+        let friendProfile = await Profile.findById(senderId).populate('user');
+        io.to(receiverId).emit('newMessageToUser', { updatedMessage, senderName, senderPP, chatPage: false, friendProfile });
+
+        return res.status(200).json({
+            message: 'Message sent successfully',
+            data: updatedMessage
+        });
+
+    } catch (error) {
+        console.error('Error sending message:', error);
+        next(error);
+    }
+};
+
+// Helper function to update last active time
+const updateLastActive = async (userId) => {
+    try {
+        await Profile.findByIdAndUpdate(userId, { lastActive: new Date() });
+    } catch (error) {
+        console.error('Error updating last active time:', error);
+    }
+};
+
+// HTTP-based new messages polling
+exports.getNewMessages = async (req, res, next) => {
+    try {
+        const { profileId, friendId, lastMessageId } = req.query;
+        
+        if (!profileId) {
+            return res.status(400).json({ messages: [] });
+        }
+
+        let query;
+        
+        if (friendId) {
+            // Get messages between two specific users (for Chat.js)
+            query = {
+                $or: [
+                    { senderId: profileId, receiverId: friendId },
+                    { senderId: friendId, receiverId: profileId }
+                ]
+            };
+            
+            // If we have a lastMessageId, only get messages newer than that
+            if (lastMessageId) {
+                const lastMessage = await Message.findById(lastMessageId);
+                if (lastMessage) {
+                    query.timestamp = { $gt: lastMessage.timestamp };
+                }
+            }
+        } else {
+            // Get all new messages for the user (for Main.js)
+            query = {
+                receiverId: profileId,
+                seen: false
+            };
+            
+            // If we have a lastMessageId, only get messages newer than that
+            if (lastMessageId) {
+                const lastMessage = await Message.findById(lastMessageId);
+                if (lastMessage) {
+                    query.timestamp = { $gt: lastMessage.timestamp };
+                }
+            }
+        }
+        
+        // Fetch new messages (newest first)
+        const newMessages = await Message.find(query)
+            .sort({ timestamp: -1 })
+            .limit(20)
+            .populate('parent');
+        
+        return res.status(200).json({
+            messages: newMessages.reverse() // Reverse to show in chronological order
+        });
+        
+    } catch (error) {
+        console.error('Error fetching new messages:', error);
+        return res.status(500).json({ messages: [] });
+    }
+};
+
+// HTTP-based message reactions checking
+exports.getMessageReactions = async (req, res, next) => {
+    try {
+        const { messageId } = req.query;
+        
+        if (!messageId) {
+            return res.status(400).json({ reactions: [] });
+        }
+        
+        const message = await Message.findById(messageId);
+        
+        if (!message) {
+            return res.status(404).json({ reactions: [] });
+        }
+        
+        return res.status(200).json({
+            reactions: message.reacts || []
+        });
+        
+    } catch (error) {
+        console.error('Error fetching message reactions:', error);
+        return res.status(500).json({ reactions: [] });
+    }
+};
+
+// HTTP-based mark message as seen
+exports.markMessageAsSeen = async (req, res, next) => {
+    try {
+        const { messageId } = req.body;
+        
+        if (!messageId) {
+            return res.status(400).json({ message: 'Message ID is required' });
+        }
+        
+        const message = await Message.findById(messageId);
+        
+        if (!message) {
+            return res.status(404).json({ message: 'Message not found' });
+        }
+        
+        // Update message as seen
+        const updatedMessage = await Message.findByIdAndUpdate(
+            messageId,
+            { isSeen: true },
+            { new: true }
+        );
+        
+        if (updatedMessage) {
+            // Emit socket event to notify sender that message was seen
+            const io = req.app.get('io');
+            if (io) {
+                io.to(message.senderId).emit('messageSeen', {
+                    messageId: messageId,
+                    seenBy: message.receiverId,
+                    timestamp: new Date()
+                });
+            }
+            
+            return res.status(200).json({ 
+                message: 'Message marked as seen',
+                messageId: messageId
+            });
+        }
+        
+        return res.status(400).json({ message: 'Failed to mark message as seen' });
+        
+    } catch (error) {
+        console.error('Error marking message as seen:', error);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};

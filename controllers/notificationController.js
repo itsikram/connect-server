@@ -110,6 +110,30 @@ exports.getNotifications = async (req, res, next) => {
     return res.json({ message: 'Failed to get notificaiton' }).status(400)
 
 }
+
+// HTTP-based new notifications polling
+exports.getNewNotifications = async (req, res, next) => {
+    try {
+        const { profileId } = req.query;
+        
+        if (!profileId) {
+            return res.status(400).json({ notifications: [] });
+        }
+        
+        // Get recent notifications (last 5 minutes)
+        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+        const notifications = await Notification.find({ 
+            receiverId: profileId,
+            timestamp: { $gte: fiveMinutesAgo }
+        }).limit(10).sort({timestamp: -1});
+        
+        return res.status(200).json({ notifications });
+        
+    } catch (error) {
+        console.error('Error fetching new notifications:', error);
+        return res.status(500).json({ notifications: [] });
+    }
+};
 exports.deleteAllNotifications = async (req, res, next) => {
 let profileId = req.body.profile
     let deletedNotification = await Notification.deleteMany({ receiverId: profileId})

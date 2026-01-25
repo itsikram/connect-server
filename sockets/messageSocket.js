@@ -16,6 +16,17 @@ const NOTIFICATION_DEDUP_WINDOW = 5000; // 5 seconds
 
 module.exports = function messageSocket(io, socket, profileId) {
 
+    // Room management for real-time messaging
+    socket.on('joinRoom', (roomId) => {
+        console.log(`User ${profileId} joining room: ${roomId}`);
+        socket.join(roomId);
+    });
+
+    socket.on('leaveRoom', (roomId) => {
+        console.log(`User ${profileId} leaving room: ${roomId}`);
+        socket.leave(roomId);
+    });
+
     socket.on('fetchMessages', async () => {
 
         let profileContacts = []

@@ -331,6 +331,36 @@ exports.getNearbyProfiles = async (req, res, next) => {
     }
 }
 
+// HTTP-based online status checking
+exports.getOnlineStatus = async (req, res, next) => {
+    try {
+        const { profileId, myId } = req.query;
+        
+        if (!profileId) {
+            return res.status(400).json({ isActive: false, lastSeen: null });
+        }
+        
+        const profile = await Profile.findById(profileId);
+        
+        if (!profile) {
+            return res.status(404).json({ isActive: false, lastSeen: null });
+        }
+        
+        const now = new Date();
+        const lastActive = profile.lastActive ? new Date(profile.lastActive) : null;
+        const isActive = lastActive && (now - lastActive) < 5 * 60 * 1000; // Active if last seen within 5 minutes
+        
+        return res.status(200).json({
+            isActive,
+            lastSeen: lastActive
+        });
+        
+    } catch (error) {
+        console.error('Error checking online status:', error);
+        return res.status(500).json({ isActive: false, lastSeen: null });
+    }
+};
+
 
 
 

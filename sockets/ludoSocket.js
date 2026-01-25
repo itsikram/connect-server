@@ -345,6 +345,34 @@ function ludoSocket(io, socket, profileId) {
         io.to(`ludo_${gameId}`).emit('ludo:players', { ...enhancedPayload, serverTs: Date.now() });
     });
 
+    // Client requests all games they've joined
+    socket.on('ludo:games:get', () => {
+        const pid = String(effectiveProfileId || '');
+        if (!pid) return;
+        
+        const userGames = [];
+        games.forEach((game, gameId) => {
+            // Check if user is in this game (online or offline)
+            if (game.onlinePlayers.has(pid) || game.offlinePlayers.has(pid)) {
+                userGames.push({
+                    gameId,
+                    createdAt: game.createdAt,
+                    onlinePlayers: Array.from(game.onlinePlayers),
+                    offlinePlayers: Array.from(game.offlinePlayers.keys()),
+                    lastPlayers: game.lastPlayers,
+                    isOnline: game.onlinePlayers.has(pid),
+                    playerCount: game.onlinePlayers.size + game.offlinePlayers.size
+                });
+            }
+        });
+        
+        try { 
+            console.log('[LUDO][server] ludo:games:get', { pid, gamesCount: userGames.length }); 
+        } catch (_e) {}
+        
+        socket.emit('ludo:games', { games: userGames });
+    });
+
     // Client requests full pending invites list
     socket.on('ludo:invites:get', () => {
         const pid = String(effectiveProfileId || '');
