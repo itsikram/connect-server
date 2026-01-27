@@ -1,0 +1,833 @@
+2026-01-25 13:44:33 +06:00: Server is running on port 4000
+2026-01-25 13:44:34 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 16.421 ms - 26[0m
+2026-01-25 13:44:36 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:44:36 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:44:37 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 500.876 ms - -[0m
+2026-01-25 13:44:37 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 466.240 ms - -[0m
+2026-01-25 13:44:40 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 9.573 ms - -[0m
+2026-01-25 13:44:43 +06:00: Server is running on port 4001
+2026-01-25 13:44:52 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 5.206 ms - -[0m
+2026-01-25 13:44:53 +06:00: Server is running on port 4002
+2026-01-25 13:44:55 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:44:55 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 420.707 ms - 20[0m
+2026-01-25 13:44:55 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 3.094 ms - -[0m
+2026-01-25 13:45:01 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 2.842 ms - 26[0m
+2026-01-25 13:45:03 +06:00: Server is running on port 4003
+2026-01-25 13:45:06 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:45:06 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:45:07 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 464.738 ms - -[0m
+2026-01-25 13:45:07 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 466.704 ms - -[0m
+2026-01-25 13:45:10 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 4.386 ms - -[0m
+2026-01-25 13:45:14 +06:00: Server is running on port 4004
+2026-01-25 13:45:16 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 4.375 ms - 26[0m
+2026-01-25 13:45:22 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:45:23 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 393.384 ms - 20[0m
+2026-01-25 13:45:23 +06:00: Server is running on port 4005
+2026-01-25 13:45:25 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 1.287 ms - -[0m
+2026-01-25 13:45:31 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 2.621 ms - 26[0m
+2026-01-25 13:45:34 +06:00: Server is running on port 4006
+2026-01-25 13:45:36 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:45:36 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:45:37 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 451.886 ms - -[0m
+2026-01-25 13:45:37 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 443.973 ms - -[0m
+2026-01-25 13:45:40 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 1.933 ms - -[0m
+2026-01-25 13:45:44 +06:00: Server is running on port 4007
+2026-01-25 13:45:46 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 2.198 ms - -[0m
+2026-01-25 13:45:52 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:45:53 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 385.274 ms - 20[0m
+2026-01-25 13:45:55 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 1.968 ms - -[0m
+2026-01-25 13:46:01 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 1.887 ms - 26[0m
+2026-01-25 13:46:14 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:46:14 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:46:14 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 8.669 ms - -[0m
+2026-01-25 13:46:14 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 469.915 ms - -[0m
+2026-01-25 13:46:15 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 473.508 ms - -[0m
+2026-01-25 13:46:16 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 1.430 ms - -[0m
+2026-01-25 13:46:22 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:46:23 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 387.070 ms - 20[0m
+2026-01-25 13:46:25 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 1.884 ms - -[0m
+2026-01-25 13:46:31 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 3.795 ms - -[0m
+2026-01-25 13:46:36 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:46:36 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:46:37 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 491.206 ms - -[0m
+2026-01-25 13:46:37 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 487.440 ms - -[0m
+2026-01-25 13:46:40 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 2.807 ms - -[0m
+2026-01-25 13:46:46 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 1.305 ms - -[0m
+2026-01-25 13:46:52 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:46:53 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [36m304[0m 368.771 ms - -[0m
+2026-01-25 13:46:55 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 1.778 ms - -[0m
+2026-01-25 13:47:01 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 1.547 ms - -[0m
+2026-01-25 13:47:06 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:47:06 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:47:07 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 437.810 ms - -[0m
+2026-01-25 13:47:07 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 428.964 ms - -[0m
+2026-01-25 13:47:10 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 1.131 ms - -[0m
+2026-01-25 13:47:16 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 2.002 ms - -[0m
+2026-01-25 13:47:22 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:47:23 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 376.766 ms - 20[0m
+2026-01-25 13:47:23 +06:00: [0mGET / [32m200[0m 1.372 ms - 26[0m
+2026-01-25 13:47:23 +06:00: [0mGET /favicon.ico [32m200[0m 3.132 ms - 26[0m
+2026-01-25 13:47:25 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 1.130 ms - -[0m
+2026-01-25 13:47:39 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 2.737 ms - -[0m
+2026-01-25 13:47:39 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:47:39 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:47:39 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 482.520 ms - -[0m
+2026-01-25 13:47:39 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 477.396 ms - -[0m
+2026-01-25 13:47:44 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 2.889 ms - -[0m
+2026-01-25 13:47:45 +06:00: [0mPOST /api/profile [32m200[0m 321.555 ms - 43067[0m
+2026-01-25 13:47:47 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 2.532 ms - -[0m
+2026-01-25 13:47:52 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:47:53 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [36m304[0m 412.553 ms - -[0m
+2026-01-25 13:48:00 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 4.206 ms - -[0m
+2026-01-25 13:48:02 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 5.619 ms - -[0m
+2026-01-25 13:48:06 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:48:06 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:48:07 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 467.253 ms - -[0m
+2026-01-25 13:48:07 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 469.857 ms - -[0m
+2026-01-25 13:48:16 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 12.238 ms - -[0m
+2026-01-25 13:48:21 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 6.316 ms - -[0m
+2026-01-25 13:48:22 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:48:23 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [36m304[0m 401.404 ms - -[0m
+2026-01-25 13:48:30 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 3.438 ms - -[0m
+2026-01-25 13:48:36 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 4.988 ms - -[0m
+2026-01-25 13:48:36 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:48:36 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:48:37 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 514.751 ms - -[0m
+2026-01-25 13:48:37 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 504.081 ms - -[0m
+2026-01-25 13:48:45 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 12.225 ms - -[0m
+2026-01-25 13:48:56 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 18.414 ms - -[0m
+2026-01-25 13:48:56 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:48:57 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [36m304[0m 408.690 ms - -[0m
+2026-01-25 13:49:08 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 4.310 ms - -[0m
+2026-01-25 13:49:09 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 141.983 ms - -[0m
+2026-01-25 13:49:09 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:49:09 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:49:10 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 740.511 ms - -[0m
+2026-01-25 13:49:10 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 577.510 ms - -[0m
+2026-01-25 13:49:15 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 7.603 ms - -[0m
+2026-01-25 13:49:22 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 9.745 ms - 26[0m
+2026-01-25 13:49:23 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:49:23 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 431.668 ms - 20[0m
+2026-01-25 13:49:31 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 130.736 ms - -[0m
+2026-01-25 13:49:36 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:49:36 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:49:37 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 514.198 ms - -[0m
+2026-01-25 13:49:37 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 527.611 ms - -[0m
+2026-01-25 13:49:46 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 62.036 ms - -[0m
+2026-01-25 13:50:00 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 3.872 ms - 26[0m
+2026-01-25 13:50:00 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:50:00 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 45.495 ms - 26[0m
+2026-01-25 13:50:00 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 515.421 ms - 20[0m
+2026-01-25 13:50:01 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 2.361 ms - -[0m
+2026-01-25 13:50:06 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:50:06 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:50:07 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 510.057 ms - -[0m
+2026-01-25 13:50:07 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 489.056 ms - -[0m
+2026-01-25 13:50:16 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 5.240 ms - -[0m
+2026-01-25 13:50:17 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 56.913 ms - -[0m
+2026-01-25 13:50:30 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:50:30 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 442.024 ms - 20[0m
+2026-01-25 13:50:31 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 17.249 ms - -[0m
+2026-01-25 13:50:32 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 2.329 ms - 26[0m
+2026-01-25 13:50:36 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:50:37 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 527.566 ms - -[0m
+2026-01-25 13:50:37 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:50:37 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 559.209 ms - -[0m
+2026-01-25 13:50:46 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 4.663 ms - -[0m
+2026-01-25 13:50:49 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 5.411 ms - -[0m
+2026-01-25 13:51:01 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 7.858 ms - -[0m
+2026-01-25 13:51:06 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:51:07 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [36m304[0m 731.160 ms - -[0m
+2026-01-25 13:51:07 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:51:07 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:51:08 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 815.660 ms - -[0m
+2026-01-25 13:51:08 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 684.911 ms - -[0m
+2026-01-25 13:51:10 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 3.693 ms - -[0m
+2026-01-25 13:51:16 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 57.466 ms - -[0m
+2026-01-25 13:51:25 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 28.482 ms - -[0m
+2026-01-25 13:51:32 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 16.510 ms - -[0m
+2026-01-25 13:51:33 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:51:33 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [36m304[0m 452.132 ms - -[0m
+2026-01-25 13:51:37 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:51:37 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:51:37 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 538.905 ms - -[0m
+2026-01-25 13:51:37 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 539.953 ms - -[0m
+2026-01-25 13:51:40 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 5.304 ms - 26[0m
+2026-01-25 13:51:46 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 7.466 ms - -[0m
+2026-01-25 13:51:55 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 18.432 ms - 26[0m
+2026-01-25 13:52:01 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 9.518 ms - -[0m
+2026-01-25 13:52:02 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:52:03 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 431.040 ms - 20[0m
+2026-01-25 13:52:07 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:52:07 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:52:07 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 476.513 ms - -[0m
+2026-01-25 13:52:07 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 492.465 ms - -[0m
+2026-01-25 13:52:10 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 14.101 ms - -[0m
+2026-01-25 13:52:16 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 7.274 ms - -[0m
+2026-01-25 13:52:29 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 3.323 ms - -[0m
+2026-01-25 13:52:32 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 4.734 ms - -[0m
+2026-01-25 13:52:33 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:52:33 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [36m304[0m 439.239 ms - -[0m
+2026-01-25 13:52:37 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:52:37 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:52:37 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 494.144 ms - -[0m
+2026-01-25 13:52:37 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 503.317 ms - -[0m
+2026-01-25 13:52:44 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 6.619 ms - 26[0m
+2026-01-25 13:52:46 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 8.503 ms - -[0m
+2026-01-25 13:52:59 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 2.616 ms - -[0m
+2026-01-25 13:53:01 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 14.455 ms - -[0m
+2026-01-25 13:53:04 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:53:04 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 424.360 ms - 20[0m
+2026-01-25 13:53:07 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:53:07 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:53:07 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 531.617 ms - -[0m
+2026-01-25 13:53:07 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 521.269 ms - -[0m
+2026-01-25 13:53:16 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 15.934 ms - -[0m
+2026-01-25 13:53:16 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 2.825 ms - -[0m
+2026-01-25 13:53:32 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 141.356 ms - -[0m
+2026-01-25 13:53:35 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 23.515 ms - -[0m
+2026-01-25 13:53:37 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:53:37 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:53:37 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 505.796 ms - -[0m
+2026-01-25 13:53:37 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 526.914 ms - -[0m
+2026-01-25 13:53:41 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:53:42 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 444.475 ms - 20[0m
+2026-01-25 13:53:47 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 4.733 ms - -[0m
+2026-01-25 13:53:47 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 9.080 ms - -[0m
+2026-01-25 13:54:02 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 12.200 ms - -[0m
+2026-01-25 13:54:02 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 2.510 ms - 26[0m
+2026-01-25 13:54:04 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:54:04 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 441.093 ms - 20[0m
+2026-01-25 13:54:07 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:54:07 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:54:07 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 477.224 ms - -[0m
+2026-01-25 13:54:07 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 474.046 ms - -[0m
+2026-01-25 13:54:17 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 25.085 ms - -[0m
+2026-01-25 13:54:17 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 2.631 ms - 26[0m
+2026-01-25 13:54:32 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 29.010 ms - -[0m
+2026-01-25 13:54:33 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 4.222 ms - -[0m
+2026-01-25 13:54:34 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:54:34 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 429.817 ms - 20[0m
+2026-01-25 13:54:37 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:54:37 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:54:37 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 511.576 ms - -[0m
+2026-01-25 13:54:37 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 503.787 ms - -[0m
+2026-01-25 13:54:51 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 4.488 ms - -[0m
+2026-01-25 13:54:52 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 34.529 ms - -[0m
+2026-01-25 13:55:12 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 9.417 ms - -[0m
+2026-01-25 13:55:12 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:55:12 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:55:12 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 60.595 ms - -[0m
+2026-01-25 13:55:12 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:55:13 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [36m304[0m 1739.677 ms - -[0m
+2026-01-25 13:55:14 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 1863.808 ms - -[0m
+2026-01-25 13:55:14 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 1839.295 ms - -[0m
+2026-01-25 13:55:17 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 10.362 ms - -[0m
+2026-01-25 13:55:20 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 13.368 ms - -[0m
+2026-01-25 13:55:32 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 4.189 ms - -[0m
+2026-01-25 13:55:36 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 29.013 ms - -[0m
+2026-01-25 13:55:38 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:55:38 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:55:39 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:55:39 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 934.943 ms - -[0m
+2026-01-25 13:55:39 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 857.621 ms - -[0m
+2026-01-25 13:55:39 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [36m304[0m 561.369 ms - -[0m
+2026-01-25 13:55:47 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 51.296 ms - -[0m
+2026-01-25 13:55:53 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 17.710 ms - -[0m
+2026-01-25 13:56:02 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 8.733 ms - -[0m
+2026-01-25 13:56:07 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:56:08 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 528.698 ms - -[0m
+2026-01-25 13:56:08 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:56:08 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 458.298 ms - -[0m
+2026-01-25 13:56:11 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 2.515 ms - 26[0m
+2026-01-25 13:56:11 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:56:12 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 432.308 ms - 20[0m
+2026-01-25 13:56:17 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 4.145 ms - -[0m
+2026-01-25 13:56:28 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 24.445 ms - -[0m
+2026-01-25 13:56:36 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 460.546 ms - -[0m
+2026-01-25 13:56:37 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:56:38 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 549.323 ms - -[0m
+2026-01-25 13:56:38 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:56:38 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 491.710 ms - -[0m
+2026-01-25 13:56:42 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:56:42 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [36m304[0m 434.052 ms - -[0m
+2026-01-25 13:56:46 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 7.433 ms - -[0m
+2026-01-25 13:56:47 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 143.527 ms - -[0m
+2026-01-25 13:57:01 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 5.971 ms - -[0m
+2026-01-25 13:57:02 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 4.512 ms - -[0m
+2026-01-25 13:57:07 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:57:08 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 517.914 ms - -[0m
+2026-01-25 13:57:08 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:57:08 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 446.513 ms - -[0m
+2026-01-25 13:57:12 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:57:12 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [36m304[0m 434.185 ms - -[0m
+2026-01-25 13:57:17 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 2.632 ms - 26[0m
+2026-01-25 13:57:17 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 5.547 ms - -[0m
+2026-01-25 13:57:32 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 6.331 ms - -[0m
+2026-01-25 13:57:32 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 2.664 ms - -[0m
+2026-01-25 13:57:53 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:57:53 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:57:53 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 10.789 ms - -[0m
+2026-01-25 13:57:53 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:57:53 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 15.336 ms - -[0m
+2026-01-25 13:57:53 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 422.168 ms - 20[0m
+2026-01-25 13:57:53 +06:00: [0mPOST /api/profile [32m200[0m 252.978 ms - 43067[0m
+2026-01-25 13:57:53 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 538.208 ms - -[0m
+2026-01-25 13:57:54 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 502.802 ms - -[0m
+2026-01-25 13:58:03 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 5.562 ms - 26[0m
+2026-01-25 13:58:09 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:58:09 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:58:10 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 473.806 ms - -[0m
+2026-01-25 13:58:10 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 471.839 ms - -[0m
+2026-01-25 13:58:12 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:58:12 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 408.178 ms - 20[0m
+2026-01-25 13:58:17 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 2.015 ms - 26[0m
+2026-01-25 13:58:17 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 2.683 ms - -[0m
+2026-01-25 13:58:32 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 1.615 ms - -[0m
+2026-01-25 13:58:32 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 1.534 ms - 26[0m
+2026-01-25 13:58:38 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:58:39 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 490.441 ms - -[0m
+2026-01-25 13:58:39 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:58:39 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 475.133 ms - -[0m
+2026-01-25 13:58:42 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:58:42 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 412.323 ms - 20[0m
+2026-01-25 13:58:47 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 2.931 ms - -[0m
+2026-01-25 13:58:47 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 2.104 ms - -[0m
+2026-01-25 13:59:02 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 1.990 ms - -[0m
+2026-01-25 13:59:02 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 2.543 ms - 26[0m
+2026-01-25 13:59:08 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:59:08 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 468.022 ms - -[0m
+2026-01-25 13:59:09 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:59:09 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 471.167 ms - -[0m
+2026-01-25 13:59:12 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:59:12 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 404.243 ms - 20[0m
+2026-01-25 13:59:17 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 4.114 ms - -[0m
+2026-01-25 13:59:17 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 2.223 ms - -[0m
+2026-01-25 13:59:43 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 5.029 ms - 26[0m
+2026-01-25 13:59:43 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 13:59:43 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 5.255 ms - -[0m
+2026-01-25 13:59:44 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:59:44 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 13:59:44 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 512.687 ms - 20[0m
+2026-01-25 13:59:44 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 528.200 ms - -[0m
+2026-01-25 13:59:44 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 559.120 ms - -[0m
+2026-01-25 13:59:47 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 7.528 ms - -[0m
+2026-01-25 13:59:51 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 4.967 ms - -[0m
+2026-01-25 14:00:04 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 4.420 ms - -[0m
+2026-01-25 14:00:06 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 21.433 ms - -[0m
+2026-01-25 14:00:20 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:00:21 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [36m304[0m 1079.951 ms - -[0m
+2026-01-25 14:00:30 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 3.883 ms - -[0m
+2026-01-25 14:00:36 +06:00: [0mPOST /api/profile [32m200[0m 278.320 ms - 43067[0m
+2026-01-25 14:00:39 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 4.627 ms - -[0m
+2026-01-25 14:00:51 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 189.387 ms - 26[0m
+2026-01-25 14:00:51 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:00:51 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 589.859 ms - 20[0m
+2026-01-25 14:01:10 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 4.104 ms - -[0m
+2026-01-25 14:01:21 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:01:21 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [36m304[0m 785.038 ms - -[0m
+2026-01-25 14:01:24 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 122.730 ms - -[0m
+2026-01-25 14:01:39 +06:00: [0mPOST /api/profile [32m200[0m 276.798 ms - 43067[0m
+2026-01-25 14:01:48 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:01:50 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:01:51 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 3661.146 ms - -[0m
+2026-01-25 14:01:51 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 2177.388 ms - -[0m
+2026-01-25 14:01:51 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 41.646 ms - 26[0m
+2026-01-25 14:02:01 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:02:02 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 416.567 ms - 20[0m
+2026-01-25 14:02:03 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 12.271 ms - -[0m
+2026-01-25 14:02:04 +06:00: [0mGET / [32m200[0m 17.607 ms - 26[0m
+2026-01-25 14:02:06 +06:00: [0mGET /favicon.ico [32m200[0m 29.309 ms - 26[0m
+2026-01-25 14:02:30 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 8.973 ms - -[0m
+2026-01-25 14:02:31 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:02:31 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [36m304[0m 440.764 ms - -[0m
+2026-01-25 14:02:31 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 22.196 ms - -[0m
+2026-01-25 14:02:32 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:02:32 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:02:33 +06:00: [0mGET /api/profile/online-status?profileId=67e431d61e4463f7adfa544e [36m304[0m 481.712 ms - -[0m
+2026-01-25 14:02:33 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 541.902 ms - -[0m
+2026-01-25 14:02:45 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 6.498 ms - 26[0m
+2026-01-25 14:02:58 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:02:58 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 674.312 ms - 20[0m
+2026-01-25 14:03:05 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 10.669 ms - -[0m
+2026-01-25 14:11:53 +06:00: Server is running on port 4000
+2026-01-25 14:11:53 +06:00: Server is running on port 4001
+2026-01-25 14:11:54 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 45.025 ms - 26[0m
+2026-01-25 14:11:55 +06:00: [0mPOST /api/profile [32m200[0m 1556.777 ms - 38773[0m
+2026-01-25 14:11:56 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:11:56 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 475.320 ms - 20[0m
+2026-01-25 14:11:57 +06:00: Server is running on port 4003
+2026-01-25 14:11:59 +06:00: Server is running on port 4002
+2026-01-25 14:12:24 +06:00: profileId 67e431d61e4463f7adfa544e
+2026-01-25 14:12:25 +06:00: friend_online 67bf198509395add03e1e0d8 67e431d61e4463f7adfa544e
+2026-01-25 14:12:25 +06:00: friend_online 67ed3b419aa5adab7e03838e 67e431d61e4463f7adfa544e
+2026-01-25 14:12:25 +06:00: friend_online 67bf1e4009395add03e1e234 67e431d61e4463f7adfa544e
+2026-01-25 14:12:25 +06:00: friend_online 682ee90ad30adf9b2eeb3883 67e431d61e4463f7adfa544e
+2026-01-25 14:12:25 +06:00: friend_online 681071cd41ce19a404cad3e7 67e431d61e4463f7adfa544e
+2026-01-25 14:12:25 +06:00: friend_online 68c93d69c6515c93867c305c 67e431d61e4463f7adfa544e
+2026-01-25 14:12:25 +06:00: friend_online 68ba47a03c9a326dacbc2f80 67e431d61e4463f7adfa544e
+2026-01-25 14:12:25 +06:00: [LUDO][server] connected {
+  socketId: 'FSwEh6W2HuFc8MIqAAAC',
+  effectiveProfileId: '67e431d61e4463f7adfa544e'
+}
+2026-01-25 14:12:25 +06:00: [LUDO][server] joined user room {
+  room: 'user_67e431d61e4463f7adfa544e',
+  size: 1,
+  socketId: 'FSwEh6W2HuFc8MIqAAAC'
+}
+2026-01-25 14:12:25 +06:00: [CHESS][server] connected {
+  socketId: 'FSwEh6W2HuFc8MIqAAAC',
+  effectiveProfileId: '67e431d61e4463f7adfa544e'
+}
+2026-01-25 14:12:25 +06:00: ✅ Socket connected: FSwEh6W2HuFc8MIqAAAC (profile: 67e431d61e4463f7adfa544e, browser: none)
+2026-01-25 14:12:25 +06:00: Server is running on port 4004
+2026-01-25 14:12:25 +06:00: [0mGET /api/connect [32m200[0m 58.365 ms - 610[0m
+2026-01-25 14:12:25 +06:00: [0mGET /api/connect [32m200[0m 54.540 ms - 610[0m
+2026-01-25 14:12:25 +06:00: profileId 67bf1e4009395add03e1e234
+2026-01-25 14:12:25 +06:00: Server is running on port 4005
+2026-01-25 14:12:25 +06:00: friend_online 67beff004ee47c70c1b80bb6 67bf1e4009395add03e1e234
+2026-01-25 14:12:25 +06:00: friend_online 67ed3b419aa5adab7e03838e 67bf1e4009395add03e1e234
+2026-01-25 14:12:25 +06:00: friend_online 67f2c568870999d58db9ac8a 67bf1e4009395add03e1e234
+2026-01-25 14:12:25 +06:00: friend_online 67e431d61e4463f7adfa544e 67bf1e4009395add03e1e234
+2026-01-25 14:12:25 +06:00: friend_online 681071cd41ce19a404cad3e7 67bf1e4009395add03e1e234
+2026-01-25 14:12:25 +06:00: friend_online 682ee90ad30adf9b2eeb3883 67bf1e4009395add03e1e234
+2026-01-25 14:12:25 +06:00: friend_online 67bf198509395add03e1e0d8 67bf1e4009395add03e1e234
+2026-01-25 14:12:25 +06:00: friend_online 68ba47a03c9a326dacbc2f80 67bf1e4009395add03e1e234
+2026-01-25 14:12:25 +06:00: friend_online 68c93d69c6515c93867c305c 67bf1e4009395add03e1e234
+2026-01-25 14:12:25 +06:00: friend_online 68ceb59ca1d7221f9907d101 67bf1e4009395add03e1e234
+2026-01-25 14:12:25 +06:00: friend_online 690adb85dacd33694816ec1c 67bf1e4009395add03e1e234
+2026-01-25 14:12:25 +06:00: friend_online 690ada92dacd33694816e48a 67bf1e4009395add03e1e234
+2026-01-25 14:12:25 +06:00: friend_online 690c90536ee2fdd00dd83993 67bf1e4009395add03e1e234
+2026-01-25 14:12:25 +06:00: [LUDO][server] connected {
+  socketId: '3TeDy2GksfhlM-McAAAD',
+  effectiveProfileId: '67bf1e4009395add03e1e234'
+}
+2026-01-25 14:12:25 +06:00: [LUDO][server] joined user room {
+  room: 'user_67bf1e4009395add03e1e234',
+  size: 1,
+  socketId: '3TeDy2GksfhlM-McAAAD'
+}
+2026-01-25 14:12:25 +06:00: [CHESS][server] connected {
+  socketId: '3TeDy2GksfhlM-McAAAD',
+  effectiveProfileId: '67bf1e4009395add03e1e234'
+}
+2026-01-25 14:12:25 +06:00: ✅ Socket connected: 3TeDy2GksfhlM-McAAAD (profile: 67bf1e4009395add03e1e234, browser: none)
+2026-01-25 14:12:26 +06:00: [0mGET /api/connect [32m200[0m 57.991 ms - 610[0m
+2026-01-25 14:12:26 +06:00: [0mGET /api/connect [32m200[0m 54.828 ms - 610[0m
+2026-01-25 14:12:26 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:12:27 +06:00: [0mGET /api/setting?profileId=67e431d61e4463f7adfa544e [32m200[0m 187.954 ms - 276[0m
+2026-01-25 14:12:27 +06:00: [0mGET /api/profile/hasStory [33m400[0m 157.524 ms - 49[0m
+2026-01-25 14:12:27 +06:00: [0mGET /api/profile/hasStory [33m400[0m 11.550 ms - 49[0m
+2026-01-25 14:12:27 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:12:27 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:12:27 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:12:27 +06:00: [0mPOST /api/profile [32m200[0m 357.248 ms - 38773[0m
+2026-01-25 14:12:27 +06:00: [0mGET /api/notification/?profileId=67e431d61e4463f7adfa544e [32m200[0m 984.167 ms - 8497[0m
+2026-01-25 14:12:27 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:12:27 +06:00: [0mGET /api/profile/hasStory [33m400[0m 77.777 ms - 49[0m
+2026-01-25 14:12:28 +06:00: [0mGET /api/setting?profileId=67bf1e4009395add03e1e234 [32m200[0m 295.787 ms - 496[0m
+2026-01-25 14:12:28 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:12:28 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:12:29 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:12:29 +06:00: [0mGET /api/profile/hasStory [33m400[0m 455.139 ms - 49[0m
+2026-01-25 14:12:29 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:12:29 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 1678.168 ms - 20[0m
+2026-01-25 14:12:29 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:12:30 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:12:30 +06:00: [0mGET /api/message/new-messages?profileId=67e431d61e4463f7adfa544e [32m200[0m 2483.637 ms - 15[0m
+2026-01-25 14:12:30 +06:00: [0mGET /api/message/chatList?profileId=67e431d61e4463f7adfa544e [32m200[0m 3554.236 ms - 30955[0m
+2026-01-25 14:12:31 +06:00: [0mGET /api/post/newsFeed/?pageNumber=1 [32m200[0m 3626.596 ms - 69002[0m
+2026-01-25 14:12:31 +06:00: [0mPOST /api/profile [32m200[0m 1124.436 ms - 43067[0m
+2026-01-25 14:12:31 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:12:32 +06:00: [0mGET /api/notification/?profileId=67bf1e4009395add03e1e234 [32m200[0m 2497.637 ms - 9064[0m
+2026-01-25 14:12:32 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [32m200[0m 2504.997 ms - 20[0m
+2026-01-25 14:12:32 +06:00: Server is running on port 4006
+2026-01-25 14:12:32 +06:00: [0mGET /api/message/new-messages?profileId=67bf1e4009395add03e1e234 [32m200[0m 3709.726 ms - 15[0m
+2026-01-25 14:12:32 +06:00: [0mPOST /api/web-notification/register-browser [32m200[0m 3356.909 ms - 181[0m
+2026-01-25 14:12:32 +06:00: [0mPOST /api/web-notification/register-browser [32m200[0m 1025.855 ms - 182[0m
+2026-01-25 14:12:32 +06:00: Server is running on port 4007
+2026-01-25 14:12:32 +06:00: [0mGET /api/message/chatList?profileId=67bf1e4009395add03e1e234 [32m200[0m 4319.823 ms - 24726[0m
+2026-01-25 14:12:32 +06:00: [0mGET /api/post/newsFeed/?pageNumber=1 [32m200[0m 4231.418 ms - 157546[0m
+2026-01-25 14:12:32 +06:00: [0mGET /api/story/ [32m200[0m 571.059 ms - 7064[0m
+2026-01-25 14:12:46 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 4.692 ms - 26[0m
+2026-01-25 14:12:46 +06:00: [0mGET /api/story/ [32m200[0m 245.692 ms - -[0m
+2026-01-25 14:12:48 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 4.614 ms - -[0m
+2026-01-25 14:12:56 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:12:56 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:12:56 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [36m304[0m 392.790 ms - -[0m
+2026-01-25 14:12:57 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 595.457 ms - -[0m
+2026-01-25 14:12:57 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 2.659 ms - -[0m
+2026-01-25 14:13:03 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 4.827 ms - -[0m
+2026-01-25 14:13:12 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 3.975 ms - -[0m
+2026-01-25 14:13:18 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 2.152 ms - -[0m
+2026-01-25 14:13:26 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:13:26 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:13:26 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [36m304[0m 438.289 ms - -[0m
+2026-01-25 14:13:26 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 575.378 ms - -[0m
+2026-01-25 14:13:27 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 2.156 ms - -[0m
+2026-01-25 14:13:33 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 10.252 ms - -[0m
+2026-01-25 14:13:43 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 8.746 ms - 26[0m
+2026-01-25 14:13:48 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 4.995 ms - -[0m
+2026-01-25 14:14:04 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:14:04 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 5.612 ms - -[0m
+2026-01-25 14:14:05 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:14:05 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 2.728 ms - -[0m
+2026-01-25 14:14:05 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 418.712 ms - 20[0m
+2026-01-25 14:14:05 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 594.487 ms - -[0m
+2026-01-25 14:14:13 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 5.414 ms - -[0m
+2026-01-25 14:14:18 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 2.907 ms - -[0m
+2026-01-25 14:14:26 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:14:26 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:14:26 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [36m304[0m 412.017 ms - -[0m
+2026-01-25 14:14:26 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 560.286 ms - -[0m
+2026-01-25 14:14:28 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 2.190 ms - -[0m
+2026-01-25 14:14:33 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 2.741 ms - -[0m
+2026-01-25 14:14:43 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 1.482 ms - 26[0m
+2026-01-25 14:14:48 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 194.600 ms - -[0m
+2026-01-25 14:14:51 +06:00: [0mPOST /api/profile [32m200[0m 286.305 ms - 38773[0m
+2026-01-25 14:14:56 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:14:57 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:14:57 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 639.391 ms - -[0m
+2026-01-25 14:14:57 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 423.329 ms - 20[0m
+2026-01-25 14:15:03 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 143.037 ms - -[0m
+2026-01-25 14:15:09 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 5.324 ms - 26[0m
+2026-01-25 14:15:28 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 3.256 ms - -[0m
+2026-01-25 14:15:28 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:15:28 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 12.127 ms - -[0m
+2026-01-25 14:15:28 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:15:29 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [36m304[0m 429.103 ms - -[0m
+2026-01-25 14:15:29 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 458.442 ms - -[0m
+2026-01-25 14:15:33 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 4.876 ms - -[0m
+2026-01-25 14:15:40 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [32m200[0m 4.371 ms - 26[0m
+2026-01-25 14:15:48 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 5.883 ms - -[0m
+2026-01-25 14:15:55 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 3.976 ms - -[0m
+2026-01-25 14:15:56 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:15:56 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 507.178 ms - -[0m
+2026-01-25 14:16:00 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:16:00 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 403.621 ms - 20[0m
+2026-01-25 14:16:03 +06:00: [0mGET /api/message/new-messages-count?profileId=67bf1e4009395add03e1e234 [36m304[0m 2.816 ms - -[0m
+2026-01-25 14:16:09 +06:00: [0mPOST /api/profile [32m200[0m 298.320 ms - 43067[0m
+2026-01-25 14:16:11 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:16:11 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:16:12 +06:00: [0mPOST /api/profile [32m200[0m 290.474 ms - 43067[0m
+2026-01-25 14:16:13 +06:00: [0mGET /api/message/new-messages-count?profileId=67e431d61e4463f7adfa544e [36m304[0m 8.037 ms - -[0m
+2026-01-25 14:16:13 +06:00: [0mGET /api/message/chatList?profileId=67bf1e4009395add03e1e234 [32m200[0m 1432.847 ms - 24726[0m
+2026-01-25 14:16:13 +06:00: [0mPOST /api/profile [32m200[0m 257.568 ms - 38773[0m
+2026-01-25 14:16:13 +06:00: [0mGET /api/message/chatList?profileId=67bf1e4009395add03e1e234 [32m200[0m 1732.158 ms - 24726[0m
+2026-01-25 14:16:14 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:16:14 +06:00: [0mPOST /api/profile [32m200[0m 266.866 ms - 38773[0m
+2026-01-25 14:16:15 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:16:15 +06:00: [0mPOST /api/profile [32m200[0m 280.179 ms - 38773[0m
+2026-01-25 14:16:15 +06:00: [0mGET /api/message/chatList?profileId=67e431d61e4463f7adfa544e [32m200[0m 998.608 ms - 30955[0m
+2026-01-25 14:16:15 +06:00: [0mGET /api/message/chatList?profileId=67e431d61e4463f7adfa544e [32m200[0m 871.426 ms - 30955[0m
+2026-01-25 14:16:18 +06:00: User 67e431d61e4463f7adfa544e joining room: 67bf1e4009395add03e1e234_67e431d61e4463f7adfa544e
+2026-01-25 14:16:18 +06:00: User 67e431d61e4463f7adfa544e leaving room: 67bf1e4009395add03e1e234_67e431d61e4463f7adfa544e
+2026-01-25 14:16:18 +06:00: User 67e431d61e4463f7adfa544e joining room: 67bf1e4009395add03e1e234_67e431d61e4463f7adfa544e
+2026-01-25 14:16:18 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:16:18 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:16:18 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:16:18 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:16:18 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:16:18 +06:00: getChatHistory result: { foundMessages: 20, hasMore: true, totalMessages: 1131, limit: 20 }
+2026-01-25 14:16:19 +06:00: [0mGET /api/message/getChatHistory?profileId=67e431d61e4463f7adfa544e&friendId=67bf1e4009395add03e1e234&limit=20&skip=0 [32m200[0m 694.468 ms - 6067[0m
+2026-01-25 14:16:19 +06:00: profileGet called with id: 67bf1e4009395add03e1e234 fromQuery: yes
+2026-01-25 14:16:19 +06:00: Looking for profile with ID: 67bf1e4009395add03e1e234
+2026-01-25 14:16:19 +06:00: getChatHistory result: { foundMessages: 20, hasMore: true, totalMessages: 1131, limit: 20 }
+2026-01-25 14:16:19 +06:00: [0mGET /api/message/getChatHistory?profileId=67e431d61e4463f7adfa544e&friendId=67bf1e4009395add03e1e234&limit=20&skip=0 [32m200[0m 854.812 ms - 6067[0m
+2026-01-25 14:16:19 +06:00: getChatHistory result: { foundMessages: 20, hasMore: true, totalMessages: 1131, limit: 20 }
+2026-01-25 14:16:19 +06:00: [0mGET /api/message/getChatHistory?profileId=67e431d61e4463f7adfa544e&friendId=67bf1e4009395add03e1e234&limit=20&skip=0 [32m200[0m 1025.659 ms - 6067[0m
+2026-01-25 14:16:19 +06:00: ProfileId is valid ObjectId, searching by _id
+2026-01-25 14:16:19 +06:00: [0mGET /api/message/media/?profileId=67bf1e4009395add03e1e234 [32m200[0m 1226.180 ms - 3983[0m
+2026-01-25 14:16:20 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:16:20 +06:00: [0mPOST /api/profile [32m200[0m 1155.944 ms - 38773[0m
+2026-01-25 14:16:20 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:16:20 +06:00: [0mGET /api/profile?profileId=67bf1e4009395add03e1e234 [32m200[0m 1683.586 ms - 43067[0m
+2026-01-25 14:16:20 +06:00: User 67bf1e4009395add03e1e234 joining room: 67bf1e4009395add03e1e234_67e431d61e4463f7adfa544e
+2026-01-25 14:16:20 +06:00: User 67bf1e4009395add03e1e234 leaving room: 67bf1e4009395add03e1e234_67e431d61e4463f7adfa544e
+2026-01-25 14:16:20 +06:00: User 67bf1e4009395add03e1e234 joining room: 67bf1e4009395add03e1e234_67e431d61e4463f7adfa544e
+2026-01-25 14:16:20 +06:00: profileGet called with id: 67bf1e4009395add03e1e234 fromQuery: yes
+2026-01-25 14:16:20 +06:00: Looking for profile with ID: 67bf1e4009395add03e1e234
+2026-01-25 14:16:20 +06:00: getChatHistory result: { foundMessages: 20, hasMore: true, totalMessages: 1131, limit: 20 }
+2026-01-25 14:16:20 +06:00: [0mGET /api/message/getChatHistory?profileId=67e431d61e4463f7adfa544e&friendId=67bf1e4009395add03e1e234&limit=20&skip=0 [32m200[0m 1264.880 ms - 6067[0m
+2026-01-25 14:16:20 +06:00: ProfileId is valid ObjectId, searching by _id
+2026-01-25 14:16:20 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:16:20 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:16:20 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:16:21 +06:00: [0mGET /api/profile?profileId=67bf1e4009395add03e1e234 [32m200[0m 1055.840 ms - 43067[0m
+2026-01-25 14:16:21 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:16:21 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:16:21 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:16:21 +06:00: profileGet called with id: 67e431d61e4463f7adfa544e fromQuery: yes
+2026-01-25 14:16:21 +06:00: Looking for profile with ID: 67e431d61e4463f7adfa544e
+2026-01-25 14:16:21 +06:00: profileGet called with id: 67e431d61e4463f7adfa544e fromQuery: yes
+2026-01-25 14:16:21 +06:00: Looking for profile with ID: 67e431d61e4463f7adfa544e
+2026-01-25 14:16:21 +06:00: ProfileId is valid ObjectId, searching by _id
+2026-01-25 14:16:22 +06:00: ProfileId is valid ObjectId, searching by _id
+2026-01-25 14:16:22 +06:00: getChatHistory result: { foundMessages: 20, hasMore: true, totalMessages: 1131, limit: 20 }
+2026-01-25 14:16:22 +06:00: [0mGET /api/message/getChatHistory?profileId=67bf1e4009395add03e1e234&friendId=67e431d61e4463f7adfa544e&limit=20&skip=0 [32m200[0m 1699.251 ms - 6067[0m
+2026-01-25 14:16:22 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:16:22 +06:00: [0mPOST /api/profile [32m200[0m 948.815 ms - 43067[0m
+2026-01-25 14:16:22 +06:00: [0mGET /api/message/media/?profileId=67e431d61e4463f7adfa544e [32m200[0m 1479.608 ms - 3983[0m
+2026-01-25 14:16:23 +06:00: [0mGET /api/profile?profileId=67e431d61e4463f7adfa544e [32m200[0m 2134.993 ms - 38773[0m
+2026-01-25 14:16:23 +06:00: [0mGET /api/profile?profileId=67e431d61e4463f7adfa544e [32m200[0m 2169.459 ms - 38773[0m
+2026-01-25 14:16:23 +06:00: getChatHistory result: { foundMessages: 20, hasMore: true, totalMessages: 1131, limit: 20 }
+2026-01-25 14:16:23 +06:00: [0mGET /api/message/getChatHistory?profileId=67e431d61e4463f7adfa544e&friendId=67bf1e4009395add03e1e234&limit=20&skip=20 [32m200[0m 1632.736 ms - 6067[0m
+2026-01-25 14:16:23 +06:00: getChatHistory result: { foundMessages: 20, hasMore: true, totalMessages: 1131, limit: 20 }
+2026-01-25 14:16:23 +06:00: [0mGET /api/message/getChatHistory?profileId=67bf1e4009395add03e1e234&friendId=67e431d61e4463f7adfa544e&limit=20&skip=0 [32m200[0m 1686.898 ms - 6067[0m
+2026-01-25 14:16:23 +06:00: getChatHistory result: { foundMessages: 20, hasMore: true, totalMessages: 1131, limit: 20 }
+2026-01-25 14:16:23 +06:00: [0mGET /api/message/getChatHistory?profileId=67bf1e4009395add03e1e234&friendId=67e431d61e4463f7adfa544e&limit=20&skip=0 [32m200[0m 792.368 ms - 6067[0m
+2026-01-25 14:16:23 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:16:23 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:16:24 +06:00: getChatHistory result: { foundMessages: 20, hasMore: true, totalMessages: 1131, limit: 20 }
+2026-01-25 14:16:24 +06:00: [0mGET /api/message/getChatHistory?profileId=67bf1e4009395add03e1e234&friendId=67e431d61e4463f7adfa544e&limit=20&skip=0 [32m200[0m 475.407 ms - 6067[0m
+2026-01-25 14:16:24 +06:00: getChatHistory result: { foundMessages: 20, hasMore: true, totalMessages: 1131, limit: 20 }
+2026-01-25 14:16:24 +06:00: [0mGET /api/message/getChatHistory?profileId=67e431d61e4463f7adfa544e&friendId=67bf1e4009395add03e1e234&limit=20&skip=0 [36m304[0m 495.807 ms - -[0m
+2026-01-25 14:16:24 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:16:24 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:16:24 +06:00: getChatHistory result: { foundMessages: 20, hasMore: true, totalMessages: 1131, limit: 20 }
+2026-01-25 14:16:24 +06:00: [0mGET /api/message/getChatHistory?profileId=67bf1e4009395add03e1e234&friendId=67e431d61e4463f7adfa544e&limit=20&skip=0 [36m304[0m 581.993 ms - -[0m
+2026-01-25 14:16:24 +06:00: getChatHistory result: { foundMessages: 20, hasMore: true, totalMessages: 1131, limit: 20 }
+2026-01-25 14:16:24 +06:00: [0mGET /api/message/getChatHistory?profileId=67e431d61e4463f7adfa544e&friendId=67bf1e4009395add03e1e234&limit=20&skip=0 [32m200[0m 425.409 ms - 6067[0m
+2026-01-25 14:16:26 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:16:26 +06:00: getChatHistory result: { foundMessages: 20, hasMore: true, totalMessages: 1131, limit: 20 }
+2026-01-25 14:16:26 +06:00: [0mGET /api/message/getChatHistory?profileId=67bf1e4009395add03e1e234&friendId=67e431d61e4463f7adfa544e&limit=20&skip=0 [36m304[0m 730.935 ms - -[0m
+2026-01-25 14:16:27 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:16:27 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:16:27 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 419.182 ms - -[0m
+2026-01-25 14:16:27 +06:00: [0mPOST /api/message/seen [32m200[0m 553.424 ms - 75[0m
+2026-01-25 14:16:28 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:16:28 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:16:28 +06:00: [0mPOST /api/message/seen [32m200[0m 578.781 ms - 75[0m
+2026-01-25 14:16:28 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [36m304[0m 375.776 ms - -[0m
+2026-01-25 14:16:29 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:16:29 +06:00: [0mPOST /api/message/seen [32m200[0m 528.557 ms - 75[0m
+2026-01-25 14:16:46 +06:00: Web notification sent for message to user 67bf1e4009395add03e1e234, browsers: 80
+2026-01-25 14:16:48 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:16:49 +06:00: [0mPOST /api/message/seen [32m200[0m 587.442 ms - 75[0m
+2026-01-25 14:16:52 +06:00: call-user {
+  to: '67bf1e4009395add03e1e234',
+  channelName: '67e431d61e4463f7adfa544e-67bf1e4009395add03e1e234'
+}
+2026-01-25 14:16:53 +06:00: update-call-status { to: '67e431d61e4463f7adfa544e', status: 'Ringing...' }
+2026-01-25 14:16:54 +06:00: update-call-status { to: '67e431d61e4463f7adfa544e', status: 'Call Seen' }
+2026-01-25 14:16:57 +06:00: call-cancelled { to: '67e431d61e4463f7adfa544e', channelName: null }
+2026-01-25 14:16:59 +06:00: call-cancelled {
+  to: '67bf1e4009395add03e1e234',
+  channelName: '67e431d61e4463f7adfa544e-67bf1e4009395add03e1e234'
+}
+2026-01-25 14:16:59 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:00 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [32m200[0m 1016.676 ms - 347[0m
+2026-01-25 14:17:00 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:17:01 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 516.825 ms - 20[0m
+2026-01-25 14:17:07 +06:00: User 67e431d61e4463f7adfa544e leaving room: 67bf1e4009395add03e1e234_67e431d61e4463f7adfa544e
+2026-01-25 14:17:08 +06:00: update-call-status { to: '67e431d61e4463f7adfa544e', status: 'Call Seen' }
+2026-01-25 14:17:12 +06:00: [0mGET /api/profile/hasStory?profileId=67e431d61e4463f7adfa544e [32m200[0m 61.021 ms - 49[0m
+2026-01-25 14:17:13 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:17:13 +06:00: [0mPOST /api/profile [32m200[0m 549.987 ms - 38773[0m
+2026-01-25 14:17:13 +06:00: [0mGET /api/profile/hasStory?profileId=67e431d61e4463f7adfa544e [32m200[0m 389.322 ms - 49[0m
+2026-01-25 14:17:13 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:13 +06:00: [0mPOST /api/profile [32m200[0m 634.532 ms - 43067[0m
+2026-01-25 14:17:13 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:13 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:14 +06:00: [0mGET /api/post/newsFeed/?pageNumber=2 [32m200[0m 971.261 ms - 31[0m
+2026-01-25 14:17:14 +06:00: profileGet called with id: 67e431d61e4463f7adfa544e fromQuery: yes
+2026-01-25 14:17:14 +06:00: Looking for profile with ID: 67e431d61e4463f7adfa544e
+2026-01-25 14:17:14 +06:00: ProfileId is valid ObjectId, searching by _id
+2026-01-25 14:17:15 +06:00: [0mGET /api/profile?profileId=67e431d61e4463f7adfa544e [32m200[0m 1987.192 ms - 38773[0m
+2026-01-25 14:17:15 +06:00: getChatHistory result: { foundMessages: 20, hasMore: true, totalMessages: 1132, limit: 20 }
+2026-01-25 14:17:15 +06:00: [0mGET /api/message/getChatHistory?profileId=67bf1e4009395add03e1e234&friendId=67e431d61e4463f7adfa544e&limit=20&skip=0 [32m200[0m 1881.595 ms - 6063[0m
+2026-01-25 14:17:16 +06:00: [0mPOST /api/message/seen [32m200[0m 2193.321 ms - 75[0m
+2026-01-25 14:17:16 +06:00: [0mGET /api/story/ [32m200[0m 597.388 ms - 7064[0m
+2026-01-25 14:17:17 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:17 +06:00: getChatHistory result: { foundMessages: 20, hasMore: true, totalMessages: 1132, limit: 20 }
+2026-01-25 14:17:17 +06:00: [0mGET /api/message/getChatHistory?profileId=67bf1e4009395add03e1e234&friendId=67e431d61e4463f7adfa544e&limit=20&skip=0 [36m304[0m 546.367 ms - -[0m
+2026-01-25 14:17:20 +06:00: update-call-status { to: '67e431d61e4463f7adfa544e', status: 'Call Seen' }
+2026-01-25 14:17:20 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:20 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:21 +06:00: [0mPOST /api/message/seen [0m-[0m - ms - -[0m
+2026-01-25 14:17:21 +06:00: [0mPOST /api/message/seen [0m-[0m - ms - -[0m
+2026-01-25 14:17:21 +06:00: [LUDO][server] disconnect { socketId: '3TeDy2GksfhlM-McAAAD', reason: 'transport close' }
+2026-01-25 14:17:21 +06:00: [CHESS][server] disconnect { socketId: '3TeDy2GksfhlM-McAAAD', reason: 'transport close' }
+2026-01-25 14:17:21 +06:00: 🔌 Socket disconnected: 3TeDy2GksfhlM-McAAAD
+2026-01-25 14:17:21 +06:00: ⏰ Set 5-minute offline timeout for profile 67bf1e4009395add03e1e234
+2026-01-25 14:17:23 +06:00: [LUDO][server] disconnect { socketId: 'FSwEh6W2HuFc8MIqAAAC', reason: 'transport close' }
+2026-01-25 14:17:23 +06:00: [CHESS][server] disconnect { socketId: 'FSwEh6W2HuFc8MIqAAAC', reason: 'transport close' }
+2026-01-25 14:17:23 +06:00: 🔌 Socket disconnected: FSwEh6W2HuFc8MIqAAAC
+2026-01-25 14:17:23 +06:00: ⏰ Set 5-minute offline timeout for profile 67e431d61e4463f7adfa544e
+2026-01-25 14:17:24 +06:00: profileId 67bf1e4009395add03e1e234
+2026-01-25 14:17:24 +06:00: ⏰ Cancelled offline timeout for profile 67bf1e4009395add03e1e234 (user reconnected)
+2026-01-25 14:17:24 +06:00: friend_online 67beff004ee47c70c1b80bb6 67bf1e4009395add03e1e234
+2026-01-25 14:17:24 +06:00: friend_online 67ed3b419aa5adab7e03838e 67bf1e4009395add03e1e234
+2026-01-25 14:17:24 +06:00: friend_online 67f2c568870999d58db9ac8a 67bf1e4009395add03e1e234
+2026-01-25 14:17:24 +06:00: friend_online 67e431d61e4463f7adfa544e 67bf1e4009395add03e1e234
+2026-01-25 14:17:24 +06:00: friend_online 681071cd41ce19a404cad3e7 67bf1e4009395add03e1e234
+2026-01-25 14:17:24 +06:00: friend_online 682ee90ad30adf9b2eeb3883 67bf1e4009395add03e1e234
+2026-01-25 14:17:24 +06:00: friend_online 67bf198509395add03e1e0d8 67bf1e4009395add03e1e234
+2026-01-25 14:17:24 +06:00: friend_online 68ba47a03c9a326dacbc2f80 67bf1e4009395add03e1e234
+2026-01-25 14:17:24 +06:00: friend_online 68c93d69c6515c93867c305c 67bf1e4009395add03e1e234
+2026-01-25 14:17:24 +06:00: friend_online 68ceb59ca1d7221f9907d101 67bf1e4009395add03e1e234
+2026-01-25 14:17:24 +06:00: friend_online 690adb85dacd33694816ec1c 67bf1e4009395add03e1e234
+2026-01-25 14:17:24 +06:00: friend_online 690ada92dacd33694816e48a 67bf1e4009395add03e1e234
+2026-01-25 14:17:24 +06:00: friend_online 690c90536ee2fdd00dd83993 67bf1e4009395add03e1e234
+2026-01-25 14:17:24 +06:00: [LUDO][server] connected {
+  socketId: 'aspUGDd_x1YsVhq6AAAF',
+  effectiveProfileId: '67bf1e4009395add03e1e234'
+}
+2026-01-25 14:17:24 +06:00: [LUDO][server] joined user room {
+  room: 'user_67bf1e4009395add03e1e234',
+  size: 1,
+  socketId: 'aspUGDd_x1YsVhq6AAAF'
+}
+2026-01-25 14:17:24 +06:00: [CHESS][server] connected {
+  socketId: 'aspUGDd_x1YsVhq6AAAF',
+  effectiveProfileId: '67bf1e4009395add03e1e234'
+}
+2026-01-25 14:17:24 +06:00: ✅ Socket connected: aspUGDd_x1YsVhq6AAAF (profile: 67bf1e4009395add03e1e234, browser: none)
+2026-01-25 14:17:24 +06:00: update-call-status { to: '67e431d61e4463f7adfa544e', status: 'Call Seen' }
+2026-01-25 14:17:26 +06:00: [LUDO][server] disconnect { socketId: 'aspUGDd_x1YsVhq6AAAF', reason: 'transport close' }
+2026-01-25 14:17:26 +06:00: [CHESS][server] disconnect { socketId: 'aspUGDd_x1YsVhq6AAAF', reason: 'transport close' }
+2026-01-25 14:17:26 +06:00: 🔌 Socket disconnected: aspUGDd_x1YsVhq6AAAF
+2026-01-25 14:17:26 +06:00: ⏰ Set 5-minute offline timeout for profile 67bf1e4009395add03e1e234
+2026-01-25 14:17:39 +06:00: profileId 67bf1e4009395add03e1e234
+2026-01-25 14:17:39 +06:00: ⏰ Cancelled offline timeout for profile 67bf1e4009395add03e1e234 (user reconnected)
+2026-01-25 14:17:39 +06:00: friend_online 67beff004ee47c70c1b80bb6 67bf1e4009395add03e1e234
+2026-01-25 14:17:39 +06:00: friend_online 67ed3b419aa5adab7e03838e 67bf1e4009395add03e1e234
+2026-01-25 14:17:39 +06:00: friend_online 67f2c568870999d58db9ac8a 67bf1e4009395add03e1e234
+2026-01-25 14:17:39 +06:00: friend_online 67e431d61e4463f7adfa544e 67bf1e4009395add03e1e234
+2026-01-25 14:17:39 +06:00: friend_online 681071cd41ce19a404cad3e7 67bf1e4009395add03e1e234
+2026-01-25 14:17:39 +06:00: friend_online 682ee90ad30adf9b2eeb3883 67bf1e4009395add03e1e234
+2026-01-25 14:17:39 +06:00: friend_online 67bf198509395add03e1e0d8 67bf1e4009395add03e1e234
+2026-01-25 14:17:39 +06:00: friend_online 68ba47a03c9a326dacbc2f80 67bf1e4009395add03e1e234
+2026-01-25 14:17:39 +06:00: friend_online 68c93d69c6515c93867c305c 67bf1e4009395add03e1e234
+2026-01-25 14:17:39 +06:00: friend_online 68ceb59ca1d7221f9907d101 67bf1e4009395add03e1e234
+2026-01-25 14:17:39 +06:00: friend_online 690adb85dacd33694816ec1c 67bf1e4009395add03e1e234
+2026-01-25 14:17:39 +06:00: friend_online 690ada92dacd33694816e48a 67bf1e4009395add03e1e234
+2026-01-25 14:17:39 +06:00: friend_online 690c90536ee2fdd00dd83993 67bf1e4009395add03e1e234
+2026-01-25 14:17:39 +06:00: [LUDO][server] connected {
+  socketId: 'jDVUbV00hGtj0m2yAAAI',
+  effectiveProfileId: '67bf1e4009395add03e1e234'
+}
+2026-01-25 14:17:39 +06:00: [LUDO][server] joined user room {
+  room: 'user_67bf1e4009395add03e1e234',
+  size: 1,
+  socketId: 'jDVUbV00hGtj0m2yAAAI'
+}
+2026-01-25 14:17:39 +06:00: [CHESS][server] connected {
+  socketId: 'jDVUbV00hGtj0m2yAAAI',
+  effectiveProfileId: '67bf1e4009395add03e1e234'
+}
+2026-01-25 14:17:39 +06:00: ✅ Socket connected: jDVUbV00hGtj0m2yAAAI (profile: 67bf1e4009395add03e1e234, browser: none)
+2026-01-25 14:17:43 +06:00: [0mGET /api/connect [32m200[0m 764.147 ms - -[0m
+2026-01-25 14:17:46 +06:00: profileId 67e431d61e4463f7adfa544e
+2026-01-25 14:17:46 +06:00: ⏰ Cancelled offline timeout for profile 67e431d61e4463f7adfa544e (user reconnected)
+2026-01-25 14:17:46 +06:00: friend_online 67bf198509395add03e1e0d8 67e431d61e4463f7adfa544e
+2026-01-25 14:17:46 +06:00: friend_online 67ed3b419aa5adab7e03838e 67e431d61e4463f7adfa544e
+2026-01-25 14:17:46 +06:00: friend_online 67bf1e4009395add03e1e234 67e431d61e4463f7adfa544e
+2026-01-25 14:17:46 +06:00: friend_online 682ee90ad30adf9b2eeb3883 67e431d61e4463f7adfa544e
+2026-01-25 14:17:46 +06:00: friend_online 681071cd41ce19a404cad3e7 67e431d61e4463f7adfa544e
+2026-01-25 14:17:46 +06:00: friend_online 68c93d69c6515c93867c305c 67e431d61e4463f7adfa544e
+2026-01-25 14:17:46 +06:00: friend_online 68ba47a03c9a326dacbc2f80 67e431d61e4463f7adfa544e
+2026-01-25 14:17:46 +06:00: [LUDO][server] connected {
+  socketId: 'j-Ebehfl7A1IR3_2AAAJ',
+  effectiveProfileId: '67e431d61e4463f7adfa544e'
+}
+2026-01-25 14:17:46 +06:00: [LUDO][server] joined user room {
+  room: 'user_67e431d61e4463f7adfa544e',
+  size: 1,
+  socketId: 'j-Ebehfl7A1IR3_2AAAJ'
+}
+2026-01-25 14:17:46 +06:00: [CHESS][server] connected {
+  socketId: 'j-Ebehfl7A1IR3_2AAAJ',
+  effectiveProfileId: '67e431d61e4463f7adfa544e'
+}
+2026-01-25 14:17:46 +06:00: ✅ Socket connected: j-Ebehfl7A1IR3_2AAAJ (profile: 67e431d61e4463f7adfa544e, browser: none)
+2026-01-25 14:17:46 +06:00: [0mGET /api/connect [32m200[0m 83.674 ms - -[0m
+2026-01-25 14:17:49 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:50 +06:00: [0mGET /api/connect [32m200[0m 70.763 ms - 610[0m
+2026-01-25 14:17:50 +06:00: [0mGET /api/connect [32m200[0m 59.550 ms - 610[0m
+2026-01-25 14:17:50 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:50 +06:00: getChatHistory result: { foundMessages: 20, hasMore: true, totalMessages: 1132, limit: 20 }
+2026-01-25 14:17:50 +06:00: [0mGET /api/message/getChatHistory?friendId=67e431d61e4463f7adfa544e&limit=20&skip=0 [32m200[0m 553.506 ms - 6063[0m
+2026-01-25 14:17:50 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:50 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:50 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:50 +06:00: profileGet called with id: 67e431d61e4463f7adfa544e fromQuery: yes
+2026-01-25 14:17:50 +06:00: Looking for profile with ID: 67e431d61e4463f7adfa544e
+2026-01-25 14:17:51 +06:00: ProfileId is valid ObjectId, searching by _id
+2026-01-25 14:17:51 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:52 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:52 +06:00: [0mGET /api/profile?profileId=67e431d61e4463f7adfa544e [32m200[0m 2780.630 ms - 38773[0m
+2026-01-25 14:17:53 +06:00: profileGet called with id: 67e431d61e4463f7adfa544e fromQuery: yes
+2026-01-25 14:17:53 +06:00: Looking for profile with ID: 67e431d61e4463f7adfa544e
+2026-01-25 14:17:54 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:54 +06:00: [0mGET /api/message/media/?profileId=67e431d61e4463f7adfa544e [32m200[0m 3412.851 ms - -[0m
+2026-01-25 14:17:54 +06:00: [0mGET /api/message/media/?profileId=67e431d61e4463f7adfa544e [32m200[0m 3452.111 ms - 3983[0m
+2026-01-25 14:17:54 +06:00: ProfileId is valid ObjectId, searching by _id
+2026-01-25 14:17:54 +06:00: profileGet called with id: 67e431d61e4463f7adfa544e fromQuery: yes
+2026-01-25 14:17:54 +06:00: Looking for profile with ID: 67e431d61e4463f7adfa544e
+2026-01-25 14:17:54 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:54 +06:00: ProfileId is valid ObjectId, searching by _id
+2026-01-25 14:17:54 +06:00: [0mGET /api/setting?profileId=67bf1e4009395add03e1e234 [32m200[0m 199.558 ms - -[0m
+2026-01-25 14:17:54 +06:00: [0mGET /api/profile?profileId=67e431d61e4463f7adfa544e [32m200[0m 4024.589 ms - 38773[0m
+2026-01-25 14:17:54 +06:00: [0mGET /api/profile?profileId=67e431d61e4463f7adfa544e [32m200[0m 3614.541 ms - 38773[0m
+2026-01-25 14:17:54 +06:00: getChatHistory result: { foundMessages: 20, hasMore: true, totalMessages: 1132, limit: 20 }
+2026-01-25 14:17:54 +06:00: [0mGET /api/message/getChatHistory?friendId=67e431d61e4463f7adfa544e&limit=20&skip=0 [32m200[0m 3279.266 ms - 6063[0m
+2026-01-25 14:17:54 +06:00: [0mPOST /api/profile [32m200[0m 619.885 ms - 43067[0m
+2026-01-25 14:17:54 +06:00: profileGet called with id: 67e431d61e4463f7adfa544e fromQuery: yes
+2026-01-25 14:17:54 +06:00: Looking for profile with ID: 67e431d61e4463f7adfa544e
+2026-01-25 14:17:55 +06:00: ProfileId is valid ObjectId, searching by _id
+2026-01-25 14:17:55 +06:00: profileGet called with id: 67e431d61e4463f7adfa544e fromQuery: yes
+2026-01-25 14:17:55 +06:00: Looking for profile with ID: 67e431d61e4463f7adfa544e
+2026-01-25 14:17:55 +06:00: ProfileId is valid ObjectId, searching by _id
+2026-01-25 14:17:55 +06:00: [0mGET /api/profile?profileId=67e431d61e4463f7adfa544e [32m200[0m 1902.981 ms - 38773[0m
+2026-01-25 14:17:55 +06:00: [0mGET /api/profile?profileId=67e431d61e4463f7adfa544e [32m200[0m 1582.081 ms - 38773[0m
+2026-01-25 14:17:55 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:55 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:55 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:55 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:56 +06:00: [0mPOST /api/profile [32m200[0m 742.494 ms - 43067[0m
+2026-01-25 14:17:56 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:56 +06:00: User 67bf1e4009395add03e1e234 joining room: 67bf1e4009395add03e1e234_67e431d61e4463f7adfa544e
+2026-01-25 14:17:56 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 1051.114 ms - -[0m
+2026-01-25 14:17:56 +06:00: [0mGET /api/notification/?profileId=67bf1e4009395add03e1e234 [32m200[0m 1094.981 ms - 9064[0m
+2026-01-25 14:17:56 +06:00: [0mGET /api/message/new-messages?profileId=67bf1e4009395add03e1e234 [36m304[0m 1085.483 ms - -[0m
+2026-01-25 14:17:57 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:57 +06:00: [0mPOST /api/web-notification/register-browser [32m200[0m 596.606 ms - 182[0m
+2026-01-25 14:17:57 +06:00: [0mGET /api/message/chatList?profileId=67bf1e4009395add03e1e234 [32m200[0m 1991.600 ms - 24725[0m
+2026-01-25 14:17:58 +06:00: [0mGET /api/message/chatList?profileId=67bf1e4009395add03e1e234 [32m200[0m 1181.494 ms - 24725[0m
+2026-01-25 14:17:58 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:17:58 +06:00: [0mPOST /api/message/seen [32m200[0m 516.764 ms - 75[0m
+2026-01-25 14:18:00 +06:00: [0mGET /api/profile/hasStory [33m400[0m 1.662 ms - 49[0m
+2026-01-25 14:18:00 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:18:00 +06:00: [0mGET /api/setting?profileId=67e431d61e4463f7adfa544e [32m200[0m 55.048 ms - 276[0m
+2026-01-25 14:18:01 +06:00: [0mGET /api/message/chatList?profileId=67e431d61e4463f7adfa544e [32m200[0m 833.425 ms - 30954[0m
+2026-01-25 14:18:02 +06:00: [0mGET /api/profile/hasStory [33m400[0m 4.620 ms - -[0m
+2026-01-25 14:18:02 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:18:02 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:18:02 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:18:02 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:18:02 +06:00: [0mPOST /api/profile [32m200[0m 362.848 ms - 38773[0m
+2026-01-25 14:18:02 +06:00: [0mGET /api/notification/new?profileId=67e431d61e4463f7adfa544e [32m200[0m 579.207 ms - 20[0m
+2026-01-25 14:18:02 +06:00: [0mGET /api/notification/?profileId=67e431d61e4463f7adfa544e [32m200[0m 617.399 ms - 8497[0m
+2026-01-25 14:18:02 +06:00: [0mGET /api/message/new-messages?profileId=67e431d61e4463f7adfa544e [32m200[0m 593.465 ms - 15[0m
+2026-01-25 14:18:02 +06:00: [0mPOST /api/profile [32m200[0m 515.027 ms - 38773[0m
+2026-01-25 14:18:03 +06:00: [0mGET /api/post/newsFeed/?pageNumber=1 [32m200[0m 1025.716 ms - 69002[0m
+2026-01-25 14:18:14 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:18:15 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:18:15 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:18:15 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:18:15 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:18:15 +06:00: [0mPOST /api/message/seen [32m200[0m 545.398 ms - 75[0m
+2026-01-25 14:18:15 +06:00: getChatHistory result: { foundMessages: 20, hasMore: true, totalMessages: 1132, limit: 20 }
+2026-01-25 14:18:15 +06:00: [0mGET /api/message/getChatHistory?profileId=67bf1e4009395add03e1e234&friendId=67e431d61e4463f7adfa544e&limit=20&skip=40 [32m200[0m 505.120 ms - 6063[0m
+2026-01-25 14:18:15 +06:00: getChatHistory result: { foundMessages: 20, hasMore: true, totalMessages: 1132, limit: 20 }
+2026-01-25 14:18:15 +06:00: [0mGET /api/message/getChatHistory?profileId=67bf1e4009395add03e1e234&friendId=67e431d61e4463f7adfa544e&limit=20&skip=0 [36m304[0m 536.654 ms - -[0m
+2026-01-25 14:18:15 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdlNDMxZDYxZTQ0NjNmN2FkZmE1NDRjIiwiaWF0IjoxNzY5MzIyMDcyLCJleHAiOjE3NzE5MTQwNzJ9.5lwy-mb11loW-UijFZExaCzdF7d8JmIkhtNSNK5AK_8
+2026-01-25 14:18:15 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:18:15 +06:00: getChatHistory result: { foundMessages: 20, hasMore: true, totalMessages: 1132, limit: 20 }
+2026-01-25 14:18:15 +06:00: [0mGET /api/message/getChatHistory?profileId=67bf1e4009395add03e1e234&friendId=67e431d61e4463f7adfa544e&limit=20&skip=40 [32m200[0m 541.543 ms - 6063[0m
+2026-01-25 14:18:15 +06:00: [0mPOST /api/message/seen [32m200[0m 570.425 ms - 75[0m
+2026-01-25 14:18:16 +06:00: [0mGET /api/notification/new?profileId=67bf1e4009395add03e1e234 [36m304[0m 357.663 ms - -[0m
+2026-01-25 14:18:16 +06:00: [0mPOST /api/web-notification/register-browser [32m200[0m 500.315 ms - 181[0m
+2026-01-25 14:18:18 +06:00: token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzY4NDk2MzM5LCJleHAiOjE3NzEwODgzMzl9.XsXIQWYyoetznEN7wPrXD04Rg2MTx5yHtKNZzTEQpYY
+2026-01-25 14:18:19 +06:00: [0mPOST /api/message/seen [32m200[0m 520.921 ms - 75[0m

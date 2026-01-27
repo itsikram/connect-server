@@ -133,6 +133,16 @@ app.use(express.static(path.join(__dirname, 'build'), {
   }
 }));
 
+// Health check endpoint for load balancer
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'healthy', 
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    port: PORT
+  });
+});
+
 app.get('*', (req, res) => {
   const hostname = req.hostname || req.get('host')?.split(':')[0];
   const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
