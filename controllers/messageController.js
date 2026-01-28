@@ -89,40 +89,82 @@ exports.getMedia = async(req,res,next) => {
 }
 
 exports.getChatList = async(req,res,next) => {
+    // Set a timeout for the entire operation
+    const timeout = setTimeout(() => {
+        if (!res.headersSent) {
+            res.status(408).json({ message: 'Request timeout' });
+        }
+    }, 8000); // 8 second timeout
 
-    try{
+    try {
+        let profileId = req.query.profileId || req.profile._id;
+        const now = new Date();
 
-    let profileId = req.query.profileId || req.profile._id
-    const now = new Date();
+        // Use aggregation pipeline for better performance
+        const lastMessages = await Message.aggregate([
+            {
+                $match: {
+                    $or: [
+                        { senderId: profileId },
+                        { receiverId: profileId }
+                    ]
+                }
+            },
+            {
+                $addFields: {
+                    otherUserId: {
+                        $cond: {
+                            if: { $eq: ['$senderId', profileId] },
+                            then: '$receiverId',
+                            else: '$senderId'
+                        }
+                    }
+                }
+            },
+            {
+                $sort: { timestamp: -1 }
+            },
+            {
+                $group: {
+                    _id: '$otherUserId',
+                    lastMessage: { $first: '$$ROOT' }
+                }
+            }
+        ]);
 
-    let profileContacts = []
-    let myProfile = await Profile.findOne({ _id: profileId }).populate('friends')
+        // Get profile with friends
+        const myProfile = await Profile.findOne({ _id: profileId }).populate('friends');
+        
+        if (!myProfile) {
+            clearTimeout(timeout);
+            return res.status(400).json({ message: 'Profile Not Found' });
+        }
 
-    if (!myProfile) return res.json({message: 'Profile Not Found'}).status(400)
+        if (myProfile?.friends == null || myProfile.friends.length === 0) {
+            clearTimeout(timeout);
+            return res.status(200).json({ message: 'No Friends Found' });
+        }
 
-    if (myProfile?.friends !== null) {
-        for (const friendProfile of myProfile.friends) {
-            // Fetch last message in either direction (sent or received)
-            const messages = await Message.find({
-                $or: [
-                    { senderId: friendProfile._id, receiverId: profileId },
-                    { senderId: profileId, receiverId: friendProfile._id }
-                ]
-            }).limit(1).sort({ timestamp: -1 })
+        // Create a map for quick lookup of last messages
+        const messageMap = new Map();
+        lastMessages.forEach(msg => {
+            messageMap.set(msg._id.toString(), msg.lastMessage);
+        });
 
-            // Check online status based on lastActive timestamp
+        // Build profile contacts array
+        const profileContacts = myProfile.friends.map(friendProfile => {
             const lastActive = friendProfile.lastActive ? new Date(friendProfile.lastActive) : null;
-            const isOnline = lastActive && (now - lastActive) < 5 * 60 * 1000; // Active if last seen within 5 minutes
-
-            profileContacts.push({ 
-                person: friendProfile, 
-                messages,
+            const isOnline = lastActive && (now - lastActive) < 5 * 60 * 1000;
+            
+            return {
+                person: friendProfile,
+                messages: messageMap.get(friendProfile._id.toString()) ? [messageMap.get(friendProfile._id.toString())] : [],
                 isOnline: isOnline,
                 lastSeen: lastActive
-            })
-        }
-        
-        // Sort contacts by last message timestamp (most recent first)
+            };
+        });
+
+        // Sort by last message timestamp
         profileContacts.sort((a, b) => {
             const aTimestamp = a.messages?.[0]?.timestamp 
                 ? new Date(a.messages[0].timestamp).getTime() 
@@ -131,23 +173,18 @@ exports.getChatList = async(req,res,next) => {
                 ? new Date(b.messages[0].timestamp).getTime() 
                 : 0;
             
-            // If both have messages, sort by timestamp (most recent first)
-            if (aTimestamp > 0 && bTimestamp > 0) {
-                return bTimestamp - aTimestamp;
-            }
-            // If only one has messages, prioritize it
-            if (aTimestamp > 0) return -1;
-            if (bTimestamp > 0) return 1;
-            // If neither has messages, maintain original order
-            return 0;
+            return bTimestamp - aTimestamp;
         });
+
+        clearTimeout(timeout);
+        return res.status(200).json(profileContacts);
         
-        res.json(profileContacts).status(200)
-    }else{
-        res.json({message: 'No Friends Found'}).status(200)
-    }
-    }catch(error){
-        next(error)
+    } catch (error) {
+        clearTimeout(timeout);
+        console.error('Error in getChatList:', error);
+        if (!res.headersSent) {
+            return next(error);
+        }
     }
 }
 exports.getChatHistory = async(req,res,next) => {
