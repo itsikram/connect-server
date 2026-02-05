@@ -122,6 +122,11 @@ exports.getChatList = async(req,res,next) => {
                 }
             },
             {
+                $match: {
+                    otherUserId: { $ne: null }
+                }
+            },
+            {
                 $sort: { timestamp: -1 }
             },
             {
@@ -148,7 +153,9 @@ exports.getChatList = async(req,res,next) => {
         // Create a map for quick lookup of last messages
         const messageMap = new Map();
         lastMessages.forEach(msg => {
-            messageMap.set(msg._id.toString(), msg.lastMessage);
+            if (msg._id != null) {
+                messageMap.set(msg._id.toString(), msg.lastMessage);
+            }
         });
 
         // Build profile contacts array
