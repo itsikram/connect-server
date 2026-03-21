@@ -18,11 +18,23 @@ const socketHandler = require('./sockets/socketHandler')
 const httpServer = createServer(app)
 const path = require('path');
 const admin = require('firebase-admin');
+const fs = require('fs');
 // Initialize Firebase Admin using proper server credentials
 // Prefer GOOGLE_APPLICATION_CREDENTIALS (ADC), then FIREBASE_SERVICE_ACCOUNT (JSON string),
 // then a local serviceAccountKey.json file. Avoid using google-services.json (client config).
 try {
-  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+  const adcPathRaw = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  const adcLooksLikeJson = typeof adcPathRaw === 'string' && adcPathRaw.trim().startsWith('{');
+  const adcPath = adcPathRaw ? adcPathRaw.replace(/^['"]|['"]$/g, '') : '';
+  const adcPathExists = adcPath ? fs.existsSync(adcPath) : false;
+
+  if (adcLooksLikeJson) {
+    console.warn('GOOGLE_APPLICATION_CREDENTIALS looks like inline JSON, but it must be a file path. Skipping ADC path mode.');
+  } else if (adcPathRaw && !adcPathExists) {
+    console.warn(`GOOGLE_APPLICATION_CREDENTIALS path not found: ${adcPath}. Skipping ADC path mode.`);
+  }
+
+  if (adcPathRaw && !adcLooksLikeJson && adcPathExists) {
     admin.initializeApp({
       credential: admin.credential.applicationDefault()
     });
@@ -32,7 +44,6 @@ try {
       credential: admin.credential.cert(serviceAccount)
     });
   } else {
-    const fs = require('fs');
     const saPath = path.join(__dirname, 'serviceAccountKey.json');
     if (fs.existsSync(saPath)) {
       const serviceAccount = require(saPath);
@@ -48,6 +59,55 @@ try {
 } catch (err) {
   console.error('Failed to initialize Firebase Admin:', err && err.message ? err.message : err);
 }
+
+// Firebase + Google Cloud connection status logs
+const logFirebaseAndGoogleCloudStatus = async () => {
+  const saPath = path.join(__dirname, 'serviceAccountKey.json');
+
+  const adcPathRaw = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  const adcLooksLikeJson = typeof adcPathRaw === 'string' && adcPathRaw.trim().startsWith('{');
+  const adcPath = adcPathRaw ? adcPathRaw.replace(/^['"]|['"]$/g, '') : '';
+  const adcPathExists = adcPath ? fs.existsSync(adcPath) : false;
+  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
+
+  const credentialSource = adcPathRaw && !adcLooksLikeJson && adcPathExists
+    ? 'GOOGLE_APPLICATION_CREDENTIALS (path)'
+    : process.env.FIREBASE_SERVICE_ACCOUNT
+      ? 'FIREBASE_SERVICE_ACCOUNT (env JSON)'
+      : fs.existsSync(saPath)
+        ? 'serviceAccountKey.json (local file)'
+        : 'default/ADC (unspecified)';
+
+  const appsCount = admin.apps?.length ?? 0;
+  const app0 = admin.apps?.[0];
+  let projectId = app0?.options?.projectId || 'unknown';
+  if (projectId === 'unknown' && serviceAccountJson) {
+    try {
+      const parsed = JSON.parse(serviceAccountJson);
+      if (parsed && parsed.project_id) {
+        projectId = parsed.project_id;
+      }
+    } catch (e) { }
+  }
+
+  console.log(`[firebase] Admin init status: apps=${appsCount}, credentialSource=${credentialSource}, projectId=${projectId}`);
+
+  // Optional live Google Cloud connectivity check
+  if (process.env.CHECK_GOOGLE_CLOUD_ON_STARTUP === 'true' && appsCount > 0) {
+    try {
+      await admin.firestore().listCollections();
+      console.log('[google-cloud] Firestore connectivity check: OK');
+    } catch (e) {
+      console.error('[google-cloud] Firestore connectivity check: FAILED', e && e.message ? e.message : e);
+    }
+  } else {
+    console.log('[google-cloud] Firestore connectivity check: skipped (set CHECK_GOOGLE_CLOUD_ON_STARTUP=true to enable)');
+  }
+};
+
+logFirebaseAndGoogleCloudStatus().catch((e) => {
+  console.error('[firebase/google-cloud] Status logger failed:', e && e.message ? e.message : e);
+});
 
 // Enable pre-flight requests
 app.options('*', cors());

@@ -7,7 +7,7 @@ const axios = require('axios')
 
 
 const sendEmailNotification = require('../utils/sendEmailNotification')
-const { sendPushToProfile, sendDataPushToProfile } = require('../utils/pushNotifications')
+const { sendDataPushToProfile } = require('../utils/pushNotifications')
 const config = require('../config/config.json');
 
 // Track recently processed messages to prevent duplicate notifications
@@ -32,7 +32,6 @@ module.exports = function messageSocket(io, socket, profileId) {
         let profileContacts = []
         let myProfile = await Profile.findOne({ _id: profileId }).populate('friends')
 
-        console.log('fetchMessages pid', profileId,myProfile)
 
         if (!myProfile) return;
         if (myProfile?.friends !== null) {
@@ -310,6 +309,36 @@ module.exports = function messageSocket(io, socket, profileId) {
                     // Send notification using the existing notification system
                     await saveNotification(io, notificationData);
 
+                    try {
+                        const messageBody = (updatedMessage.messageType === 'audio' && updatedMessage.attachment) ? 'Voice message' : updatedMessage.message;
+                        const result = await sendDataPushToProfile(receiverId, {
+                            type: 'chat',
+                            title: String(senderName || 'New Message'),
+                            body: String(messageBody || ''),
+                            senderId: String(senderId),
+                            receiverId: String(receiverId),
+                            room: String(room),
+                            messageId: String(updatedMessage._id),
+                            message: String(messageBody || ''), // Include message body in data payload for background handler
+                            senderName: String(senderName || ''),
+                        });
+                        console.log('Chat push attempt result', {
+                            receiverId: String(receiverId),
+                            senderId: String(senderId),
+                            messageId: String(updatedMessage?._id),
+                            successCount: result?.successCount,
+                            failureCount: result?.failureCount,
+                        });
+                        if (result.successCount > 0) {
+                            return; // delivered via push
+                        }
+                    } catch (e) {
+                        console.error('Push send failed, falling back to email:', e?.message || e);
+                    }
+        
+                    let receiverEmail = receiverProfile.user.email;
+                    return sendEmailNotification(receiverEmail, null, updatedMessage.message, senderName, senderPP);
+
                     console.log(`Web notification sent for message to user ${receiverId}, browsers: ${activeBrowserIds.length}`);
                 }
             } catch (error) {
@@ -319,30 +348,7 @@ module.exports = function messageSocket(io, socket, profileId) {
 
         if (!isActive && String(receiverId) !== String(senderId)) {
             // Try push notification first; fallback to email if none sent
-            try {
-                const messageBody = (updatedMessage.messageType === 'audio' && updatedMessage.attachment) ? 'Voice message' : updatedMessage.message;
-                const result = await sendPushToProfile(receiverId, {
-                    title: senderName,
-                    body: messageBody,
-                    data: {
-                        type: 'chat',
-                        senderId: String(senderId),
-                        receiverId: String(receiverId),
-                        room: String(room),
-                        messageId: String(updatedMessage._id),
-                        message: String(messageBody || ''), // Include message body in data payload for background handler
-                        senderName: String(senderName || ''),
-                    },
-                });
-                if (result.successCount > 0) {
-                    return; // delivered via push
-                }
-            } catch (e) {
-                console.error('Push send failed, falling back to email:', e?.message || e);
-            }
 
-            let receiverEmail = receiverProfile.user.email;
-            return sendEmailNotification(receiverEmail, null, updatedMessage.message, senderName, senderPP);
         }
 
     });

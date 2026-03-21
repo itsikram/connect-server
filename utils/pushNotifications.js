@@ -9,8 +9,27 @@ const Profile = require('../models/Profile');
  */
 async function sendPushToTokens(tokens = [], notification = {}) {
   if (!Array.isArray(tokens) || tokens.length === 0) {
+    console.warn('FCM send skipped: no device tokens');
     return { successCount: 0, failureCount: 0 };
   }
+
+  // FCM tokens must be non-empty strings. Some clients/previous runs can leave '' in DB.
+  const sanitizedTokens = tokens
+    .map((t) => (t == null ? '' : String(t)))
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+
+  if (sanitizedTokens.length === 0) {
+    console.warn('FCM send skipped: no valid (non-empty) device tokens');
+    return { successCount: 0, failureCount: 0 };
+  }
+
+  const redactToken = (t) => {
+    if (!t) return '';
+    const s = String(t);
+    // Keep logging safe: show only first/last chars.
+    return s.length <= 12 ? `${s}***` : `${s.slice(0, 6)}...${s.slice(-4)}`;
+  };
 
   // Ensure body is never empty - fallback to data.message or a default message
   const notificationBody = notification.body || notification.data?.message || 'You have a new message';
@@ -24,7 +43,7 @@ async function sendPushToTokens(tokens = [], notification = {}) {
       acc[k] = typeof v === 'string' ? v : String(v);
       return acc;
     }, {}),
-    tokens,
+    tokens: sanitizedTokens,
     android: {
       priority: 'high',
     },
@@ -32,10 +51,41 @@ async function sendPushToTokens(tokens = [], notification = {}) {
 
   try {
     const res = await admin.messaging().sendEachForMulticast(payload);
+
+    // sendEachForMulticast returns per-token results even when delivery fails.
+    // Log response errors so we can pinpoint: "invalid token", "unregistered", etc.
+    const previewTokens = sanitizedTokens.slice(0, 3).map(redactToken);
+    console.log('FCM sendEachForMulticast result', {
+      tokensCount: sanitizedTokens.length,
+      previewTokens,
+      successCount: res.successCount,
+      failureCount: res.failureCount,
+      payloadType: notification?.data?.type,
+      // messageId is useful for correlating server-side events
+      messageId: notification?.data?.messageId || notification?.data?.data?.messageId || undefined,
+    });
+
+    if (res.failureCount > 0 && Array.isArray(res.responses)) {
+      const failed = res.responses
+        .map((r, idx) => ({ r, idx }))
+        .filter(({ r }) => !r.success)
+        .slice(0, 5);
+
+      for (const { r, idx } of failed) {
+        const err = r.error;
+        console.warn('FCM failed token response', {
+          tokenIndex: idx,
+          token: redactToken(sanitizedTokens[idx]),
+          errorCode: err?.code,
+          errorMessage: err?.message,
+        });
+      }
+    }
+
     return { successCount: res.successCount, failureCount: res.failureCount };
   } catch (err) {
     console.error('FCM send error:', err && err.message ? err.message : err);
-    return { successCount: 0, failureCount: tokens.length };
+    return { successCount: 0, failureCount: sanitizedTokens.length };
   }
 }
 
@@ -45,9 +95,16 @@ async function sendPushToTokens(tokens = [], notification = {}) {
  * @param {{ title?: string, body?: string, data?: Record<string,string> }} notification
  */
 async function sendPushToProfile(profileId, notification = {}) {
+
+  console.log('sendPushToProfile', profileId, notification);
   if (!profileId) return { successCount: 0, failureCount: 0 };
   const profile = await Profile.findById(profileId).select('deviceTokens');
   const tokens = profile?.deviceTokens || [];
+  console.log('FCM tokens for profile', {
+    profileId,
+    tokensCount: tokens.length,
+    tokensPreview: tokens.slice(0, 3).map((t) => String(t).slice(0, 6) + '...' + String(t).slice(-4)),
+  });
   return sendPushToTokens(tokens, notification);
 }
 
@@ -66,16 +123,44 @@ async function sendDataPushToTokens(tokens = [], data = {}) {
   if (!Array.isArray(tokens) || tokens.length === 0) {
     return { successCount: 0, failureCount: 0 };
   }
+
+  const sanitizedTokens = tokens
+    .map((t) => (t == null ? '' : String(t)))
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+
+  if (sanitizedTokens.length === 0) {
+    return { successCount: 0, failureCount: 0 };
+  }
+
   const stringData = Object.entries(data || {}).reduce((acc, [k, v]) => {
     acc[k] = typeof v === 'string' ? v : String(v);
     return acc;
   }, {});
   try {
-    const res = await admin.messaging().sendEachForMulticast({ data: stringData, tokens });
+    const res = await admin.messaging().sendEachForMulticast({
+      data: stringData,
+      tokens: sanitizedTokens,
+      android: {
+        priority: 'high',
+        ttl: 60 * 60 * 1000, // 1 hour
+      },
+      apns: {
+        headers: {
+          'apns-priority': '10',
+          'apns-push-type': 'background',
+        },
+        payload: {
+          aps: {
+            'content-available': 1,
+          },
+        },
+      },
+    });
     return { successCount: res.successCount, failureCount: res.failureCount };
   } catch (err) {
     console.error('FCM data send error:', err && err.message ? err.message : err);
-    return { successCount: 0, failureCount: tokens.length };
+    return { successCount: 0, failureCount: sanitizedTokens.length };
   }
 }
 

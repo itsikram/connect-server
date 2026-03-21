@@ -22,16 +22,12 @@ function getNextActivePlayer(currentPlayerIndex) {
 function ludoSocket(io, socket, profileId) {
     // Derive profileId from handshake if not provided
     const effectiveProfileId = profileId || socket?.handshake?.query?.profile || socket?.handshake?.query?.profileId;
-    try { console.log('[LUDO][server] connected', { socketId: socket?.id, effectiveProfileId }); } catch (_e) {}
     try {
         socket.on('error', (err) => {
-            try { console.error('[LUDO][server] socket error', { socketId: socket?.id, message: err?.message }); } catch (_e2) {}
         });
         socket.on('connect_error', (err) => {
-            try { console.error('[LUDO][server] connect_error', { socketId: socket?.id, message: err?.message }); } catch (_e2) {}
         });
         socket.on('disconnect', (reason) => {
-            try { console.log('[LUDO][server] disconnect', { socketId: socket?.id, reason }); } catch (_e2) {}
             // Track offline players
             if (effectiveProfileId) {
                 const pid = String(effectiveProfileId);

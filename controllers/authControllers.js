@@ -214,7 +214,11 @@ exports.login = async (req, res, next) => {
 
 exports.googleSignIn = async (req, res, next) => {
     const { googleId, email, name, photo, familyName, givenName, idToken } = req.body;
-    console.log('google',req.body)
+    const startedAt = Date.now();
+    console.log('[google] sign-in attempt', {
+        email,
+        googleIdPresent: Boolean(googleId)
+    });
 
     try {
         // Verify the Google ID token
@@ -222,6 +226,7 @@ exports.googleSignIn = async (req, res, next) => {
             idToken: idToken,
             audience: process.env.GOOGLE_CLIENT_ID,
         });
+        console.log('[google] idToken verified', { ms: Date.now() - startedAt });
 
         const payload = ticket.getPayload();
         const googleUserId = payload['sub'];
@@ -311,7 +316,10 @@ exports.googleSignIn = async (req, res, next) => {
         }
 
     } catch (error) {
-        console.error('Google sign-in error:', error);
+        console.error('[google] idToken verification FAILED', {
+            ms: Date.now() - startedAt,
+            message: error && error.message ? error.message : error
+        });
         return res.status(500).json({
             message: 'Google authentication failed'
         });
