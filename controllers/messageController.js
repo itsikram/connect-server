@@ -1,5 +1,6 @@
 const Message = require('../models/Message')
 const Profile = require('../models/Profile')
+const { sendChatMessageDataPush } = require('../utils/pushNotifications')
 
 
 exports.removeMessageReact = async (req, res, next) => {
@@ -373,6 +374,22 @@ exports.sendMessage = async (req, res, next) => {
         
         let friendProfile = await Profile.findById(senderId).populate('user');
         io.to(receiverId).emit('newMessageToUser', { updatedMessage, senderName, senderPP, chatPage: false, friendProfile });
+
+        // Data-only FCM so the receiver gets a notification when the app is swiped away / killed (no socket).
+        try {
+            if (String(receiverId) !== String(senderId) && friendProfile) {
+                await sendChatMessageDataPush(receiverId, {
+                    senderId,
+                    updatedMessage,
+                    senderName,
+                    senderPP,
+                    friendProfile,
+                    room,
+                });
+            }
+        } catch (pushErr) {
+            console.error('HTTP sendMessage: FCM chat push failed:', pushErr?.message || pushErr);
+        }
 
         return res.status(200).json({
             message: 'Message sent successfully',

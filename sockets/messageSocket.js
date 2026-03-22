@@ -7,7 +7,7 @@ const axios = require('axios')
 
 
 const sendEmailNotification = require('../utils/sendEmailNotification')
-const { sendDataPushToProfile } = require('../utils/pushNotifications')
+const { sendChatMessageDataPush, sendDataPushToProfile } = require('../utils/pushNotifications')
 const config = require('../config/config.json');
 
 // Track recently processed messages to prevent duplicate notifications
@@ -306,21 +306,21 @@ module.exports = function messageSocket(io, socket, profileId) {
                         }
                     };
 
-                    // Send notification using the existing notification system
-                    await saveNotification(io, notificationData);
+                    // Persist + socket to web clients (must not block mobile FCM if this fails)
+                    try {
+                        await saveNotification(io, notificationData);
+                    } catch (saveErr) {
+                        console.error('saveNotification failed (continuing with mobile push):', saveErr?.message || saveErr);
+                    }
 
                     try {
-                        const messageBody = (updatedMessage.messageType === 'audio' && updatedMessage.attachment) ? 'Voice message' : updatedMessage.message;
-                        const result = await sendDataPushToProfile(receiverId, {
-                            type: 'chat',
-                            title: String(senderName || 'New Message'),
-                            body: String(messageBody || ''),
-                            senderId: String(senderId),
-                            receiverId: String(receiverId),
-                            room: String(room),
-                            messageId: String(updatedMessage._id),
-                            message: String(messageBody || ''), // Include message body in data payload for background handler
-                            senderName: String(senderName || ''),
+                        const result = await sendChatMessageDataPush(receiverId, {
+                            senderId,
+                            updatedMessage,
+                            senderName,
+                            senderPP,
+                            friendProfile,
+                            room,
                         });
                         console.log('Chat push attempt result', {
                             receiverId: String(receiverId),

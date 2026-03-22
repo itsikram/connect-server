@@ -46,6 +46,7 @@ async function sendPushToTokens(tokens = [], notification = {}) {
     tokens: sanitizedTokens,
     android: {
       priority: 'high',
+      directBootOk: true,
     },
   };
 
@@ -143,7 +144,8 @@ async function sendDataPushToTokens(tokens = [], data = {}) {
       tokens: sanitizedTokens,
       android: {
         priority: 'high',
-        ttl: 60 * 60 * 1000, // 1 hour
+        ttl: 60 * 60 * 1000, // 1 hour (milliseconds per firebase-admin AndroidConfig)
+        directBootOk: true,
       },
       apns: {
         headers: {
@@ -176,8 +178,54 @@ async function sendDataPushToProfile(profileId, data = {}) {
   return sendDataPushToTokens(tokens, data);
 }
 
+/**
+ * Data-only FCM for new chat messages (receiver app killed / no socket).
+ * @param {string} receiverId - profile id of message recipient
+ * @param {{ senderId: any, updatedMessage: any, senderName: string, senderPP: string, friendProfile: any, room: string }} payload
+ */
+async function sendChatMessageDataPush(receiverId, payload) {
+  const { senderId, updatedMessage, senderName, senderPP, friendProfile, room } = payload || {};
+  if (!receiverId || !senderId || String(receiverId) === String(senderId)) {
+    return { successCount: 0, failureCount: 0 };
+  }
+  if (!updatedMessage || !friendProfile) {
+    return { successCount: 0, failureCount: 0 };
+  }
+  const messageBody =
+    updatedMessage.messageType === 'audio' && updatedMessage.attachment
+      ? 'Voice message'
+      : updatedMessage.message;
+  const friendForPush = {
+    _id: String(friendProfile._id),
+    profilePic: String(friendProfile.profilePic || senderPP || ''),
+    fullName: String(
+      friendProfile.fullName != null ? friendProfile.fullName : senderName || ''
+    ),
+  };
+  if (friendProfile.user) {
+    friendForPush.user = {
+      _id: String(friendProfile.user._id || ''),
+      firstName: String(friendProfile.user.firstName || ''),
+      surname: String(friendProfile.user.surname || ''),
+    };
+  }
+  return sendDataPushToProfile(receiverId, {
+    type: 'chat',
+    title: String(senderName || 'New Message'),
+    body: String(messageBody || ''),
+    senderId: String(senderId),
+    receiverId: String(receiverId),
+    room: String(room),
+    messageId: String(updatedMessage._id),
+    message: String(messageBody || ''),
+    senderName: String(senderName || ''),
+    friendJson: JSON.stringify(friendForPush),
+  });
+}
+
 module.exports.sendDataPushToTokens = sendDataPushToTokens;
 module.exports.sendDataPushToProfile = sendDataPushToProfile;
+module.exports.sendChatMessageDataPush = sendChatMessageDataPush;
 
 
 
