@@ -345,10 +345,14 @@ module.exports = function messageSocket(io, socket, profileId) {
 
                     console.log(`Web notification sent for message to user ${receiverId}, browsers: ${activeBrowserIds.length}`);
                 }
+                console.log('sendMessage 5');
+
             } catch (error) {
+                console.log('sendMessage 6');
                 console.error('Error sending web notification for message:', error);
             }
         }
+        console.log('sendMessage 7');
 
         if (!isActive && String(receiverId) !== String(senderId)) {
             // Try push notification first; fallback to email if none sent

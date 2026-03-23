@@ -469,7 +469,8 @@ app.get('/fcm', async (req, res) => {
     return res.status(400).json({
       ok: false,
       pushStatus: 'missing_token',
-      error: 'Missing FCM registration token. Pass ?token=... or set TEST_FCM_TOKEN in .env.',
+      error:
+        'Missing push token. Pass ?token=... (FCM registration token or ExponentPushToken[...]) or set TEST_FCM_TOKEN in .env.',
     });
   }
 
@@ -477,22 +478,17 @@ app.get('/fcm', async (req, res) => {
   const body = (req.query.body && String(req.query.body)) || 'Working 🎉';
 
   try {
-    const messageId = await admin.messaging().send({
-      token,
-      notification: { title, body },
-      android: {
-        priority: 'high',
-        directBootOk: true,
-        notification: {
-          channelId: String(req.query.channelId || 'default'),
-          sound: 'default',
-        },
-      },
+    const { sendPushToTokens } = require('./utils/pushNotifications');
+    const result = await sendPushToTokens([token], {
+      title,
+      body,
+      data: { type: 'test' },
+      channelId: String(req.query.channelId || 'default'),
     });
     return res.status(200).json({
       ok: true,
       pushStatus: 'sent',
-      messageId,
+      ...result,
       title,
       body,
       sentAt: new Date().toISOString(),

@@ -40,15 +40,21 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
         console.log('call-user', { to, channelName })
         let myProfileData = await Profile.findById(profileId)
         io.to(to).emit("incoming-video-call", { from: profileId, channelName, isAudio: false, callerName: myProfileData.fullName, callerProfilePic: myProfileData.profilePic });
-        // Data-only push so app can render custom Notifee incoming call UI
+        // Visible notification + data (Expo / FCM). Data-only is often silent on iOS.
         try {
-            await sendDataPushToProfile(to, {
-                type: 'incoming_call',
-                isAudio: 'false',
-                from: String(profileId),
-                callerName: myProfileData.fullName || '',
-                callerProfilePic: myProfileData.profilePic || '',
-                channelName: channelName || ''
+            const callerName = myProfileData.fullName || 'Someone';
+            await sendPushToProfile(to, {
+                title: 'Incoming video call',
+                body: `${callerName} is calling`,
+                channelId: 'incoming_calls_v2',
+                data: {
+                    type: 'incoming_call',
+                    isAudio: 'false',
+                    callerId: String(profileId),
+                    callerName: myProfileData.fullName || '',
+                    callerProfilePic: myProfileData.profilePic || '',
+                    channelName: channelName || ''
+                }
             });
         } catch (e) { }
 
@@ -162,15 +168,20 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
         console.log('incoming-audio-call', { to, channelName })
         let myProfileData = await Profile.findById(profileId)
         io.to(to).emit("incoming-audio-call", { from: profileId, channelName, isAudio: true, callerName: myProfileData.fullName, callerProfilePic: myProfileData.profilePic });
-        // Data-only push so app can render custom Notifee incoming call UI
         try {
-            await sendDataPushToProfile(to, {
-                type: 'incoming_call',
-                isAudio: 'true',
-                from: String(profileId),
-                callerName: myProfileData.fullName || '',
-                callerProfilePic: myProfileData.profilePic || '',
-                channelName: channelName || ''
+            const callerName = myProfileData.fullName || 'Someone';
+            await sendPushToProfile(to, {
+                title: 'Incoming audio call',
+                body: `${callerName} is calling`,
+                channelId: 'incoming_calls_v2',
+                data: {
+                    type: 'incoming_call',
+                    isAudio: 'true',
+                    callerId: String(profileId),
+                    callerName: myProfileData.fullName || '',
+                    callerProfilePic: myProfileData.profilePic || '',
+                    channelName: channelName || ''
+                }
             });
         } catch (e) { }
 
