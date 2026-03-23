@@ -8,6 +8,8 @@ const Profile = require('../models/Profile');
  * @returns {Promise<{ successCount: number, failureCount: number }>} 
  */
 async function sendPushToTokens(tokens = [], notification = {}) {
+
+  console.log('tokens', tokens, 'notification', notification);
   if (!Array.isArray(tokens) || tokens.length === 0) {
     console.warn('FCM send skipped: no device tokens');
     return { successCount: 0, failureCount: 0 };
@@ -18,6 +20,7 @@ async function sendPushToTokens(tokens = [], notification = {}) {
     .map((t) => (t == null ? '' : String(t)))
     .map((t) => t.trim())
     .filter((t) => t.length > 0);
+    console.log('sanitizedTokens', sanitizedTokens,tokens);
 
   if (sanitizedTokens.length === 0) {
     console.warn('FCM send skipped: no valid (non-empty) device tokens');

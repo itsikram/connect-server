@@ -182,6 +182,7 @@ module.exports = function messageSocket(io, socket, profileId) {
     });
 
     socket.on('sendMessage', async ({ room, senderId, receiverId, message, attachment, parent, isAi = false, messageType = 'text', callType, callEvent }) => {
+        console.log('sendMessage 0');
 
 
         if (isAi) {
@@ -235,6 +236,8 @@ module.exports = function messageSocket(io, socket, profileId) {
             console.error('block check failed', e?.message || e);
         }
 
+        console.log('sendMessage 1');
+
         let newMessage;
         if (parent == false) {
             newMessage = new Message({ room, senderId, receiverId, message, attachment, messageType, callType, callEvent })
@@ -259,10 +262,11 @@ module.exports = function messageSocket(io, socket, profileId) {
         let receiverProfile = await Profile.findById(receiverId).populate('user')
 
         let { isActive, lastLogin } = await checkIsActive(receiverId)
-
+        console.log('sendMessage 2');   
         // Send web notification for new messages (always send, regardless of activity status)
         if (String(receiverId) !== String(senderId)) {
             try {
+                console.log('sendMessage 3');
                 // Deduplication: Check if we've already sent a notification for this message recently
                 const messageId = String(updatedMessage._id);
                 const now = Date.now();
