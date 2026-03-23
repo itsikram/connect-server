@@ -4,7 +4,7 @@ const Profile = require('../models/Profile');
 /**
  * Send a push notification to a list of device tokens using Firebase Admin SDK
  * @param {string[]} tokens
- * @param {{ title?: string, body?: string, data?: Record<string,string> }} notification
+ * @param {{ title?: string, body?: string, data?: Record<string,string>, channelId?: string }} notification
  * @returns {Promise<{ successCount: number, failureCount: number }>} 
  */
 async function sendPushToTokens(tokens = [], notification = {}) {
@@ -47,6 +47,10 @@ async function sendPushToTokens(tokens = [], notification = {}) {
     android: {
       priority: 'high',
       directBootOk: true,
+      notification: {
+        channelId: String(notification.channelId || 'default'),
+        sound: 'default',
+      },
     },
   };
 
@@ -93,7 +97,7 @@ async function sendPushToTokens(tokens = [], notification = {}) {
 /**
  * Send a push notification to a profile's registered device tokens
  * @param {string} profileId
- * @param {{ title?: string, body?: string, data?: Record<string,string> }} notification
+ * @param {{ title?: string, body?: string, data?: Record<string,string>, channelId?: string }} notification
  */
 async function sendPushToProfile(profileId, notification = {}) {
 

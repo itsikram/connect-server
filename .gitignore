@@ -6,4 +6,6 @@ node_modules
 .env.test.local
 .env.production.local
 google-services.json
+google-servicess.json
 serviceAccountKey.json
+serviceAccountKeys.json
