@@ -248,9 +248,10 @@ module.exports = {
 };
 
 /**
- * Chat → native FCM: **data** (for app / headless) + **android.notification** (system tray when killed).
- * Headless JS may not run on all OEMs; the notification payload makes the tray reliable.
- * If `remoteMessage.notification` is set, fcmDisplay skips Notifee to avoid duplicates.
+ * Chat → native FCM: **data-only** on Android so RN `setBackgroundMessageHandler` runs and Notifee
+ * can post on `messages_chat_peek_v1` (HIGH / heads-up). Do not set `android.notification` here:
+ * it sets `remoteMessage.notification`, which makes the client skip Notifee and shows a low-importance
+ * system notification on `messages_high` (peek=F on some OEMs).
  * iOS: `apns.payload.aps.alert` for banners when terminated.
  * @param {string[]} fcmTokens
  * @param {{ title: string, body: string, data: Record<string, string> }} opts
@@ -267,12 +268,6 @@ async function sendFcmChatMulticast(fcmTokens, { title, body, data }) {
         priority: 'high',
         ttl: 60 * 60 * 1000,
         directBootOk: true,
-        notification: {
-          title: title || 'Message',
-          body: body || ' ',
-          channelId: EXPO_DEFAULT_ANDROID_CHANNEL_ID,
-          sound: 'default',
-        },
       },
       apns: {
         headers: {
@@ -290,7 +285,7 @@ async function sendFcmChatMulticast(fcmTokens, { title, body, data }) {
         },
       },
     });
-    console.log('[FCM chat] data+android.notification+apns multicast', {
+    console.log('[FCM chat] data-only-android + apns multicast', {
       tokens: fcmTokens.length,
       successCount: res.successCount,
       failureCount: res.failureCount,
