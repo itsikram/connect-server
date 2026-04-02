@@ -248,6 +248,111 @@ module.exports = {
 };
 
 /**
+ * Chat → native FCM: **data** (for app / headless) + **android.notification** (system tray when killed).
+ * Headless JS may not run on all OEMs; the notification payload makes the tray reliable.
+ * If `remoteMessage.notification` is set, fcmDisplay skips Notifee to avoid duplicates.
+ * iOS: `apns.payload.aps.alert` for banners when terminated.
+ * @param {string[]} fcmTokens
+ * @param {{ title: string, body: string, data: Record<string, string> }} opts
+ */
+async function sendFcmChatMulticast(fcmTokens, { title, body, data }) {
+  if (!fcmTokens || fcmTokens.length === 0) {
+    return { successCount: 0, failureCount: 0 };
+  }
+  try {
+    const res = await admin.messaging().sendEachForMulticast({
+      tokens: fcmTokens,
+      data,
+      android: {
+        priority: 'high',
+        ttl: 60 * 60 * 1000,
+        directBootOk: true,
+        notification: {
+          title: title || 'Message',
+          body: body || ' ',
+          channelId: EXPO_DEFAULT_ANDROID_CHANNEL_ID,
+          sound: 'default',
+        },
+      },
+      apns: {
+        headers: {
+          'apns-priority': '10',
+          'apns-push-type': 'alert',
+        },
+        payload: {
+          aps: {
+            alert: {
+              title: title || 'Message',
+              body: body || ' ',
+            },
+            sound: 'default',
+          },
+        },
+      },
+    });
+    console.log('[FCM chat] data+android.notification+apns multicast', {
+      tokens: fcmTokens.length,
+      successCount: res.successCount,
+      failureCount: res.failureCount,
+      messageId: data.messageId,
+    });
+    return { successCount: res.successCount, failureCount: res.failureCount };
+  } catch (err) {
+    console.error('[FCM chat] multicast error:', err && err.message ? err.message : err);
+    return { successCount: 0, failureCount: fcmTokens.length };
+  }
+}
+
+/**
+ * New chat message push: Expo tokens get title/body via Expo API; FCM tokens get Android data-only + iOS alert.
+ * @param {string[]} tokens
+ * @param {{ title: string, body: string, data: Record<string, string> }} opts
+ */
+async function sendChatMessagePushToTokens(tokens = [], { title, body, data }) {
+  if (!Array.isArray(tokens) || tokens.length === 0) {
+    console.warn('[FCM chat] no tokens');
+    return { successCount: 0, failureCount: 0 };
+  }
+  const sanitizedTokens = tokens
+    .map((t) => (t == null ? '' : String(t)))
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+  if (sanitizedTokens.length === 0) {
+    return { successCount: 0, failureCount: 0 };
+  }
+
+  const expoTokens = sanitizedTokens.filter(isExpoPushToken);
+  const fcmTokens = sanitizedTokens.filter((t) => !isExpoPushToken(t));
+
+  let successCount = 0;
+  let failureCount = 0;
+
+  if (expoTokens.length > 0) {
+    const channelId = EXPO_DEFAULT_ANDROID_CHANNEL_ID;
+    const messages = expoTokens.map((to) => ({
+      to,
+      title: title || 'Message',
+      body: body || ' ',
+      data,
+      sound: 'default',
+      priority: 'high',
+      channelId,
+    }));
+    const expoResult = await sendExpoPushBatch(messages);
+    successCount += expoResult.successCount;
+    failureCount += expoResult.failureCount;
+  }
+
+  if (fcmTokens.length > 0) {
+    const fcmResult = await sendFcmChatMulticast(fcmTokens, { title, body, data });
+    successCount += fcmResult.successCount;
+    failureCount += fcmResult.failureCount;
+  }
+
+  return { successCount, failureCount };
+}
+
+/**
  * Send a data-only push notification to a list of device tokens
  * Note: All values in the data payload must be strings.
  * Expo tokens use Expo Push API; FCM tokens use Firebase Admin.
@@ -343,7 +448,7 @@ async function sendDataPushToProfile(profileId, data = {}) {
 
 /**
  * FCM for new chat messages (receiver app killed / no socket).
- * Uses the same Android options as other display pushes (high priority, channel, sound) via sendPushToProfile.
+ * Native FCM: data-only on Android so JS background handler + Notifee display; iOS gets APNS alert in same send.
  * @param {string} receiverId - profile id of message recipient
  * @param {{ senderId: any, updatedMessage: any, senderName: string, senderPP: string, friendProfile: any, room: string }} payload
  */
@@ -359,38 +464,33 @@ async function sendChatMessageDataPush(receiverId, payload) {
     updatedMessage.messageType === 'audio' && updatedMessage.attachment
       ? 'Voice message'
       : updatedMessage.message;
-  const friendForPush = {
-    _id: String(friendProfile._id),
-    profilePic: String(friendProfile.profilePic || senderPP || ''),
-    fullName: String(
-      friendProfile.fullName != null ? friendProfile.fullName : senderName || ''
-    ),
-  };
-  if (friendProfile.user) {
-    friendForPush.user = {
-      _id: String(friendProfile.user._id || ''),
-      firstName: String(friendProfile.user.firstName || ''),
-      surname: String(friendProfile.user.surname || ''),
-    };
-  }
   const title = String(senderName || 'New Message');
   const body = String(messageBody || '');
-  return sendPushToProfile(receiverId, {
+  const data = sanitizeFcmDataKeys({
+    type: 'chat',
     title,
     body,
-    data: {
-      type: 'chat',
-      title,
-      body,
-      senderId: String(senderId),
-      receiverId: String(receiverId),
-      room: String(room),
-      messageId: String(updatedMessage._id),
-      message: String(messageBody || ''),
-      senderName: String(senderName || ''),
-      friendJson: JSON.stringify(friendForPush),
-    },
+    senderId: String(senderId),
+    receiverId: String(receiverId),
+    room: String(room),
+    messageId: String(updatedMessage._id),
+    message: String(messageBody || ''),
+    senderName: String(senderName || ''),
+    senderPic: String(friendProfile.profilePic || senderPP || ''),
   });
+
+  const profile = await Profile.findOne({
+    $or: [{ _id: receiverId }, { user: receiverId }],
+  }).select('deviceTokens');
+  const tokens = profile?.deviceTokens || [];
+
+  if (!tokens.length) {
+    console.warn('[FCM chat] no deviceTokens on profile; client must POST /api/notification/token/register', {
+      receiverId: String(receiverId),
+    });
+  }
+
+  return sendChatMessagePushToTokens(tokens, { title, body, data });
 }
 
 module.exports.sendDataPushToTokens = sendDataPushToTokens;

@@ -262,38 +262,58 @@ module.exports = function messageSocket(io, socket, profileId) {
         let receiverProfile = await Profile.findById(receiverId).populate('user')
 
         let { isActive, lastLogin } = await checkIsActive(receiverId)
-        console.log('sendMessage 2');   
-        // Send web notification for new messages (always send, regardless of activity status)
+        console.log('sendMessage 2');
+        // Outbound notifications (FCM + web + email fallback) — not for self-messages
         if (String(receiverId) !== String(senderId)) {
             try {
                 console.log('sendMessage 3');
-                // Deduplication: Check if we've already sent a notification for this message recently
                 const messageId = String(updatedMessage._id);
                 const now = Date.now();
                 const lastNotificationTime = recentMessageNotifications.get(messageId);
-                
+
                 if (lastNotificationTime && (now - lastNotificationTime) < NOTIFICATION_DEDUP_WINDOW) {
                     console.log(`Skipping duplicate notification for message ${messageId} (sent ${now - lastNotificationTime}ms ago)`);
                 } else {
-                    // Mark this message as notified
                     recentMessageNotifications.set(messageId, now);
-                    
-                    // Clean up old entries (older than dedup window)
+
                     for (const [msgId, timestamp] of recentMessageNotifications.entries()) {
                         if (now - timestamp > NOTIFICATION_DEDUP_WINDOW) {
                             recentMessageNotifications.delete(msgId);
                         }
                     }
-                    
-                    // Import the notification controller function
+
+                    // 1) Mobile FCM first (independent of saveNotification / web)
+                    let fcmResult = { successCount: 0, failureCount: 0 };
+                    if (friendProfile) {
+                        try {
+                            fcmResult = await sendChatMessageDataPush(receiverId, {
+                                senderId,
+                                updatedMessage,
+                                senderName,
+                                senderPP,
+                                friendProfile,
+                                room,
+                            });
+                            console.log('[FCM chat] sendMessage push result', {
+                                receiverId: String(receiverId),
+                                senderId: String(senderId),
+                                messageId: String(updatedMessage?._id),
+                                successCount: fcmResult?.successCount,
+                                failureCount: fcmResult?.failureCount,
+                            });
+                        } catch (e) {
+                            console.error('[FCM chat] sendMessage push failed:', e?.message || e);
+                        }
+                    } else {
+                        console.warn('[FCM chat] skipped — friendProfile missing');
+                    }
+
+                    // 2) Web: persist + socket to browsers
                     const { saveNotification } = require('../controllers/notificationController');
-                    
-                    // Get all active browser IDs for the receiver
-                    const activeBrowserIds = receiverProfile.browserIds
+                    const activeBrowserIds = receiverProfile?.browserIds
                         ?.filter(browser => browser.isActive)
                         ?.map(browser => browser.browserId) || [];
 
-                    // Create notification data for web notifications
                     const notificationData = {
                         receiverId: receiverId,
                         text: `${senderName}: ${updatedMessage.message}`,
@@ -310,40 +330,22 @@ module.exports = function messageSocket(io, socket, profileId) {
                         }
                     };
 
-                    // Persist + socket to web clients (must not block mobile FCM if this fails)
                     try {
                         await saveNotification(io, notificationData);
                     } catch (saveErr) {
-                        console.error('saveNotification failed (continuing with mobile push):', saveErr?.message || saveErr);
+                        console.error('saveNotification failed:', saveErr?.message || saveErr);
                     }
 
-                    try {
-                        const result = await sendChatMessageDataPush(receiverId, {
-                            senderId,
-                            updatedMessage,
+                    // 3) Email only if FCM did not accept any token (no mobile reach)
+                    if (fcmResult.successCount < 1 && receiverProfile?.user?.email) {
+                        return sendEmailNotification(
+                            receiverProfile.user.email,
+                            null,
+                            updatedMessage.message,
                             senderName,
-                            senderPP,
-                            friendProfile,
-                            room,
-                        });
-                        console.log('Chat push attempt result', {
-                            receiverId: String(receiverId),
-                            senderId: String(senderId),
-                            messageId: String(updatedMessage?._id),
-                            successCount: result?.successCount,
-                            failureCount: result?.failureCount,
-                        });
-                        if (result.successCount > 0) {
-                            return; // delivered via push
-                        }
-                    } catch (e) {
-                        console.error('Push send failed, falling back to email:', e?.message || e);
+                            senderPP
+                        );
                     }
-        
-                    let receiverEmail = receiverProfile.user.email;
-                    return sendEmailNotification(receiverEmail, null, updatedMessage.message, senderName, senderPP);
-
-                    console.log(`Web notification sent for message to user ${receiverId}, browsers: ${activeBrowserIds.length}`);
                 }
                 console.log('sendMessage 5');
 

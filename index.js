@@ -437,15 +437,6 @@ app.use(express.static(path.join(__dirname, 'build'), {
 // Test FCM to one Android device: GET /fcm?token=...&title=...&body=...
 // Or set TEST_FCM_TOKEN in .env and call GET /fcm (no token in URL).
 
-// Health check endpoint for load balancer
-app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'healthy', 
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    port: PORT
-  });
-});
 
 // app.get('*', (req, res) => {
 //   const hostname = req.hostname || req.get('host')?.split(':')[0];
