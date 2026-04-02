@@ -11,8 +11,10 @@ const CmntReply = require('../models/CmntReply');
 const Setting = require('../models/Setting');
 const FaceEndCoding = require('../models/FaceEncoding');
 const { OAuth2Client } = require('google-auth-library');
+const crypto = require('crypto');
 const SECRET_KEY = process.env.JWT_SECRET_KEY;
 const deleteUserData = require('../utils/deleteUserData')
+const sendEmailNotification = require('../utils/sendEmailNotification');
 
 
 // Google OAuth2 Client
@@ -20,6 +22,107 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 
 
+
+const getClientAppUrl = () => {
+    return (
+        process.env.CLIENT_URL ||
+        process.env.REACT_APP_URL ||
+        process.env.FRONTEND_URL ||
+        'http://localhost:3000'
+    );
+};
+
+exports.forgotPassword = async (req, res, next) => {
+    const rawEmail = req.body?.email || '';
+    const email = String(rawEmail).trim().toLowerCase();
+
+    if (!email) {
+        return res.status(400).json({ message: 'Email is required' });
+    }
+
+    try {
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            return res.status(200).json({
+                message: 'If an account with that email exists, a reset link has been sent.'
+            });
+        }
+
+        if (!user.password) {
+            return res.status(400).json({
+                message: 'This account uses Google sign-in. Please continue with Google.'
+            });
+        }
+
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        const hashedResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+        user.resetPasswordToken = hashedResetToken;
+        user.resetPasswordExpire = Date.now() + 15 * 60 * 1000;
+        await user.save();
+
+        const resetUrl = `${getClientAppUrl()}/reset-password/${resetToken}`;
+        const message = `
+Hello ${user.firstName || 'there'},
+
+We received a request to reset your Connect account password.
+
+Reset your password using this link:
+${resetUrl}
+
+This link expires in 15 minutes.
+If you did not request this, you can ignore this email safely.
+        `.trim();
+
+        await sendEmailNotification(user.email, 'Connect password reset', message, 'Connect');
+
+        return res.status(200).json({
+            message: 'If an account with that email exists, a reset link has been sent.'
+        });
+    } catch (e) {
+        next(e)
+    }
+}
+
+exports.resetPassword = async (req, res, next) => {
+    const resetToken = req.params?.token;
+    const { password, confirmPassword } = req.body || {};
+
+    if (!resetToken) {
+        return res.status(400).json({ message: 'Reset token is required' });
+    }
+
+    if (!password || !confirmPassword) {
+        return res.status(400).json({ message: 'Password and confirm password are required' });
+    }
+
+    if (password !== confirmPassword) {
+        return res.status(400).json({ message: 'Password and confirm password do not match' });
+    }
+
+    try {
+        const hashedResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+        const user = await User.findOne({
+            resetPasswordToken: hashedResetToken,
+            resetPasswordExpire: { $gt: Date.now() }
+        });
+
+        if (!user) {
+            return res.status(400).json({ message: 'Invalid or expired reset link' });
+        }
+
+        user.password = await bcrypt.hash(password, 10);
+        user.resetPasswordToken = undefined;
+        user.resetPasswordExpire = undefined;
+        await user.save();
+
+        return res.status(200).json({ message: 'Password reset successful. Please login.' });
+    } catch (e) {
+        next(e)
+    }
+}
 
 exports.signUp = async (req, res, next) => {
     let { firstName, surname, password, DOB, gender } = req.body

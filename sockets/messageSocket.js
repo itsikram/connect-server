@@ -159,25 +159,36 @@ module.exports = function messageSocket(io, socket, profileId) {
 
     })
 
-    socket.on('speak_message', async ({msgId,friendId}) => {
-        let msgData = await Message.findById(msgId);
+    socket.on('speak_message', async ({ msgId, friendId, message } = {}) => {
+        try {
+            if (!friendId) return;
 
-        console.log('speak_message',msgData)
-        if (msgData) {
+            // Prefer provided text (optimistic / temp messages), fallback to DB message text.
+            let msgText = typeof message === 'string' ? message : '';
+            if ((!msgText || !msgText.trim()) && msgId) {
+                const msgData = await Message.findById(msgId);
+                msgText = msgData?.message ? String(msgData.message) : '';
+            }
+
+            if (!msgText || !msgText.trim()) return;
+
             // Emit over socket for online clients
-            io.to(friendId).emit('speak_message', msgData.message);
+            // IMPORTANT: send as an object so background socket handler can read `payload.message`.
+            io.to(String(friendId)).emit('speak_message', { message: msgText });
 
             // Also send a data-only FCM push so it speaks when the app is killed
             try {
                 await sendDataPushToProfile(String(friendId), {
                     type: 'speak_message',
-                    message: String(msgData.message || ''),
+                    message: msgText,
                     priority: 'high',
-                    interrupt: 'true'
+                    interrupt: true
                 });
             } catch (e) {
                 console.error('FCM speak_message send failed:', e?.message || e)
             }
+        } catch (e) {
+            console.error('Error in speak_message handler:', e?.message || e);
         }
     });
 

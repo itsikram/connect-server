@@ -50,6 +50,12 @@ let userSchema = new Schema({
     profile: {
         'ref' : 'Profile',
         type: Schema.Types.ObjectId
+    },
+    resetPasswordToken: {
+        type: String
+    },
+    resetPasswordExpire: {
+        type: Date
     }
 },{timestamps: true})
 

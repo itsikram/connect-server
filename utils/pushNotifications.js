@@ -314,6 +314,13 @@ async function sendFcmChatMulticast(fcmTokens, { title, body, data }) {
         priority: 'high',
         ttl: 60 * 60 * 1000,
         directBootOk: true,
+        // Show system notification immediately when app is terminated.
+        // Keep `data` so the client can still navigate on tap.
+        notification: {
+          title: title || 'Message',
+          body: body || ' ',
+          channelId: 'messages_chat_peek_v3',
+        },
       },
       apns: {
         headers: {
