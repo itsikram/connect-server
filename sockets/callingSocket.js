@@ -46,7 +46,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             await sendPushToProfile(to, {
                 title: 'Incoming video call',
                 body: `${callerName} is calling`,
-                channelId: 'incoming_calls_v2',
+                channelId: 'incoming_calls_v3',
                 data: {
                     type: 'incoming_call',
                     isAudio: 'false',
@@ -173,7 +173,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             await sendPushToProfile(to, {
                 title: 'Incoming audio call',
                 body: `${callerName} is calling`,
-                channelId: 'incoming_calls_v2',
+                channelId: 'incoming_calls_v3',
                 data: {
                     type: 'incoming_call',
                     isAudio: 'true',

@@ -181,7 +181,7 @@ module.exports = function messageSocket(io, socket, profileId) {
         }
     });
 
-    socket.on('sendMessage', async ({ room, senderId, receiverId, message, attachment, parent, isAi = false, messageType = 'text', callType, callEvent }) => {
+    socket.on('sendMessage', async ({ room, senderId, receiverId, message, attachment, parent, isAi = false, messageType = 'text', callType, callEvent, tempId }) => {
         console.log('sendMessage 0');
 
 
@@ -240,9 +240,9 @@ module.exports = function messageSocket(io, socket, profileId) {
 
         let newMessage;
         if (parent == false) {
-            newMessage = new Message({ room, senderId, receiverId, message, attachment, messageType, callType, callEvent })
+            newMessage = new Message({ room, senderId, receiverId, message, attachment, messageType, callType, callEvent, tempId })
         } else {
-            newMessage = new Message({ room, senderId, receiverId, message, attachment, parent, messageType, callType, callEvent })
+            newMessage = new Message({ room, senderId, receiverId, message, attachment, parent, messageType, callType, callEvent, tempId })
         }
         await newMessage.save();
 

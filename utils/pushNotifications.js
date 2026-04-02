@@ -159,6 +159,52 @@ async function sendPushToTokens(tokens = [], notification = {}) {
   const titleStr = String(notification.title || 'Notification');
   const bodyStr = String(notificationBody);
 
+  /** Native Android: data-only so RN `setBackgroundMessageHandler` runs when killed; app shows Notifee call UI + actions. */
+  if (isIncomingCall) {
+    try {
+      const res = await admin.messaging().sendEachForMulticast({
+        tokens: fcmTokens,
+        data: stringData,
+        android: {
+          priority: 'high',
+          ttl: 120 * 1000,
+          directBootOk: true,
+        },
+        apns: {
+          headers: {
+            'apns-priority': '10',
+            'apns-push-type': 'alert',
+          },
+          payload: {
+            aps: {
+              alert: { title: titleStr, body: bodyStr },
+              sound: 'default',
+            },
+          },
+        },
+      });
+      successCount += res.successCount;
+      failureCount += res.failureCount;
+      if (res.failureCount > 0 && Array.isArray(res.responses)) {
+        const failed = res.responses
+          .map((r, idx) => ({ r, idx }))
+          .filter(({ r }) => !r.success)
+          .slice(0, 5);
+        for (const { r, idx } of failed) {
+          console.warn('FCM incoming_call send failure', {
+            idx,
+            token: redactToken(fcmTokens[idx]),
+            error: r.error && r.error.toJSON ? r.error.toJSON() : r.error,
+          });
+        }
+      }
+      return { successCount, failureCount };
+    } catch (err) {
+      console.error('FCM incoming_call multicast error:', err && err.message ? err.message : err);
+      return { successCount, failureCount: failureCount + fcmTokens.length };
+    }
+  }
+
   const payload = {
     notification: {
       title: notification.title || 'Notification',

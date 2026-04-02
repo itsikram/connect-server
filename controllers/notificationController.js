@@ -236,3 +236,61 @@ exports.sendTestPush = async (req, res, next) => {
         next(err);
     }
 }
+
+/**
+ * Reject an incoming call when the callee presses Decline on the push (app killed — no socket).
+ * Authenticated callee emits the same socket events as `video-call-reject` / `audio-call-reject`.
+ */
+exports.rejectIncomingCallFromPush = async (req, res, next) => {
+    try {
+        const io = req.app.get('io');
+        const calleeId = String(req.profile._id);
+        const callerId = String(req.body?.callerId || '').trim();
+        const channelName = String(req.body?.channelName || '').trim();
+        const isAudio = String(req.body?.isAudio || 'false').toLowerCase() === 'true';
+        if (!callerId || !channelName) {
+            return res.status(400).json({ message: 'callerId and channelName are required' });
+        }
+        if (io) {
+            if (isAudio) {
+                io.to(callerId).emit('audio-call-rejected', {
+                    to: callerId,
+                    friendId: calleeId,
+                    channelName,
+                });
+            } else {
+                io.to(callerId).emit('video-call-rejected', {
+                    to: callerId,
+                    friendId: calleeId,
+                    channelName,
+                });
+            }
+        }
+        return res.status(200).json({ ok: true });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * Callee’s device showed the incoming-call push (Notifee). Notify caller’s UI: same as socket `update-call-status` → `updated-call-status`.
+ */
+exports.notifyIncomingCallRingingFromPush = async (req, res, next) => {
+    try {
+        const io = req.app.get('io');
+        const calleeId = String(req.profile._id);
+        const callerId = String(req.body?.callerId || '').trim();
+        if (!callerId) {
+            return res.status(400).json({ message: 'callerId is required' });
+        }
+        if (io) {
+            io.to(callerId).emit('updated-call-status', {
+                from: calleeId,
+                status: 'Ringing...',
+            });
+        }
+        return res.status(200).json({ ok: true });
+    } catch (err) {
+        next(err);
+    }
+};

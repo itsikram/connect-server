@@ -330,7 +330,7 @@ exports.getOldMessages = async(req,res,next) => {
 exports.sendMessage = async (req, res, next) => {
     try {
         const io = req.app.get('io');
-        const { room, senderId, receiverId, message, attachment, parent, isAi = false, messageType = 'text', callType, callEvent } = req.body;
+        const { room, senderId, receiverId, message, attachment, parent, isAi = false, messageType = 'text', callType, callEvent, tempId } = req.body;
 
         // Prevent messaging if either user has blocked the other
         const [senderProfile, receiverProfile] = await Promise.all([
@@ -350,9 +350,9 @@ exports.sendMessage = async (req, res, next) => {
 
         let newMessage;
         if (parent == false) {
-            newMessage = new Message({ room, senderId, receiverId, message, attachment, messageType, callType, callEvent });
+            newMessage = new Message({ room, senderId, receiverId, message, attachment, messageType, callType, callEvent, tempId });
         } else {
-            newMessage = new Message({ room, senderId, receiverId, message, attachment, parent, messageType, callType, callEvent });
+            newMessage = new Message({ room, senderId, receiverId, message, attachment, parent, messageType, callType, callEvent, tempId });
         }
         await newMessage.save();
 
