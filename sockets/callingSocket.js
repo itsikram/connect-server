@@ -297,6 +297,13 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
 
 
     socket.on("answer-call", async ({ to, channelName, isAudio = false }) => {
+        console.log('Server: Received answer-call event:', { 
+            from: profileId, 
+            to, 
+            channelName, 
+            isAudio,
+            socketId: socket.id 
+        });
         try {
             // Clear any pending missed-call timer for this channel
             try {
@@ -307,21 +314,30 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                     callTimeouts.delete(key);
                 }
             } catch (e) { }
-            // callee = current socket's profileId
+            
+            // callee = current socket's profileId (person who accepted the call)
             const calleeProfileData = await Profile.findById(profileId);
-            // caller = the 'to' user
+            // caller = the 'to' user (person who initiated the call)
             const callerProfileData = await Profile.findById(to);
 
+            console.log('Server: Profile data retrieved:', {
+                callee: calleeProfileData?._id,
+                caller: callerProfileData?._id
+            });
+
             // Notify the caller that the callee accepted (show callee info on caller's phone)
-            io.to(to).emit("call-accepted", {
+            console.log('Server: Emitting call-accepted to caller (to):', to);
+            const callerEmitResult = io.to(to).emit("call-accepted", {
                 channelName,
                 isAudio,
                 callerName: calleeProfileData?.fullName,
                 callerProfilePic: calleeProfileData?.profilePic,
                 callerId: profileId
             });
+            console.log('Server: call-accepted emit to caller returned:', callerEmitResult);
 
             // Also notify the callee (echo) so their app can open the call UI with caller info
+            console.log('Server: Emitting call-accepted to callee (echo)');
             socket.emit("call-accepted", {
                 channelName,
                 isAudio,
@@ -334,28 +350,12 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             try {
                 const roomKey = getRoomKey(profileId, to);
                 markAccepted(roomKey);
+                console.log('Server: Marked room as accepted:', roomKey);
             } catch (e) { }
         } catch (err) {
             console.error('Error handling agora-answer-call:', err, { to, channelName, isAudio });
         }
     });
-
-    socket.on("filter-video", ({ to, filter }) => {
-        console.log('filter-video', { to, filter })
-        io.to(to).emit("apply-video-filter", {friendId: profileId, filter });
-    });
-
-    socket.on('update-call-status', (data) => {
-        console.log('update-call-status', data)
-        io.to(data?.to || '').emit('updated-call-status', {from: profileId, status: data?.status})
-    })
-
-    // Simple-peer calling socket
-    // Caller initiates call
-    // Expect "data" to contain: { signalData: <simple-peer-signal-object>, from, userToCall, name, isVideo }
-    // socket.on('call-user', (data) => {
-    //     console.log('call-user', data)
-    //     try {
     //         console.log(`📞 call-user from ${data.from} -> ${data.userToCall}`);
     //         const targetSocketId = onlineUsers.get(data.userToCall);
     //         if (targetSocketId) {
