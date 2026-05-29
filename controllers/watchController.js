@@ -12,6 +12,7 @@ exports.createWatch = async (req, res, next) => {
     let profileId = req.profile._id
     let caption = req.body.caption
     let videoUrl = req.body.videoUrl
+    let thumbnailUrl = req.body.thumbnailUrl
     try {
 
 
@@ -22,15 +23,13 @@ exports.createWatch = async (req, res, next) => {
             return thumbnail_url
         }
 
-        let thumbnail = await getThumbnail(videoUrl)
-
+        let thumbnail = thumbnailUrl || await getThumbnail(videoUrl)
 
         let watch = new Watch({
             caption,
             videoUrl: videoUrl,
             author: profileId,
             thumbnail
-
         })
 
         let savedData = await watch.save()

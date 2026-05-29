@@ -200,6 +200,7 @@ exports.getChatHistory = async(req,res,next) => {
         let profileId = req.query.profileId || req.profile._id
         let friendId = req.query.friendId
         let limit = parseInt(req.query.limit) || 20
+        let skip = parseInt(req.query.skip) || 0
                 
         // Build query for messages between these users
         const query = {
@@ -212,6 +213,7 @@ exports.getChatHistory = async(req,res,next) => {
         // Fetch messages (most recent first, then reverse for chronological order)
         const messages = await Message.find(query)
             .sort({ timestamp: -1 })
+            .skip(skip)
             .limit(limit)
             .populate('parent');
 
@@ -467,6 +469,26 @@ exports.getNewMessages = async (req, res, next) => {
     } catch (error) {
         console.error('Error fetching new messages:', error);
         return res.status(500).json({ messages: [] });
+    }
+};
+
+// Count unseen new messages for sidebar/update checks
+exports.getNewMessagesCount = async (req, res, next) => {
+    try {
+        const { profileId } = req.query;
+
+        if (!profileId) {
+            return res.status(400).json({ hasNewMessages: false, count: 0 });
+        }
+
+        const count = await Message.countDocuments({ receiverId: profileId, seen: false });
+        return res.status(200).json({
+            hasNewMessages: count > 0,
+            count
+        });
+    } catch (error) {
+        console.error('Error fetching new message count:', error);
+        return res.status(500).json({ hasNewMessages: false, count: 0 });
     }
 };
 

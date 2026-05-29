@@ -1,6 +1,6 @@
 const Router = require('express').Router()
 const isAuth = require('../middlewares/isAuth')
-const {addMessageReact,removeMessageReact,getMedia,getChatList,getChatHistory,getOldMessages,sendMessage,getNewMessages,getMessageReactions,markMessageAsSeen} = require('../controllers/messageController')
+const {addMessageReact,removeMessageReact,getMedia,getChatList,getChatHistory,getOldMessages,sendMessage,getNewMessages,getNewMessagesCount,getMessageReactions,markMessageAsSeen} = require('../controllers/messageController')
 const uploadAttachment = require('../middlewares/photosUpload')
 
 
@@ -12,6 +12,7 @@ Router.get('/getChatHistory',isAuth,getChatHistory);
 Router.get('/getOldMessages',isAuth,getOldMessages);
 Router.post('/send',isAuth,sendMessage);
 Router.get('/new-messages',isAuth,getNewMessages);
+Router.get('/new-messages-count',isAuth,getNewMessagesCount);
 Router.get('/reactions',isAuth,getMessageReactions);
 Router.post('/seen',isAuth,markMessageAsSeen);
 
