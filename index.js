@@ -421,6 +421,11 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname, 'build'), {
   setHeaders: (res, filePath, stat) => {
+    // Safari only offers Settings → Profile Downloaded with this MIME type
+    if (filePath && filePath.endsWith('.mobileconfig')) {
+      res.setHeader('Content-Type', 'application/x-apple-aspen-config');
+      res.setHeader('Content-Disposition', 'inline; filename="connect.mobileconfig"');
+    }
     // For static files, check if request is from localhost via the middleware above
     // This will be set by the middleware, so we check if headers are already set
     // If not set, add no-cache headers as a safety measure
@@ -433,6 +438,18 @@ app.use(express.static(path.join(__dirname, 'build'), {
     }
   }
 }));
+
+// Also expose profile from server/public with correct MIME (API origin)
+app.get('/connect.mobileconfig', (req, res) => {
+  const filePath = path.join(__dirname, 'public', 'connect.mobileconfig');
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).send('iOS profile not found');
+  }
+  res.setHeader('Content-Type', 'application/x-apple-aspen-config');
+  res.setHeader('Content-Disposition', 'inline; filename="connect.mobileconfig"');
+  res.setHeader('Cache-Control', 'no-store');
+  return res.sendFile(filePath);
+});
 
 // Test FCM to one Android device: GET /fcm?token=...&title=...&body=...
 // Or set TEST_FCM_TOKEN in .env and call GET /fcm (no token in URL).
