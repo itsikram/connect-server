@@ -14,11 +14,23 @@ const deleteUserData = require('../utils/deleteUserData')
 const sendEmailNotification = require('../utils/sendEmailNotification')
 
 const getAdminAppUrl = () => {
-    return (
+    const url = (
         process.env.ADMIN_URL ||
         process.env.NEXT_PUBLIC_ADMIN_URL ||
         'http://localhost:5000'
     ).replace(/\/+$/, '');
+
+    if (
+        process.env.NODE_ENV === 'production' &&
+        /localhost|127\.0\.0\.1/i.test(url)
+    ) {
+        console.warn(
+            `ADMIN_URL is "${url}" in production. ` +
+                'Set ADMIN_URL to your live admin URL in Render env vars.'
+        );
+    }
+
+    return url;
 };
 
 const escapeHtml = (value) =>

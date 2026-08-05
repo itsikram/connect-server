@@ -24,12 +24,25 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 
 const getClientAppUrl = () => {
-    return (
+    const url = (
         process.env.CLIENT_URL ||
         process.env.REACT_APP_URL ||
         process.env.FRONTEND_URL ||
         'http://localhost:3000'
     ).replace(/\/+$/, '');
+
+    // Live reset emails must not point at localhost — set CLIENT_URL on the host (Render env)
+    if (
+        process.env.NODE_ENV === 'production' &&
+        /localhost|127\.0\.0\.1/i.test(url)
+    ) {
+        console.warn(
+            `CLIENT_URL is "${url}" in production. ` +
+                'Set CLIENT_URL to your live web app URL (e.g. https://connect-zfgx.onrender.com) in Render env vars.'
+        );
+    }
+
+    return url;
 };
 
 const escapeHtml = (value) =>
