@@ -24,6 +24,7 @@ const timerRoutes = require('./timerRoutes')
 const flashcardsRoutes = require('./flashcardsRoutes')
 const calendarRoutes = require('./calendarRoutes')
 const habitsRoutes = require('./habitsRoutes')
+const portfolioRoutes = require('./portfolioRoutes')
  
 let rootRoute = async (req,res) => {
     return res.sendFile(path.join(__dirname, "build", "index.html"));
@@ -124,6 +125,10 @@ const routes = [
     {
         path: '/api/habits',
         handler: habitsRoutes
+    },
+    {
+        path: '/api/portfolio',
+        handler: portfolioRoutes
     }
 ]
  
