@@ -1,9 +1,9 @@
 const Router = require('express').Router()
 const {createWatch,deleteWatch,getMyWatchs,getRelatedWatchs,getProfileWatch, getSingleWatch,updateWatch} = require('../controllers/watchController')
-const photosUpload = require('../middlewares/photosUpload')
 const isAuth = require('../middlewares/isAuth')
 
-Router.post('/create',isAuth,photosUpload.single('attachment'),createWatch)
+// Video is uploaded separately via /upload/video; create only receives JSON metadata.
+Router.post('/create', isAuth, createWatch)
 Router.post('/delete', isAuth, deleteWatch)
 Router.post('/update',isAuth, updateWatch)
 Router.get('/myWatchs',isAuth,getMyWatchs)

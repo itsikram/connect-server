@@ -9,39 +9,67 @@ const Post = require('../models/Post')
 const generateAndUploadThumbnail = require('../utils/generateThumbnail')
 
 exports.createWatch = async (req, res, next) => {
-    let profileId = req.profile._id
-    let caption = req.body.caption
-    let videoUrl = req.body.videoUrl
-    let thumbnailUrl = req.body.thumbnailUrl
+    const profileId = req.profile._id
+    const caption = req.body.caption || ''
+    const videoUrl = req.body.videoUrl
+    const thumbnailUrl = req.body.thumbnailUrl
+    const feeling = req.body.feeling || ''
+    const audience = Number.isFinite(Number(req.body.audience))
+        ? Number(req.body.audience)
+        : 3
+
     try {
-
-
-        let getThumbnail = async (videoUrl) => {
-            let result = await generateAndUploadThumbnail(videoUrl)
-
-            let thumbnail_url = result.secure_url;
-            return thumbnail_url
+        if (!videoUrl || typeof videoUrl !== 'string') {
+            return res.status(400).json({ message: 'videoUrl is required' })
         }
 
-        let thumbnail = thumbnailUrl || await getThumbnail(videoUrl)
+        const cloudinaryFrameThumb = (url) => {
+            if (!url || !url.includes('/upload/')) return ''
+            // Prefer Cloudinary video frame transform when available.
+            return url
+                .replace('/video/upload/', '/video/upload/so_1,w_720,h_405,c_fill/')
+                .replace(/\.(mp4|mov|webm|mkv|avi)(\?.*)?$/i, '.jpg$2')
+        }
 
-        let watch = new Watch({
+        let thumbnail = thumbnailUrl || ''
+        if (!thumbnail) {
+            try {
+                const result = await generateAndUploadThumbnail(videoUrl)
+                thumbnail = result?.secure_url || ''
+            } catch (thumbErr) {
+                console.warn('Watch thumbnail generation failed, using fallback:', thumbErr.message)
+                thumbnail = cloudinaryFrameThumb(videoUrl) || videoUrl
+            }
+        }
+
+        const watch = new Watch({
             caption,
-            videoUrl: videoUrl,
+            videoUrl,
             author: profileId,
-            thumbnail
+            thumbnail,
+            feeling,
+            audience,
         })
 
-        let savedData = await watch.save()
-        res.json({
-            message: 'Watch Created Successfully',
-            data: savedData
-        }).status(200)
+        const savedData = await watch.save()
+        const populated = await Watch.findById(savedData._id).populate([
+            {
+                path: 'author',
+                select: ['profilePic', 'user', 'fullName', 'displayName'],
+                populate: {
+                    path: 'user',
+                    select: ['firstName', 'surname'],
+                },
+            },
+        ])
 
+        return res.status(200).json({
+            message: 'Watch Created Successfully',
+            data: populated || savedData,
+        })
     } catch (error) {
         next(error)
     }
-
 }
 
 exports.deleteWatch = async (req, res, next) => {
