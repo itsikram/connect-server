@@ -1,9 +1,15 @@
 const Router = require('express').Router();
-const { getPortfolio, updatePortfolio, resetPortfolio } = require('../controllers/portfolioController');
+const {
+  getPortfolio,
+  updatePortfolio,
+  resetPortfolio,
+  sendContactMessage,
+} = require('../controllers/portfolioController');
 const isAdminAuth = require('../middlewares/isAdminAuth');
 
 // Public — used by the web portfolio
 Router.get('/', getPortfolio);
+Router.post('/contact', sendContactMessage);
 
 // Admin-only mutations
 Router.put('/', isAdminAuth, updatePortfolio);

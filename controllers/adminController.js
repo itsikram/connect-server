@@ -8,8 +8,26 @@ const CmntReply = require('../models/CmntReply')
 const Report = require('../models/Report')
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const SECRET_KEY = process.env.JWT_SECRET_KEY;
 const deleteUserData = require('../utils/deleteUserData')
+const sendEmailNotification = require('../utils/sendEmailNotification')
+
+const getAdminAppUrl = () => {
+    return (
+        process.env.ADMIN_URL ||
+        process.env.NEXT_PUBLIC_ADMIN_URL ||
+        'http://localhost:5000'
+    ).replace(/\/+$/, '');
+};
+
+const escapeHtml = (value) =>
+    String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 
 exports.signUp = async (req, res, next) => {
     console.log('SignUp endpoint hit');
@@ -649,4 +667,124 @@ exports.updateReportStatus = async (req, res, next) => {
         next(error)
     }
 }
+
+exports.forgotPassword = async (req, res, next) => {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+
+    if (!email) {
+        return res.status(400).json({ message: 'Email is required' });
+    }
+
+    try {
+        const admin = await Admin.findOne({ email });
+
+        if (!admin) {
+            return res.status(200).json({
+                message: 'If an admin account with that email exists, a reset link has been sent.'
+            });
+        }
+
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        const hashedResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+        admin.resetPasswordToken = hashedResetToken;
+        admin.resetPasswordExpire = Date.now() + 15 * 60 * 1000;
+        await admin.save();
+
+        const resetUrl = `${getAdminAppUrl()}/reset-password/${resetToken}`;
+        const text = [
+            `Hello ${admin.fullName || 'Admin'},`,
+            '',
+            'We received a request to reset your Connect Admin password.',
+            '',
+            'Reset your password using this link:',
+            resetUrl,
+            '',
+            'This link expires in 15 minutes.',
+            'If you did not request this, you can ignore this email safely.',
+        ].join('\n');
+
+        const html = `
+            <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111;max-width:560px">
+              <h2 style="margin:0 0 12px">Reset your admin password</h2>
+              <p>Hello ${escapeHtml(admin.fullName || 'Admin')},</p>
+              <p>We received a request to reset your Connect Admin password.</p>
+              <p style="margin:24px 0">
+                <a href="${escapeHtml(resetUrl)}"
+                   style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:600">
+                  Reset password
+                </a>
+              </p>
+              <p style="word-break:break-all;font-size:13px;color:#555">Or open this link:<br/>${escapeHtml(resetUrl)}</p>
+              <p style="color:#555;font-size:13px">This link expires in 15 minutes.</p>
+            </div>
+        `;
+
+        try {
+            await sendEmailNotification(
+                admin.email,
+                'Connect Admin password reset',
+                text,
+                'Connect Admin',
+                { html, throwOnError: true }
+            );
+        } catch (mailError) {
+            admin.resetPasswordToken = undefined;
+            admin.resetPasswordExpire = undefined;
+            await admin.save();
+            console.error('Admin forgot password SMTP send failed:', mailError.message || mailError);
+            return res.status(500).json({
+                message: 'Unable to send reset email right now. Please try again later.',
+            });
+        }
+
+        return res.status(200).json({
+            message: 'If an admin account with that email exists, a reset link has been sent.'
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.resetPassword = async (req, res, next) => {
+    const resetToken = req.params?.token;
+    const { password, confirmPassword } = req.body || {};
+
+    if (!resetToken) {
+        return res.status(400).json({ message: 'Reset token is required' });
+    }
+
+    if (!password || !confirmPassword) {
+        return res.status(400).json({ message: 'Password and confirm password are required' });
+    }
+
+    if (password !== confirmPassword) {
+        return res.status(400).json({ message: 'Password and confirm password do not match' });
+    }
+
+    if (String(password).length < 6) {
+        return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    }
+
+    try {
+        const hashedResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+        const admin = await Admin.findOne({
+            resetPasswordToken: hashedResetToken,
+            resetPasswordExpire: { $gt: Date.now() },
+        });
+
+        if (!admin) {
+            return res.status(400).json({ message: 'Invalid or expired reset link' });
+        }
+
+        admin.password = await bcrypt.hash(password, 10);
+        admin.resetPasswordToken = undefined;
+        admin.resetPasswordExpire = undefined;
+        await admin.save();
+
+        return res.status(200).json({ message: 'Password reset successful. Please login.' });
+    } catch (error) {
+        next(error);
+    }
+};
 

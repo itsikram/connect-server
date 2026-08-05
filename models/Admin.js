@@ -25,7 +25,14 @@ let adminSchema = new Schema({
         enum: ['superAdmin', 'admin', 'moderator'],
         trim: true,
         default: 'superAdmin'
-    }
+    },
+    resetPasswordToken: {
+        type: String,
+        trim: true,
+    },
+    resetPasswordExpire: {
+        type: Date,
+    },
 
 },{timestamps: true})
 

@@ -1,5 +1,5 @@
 const Router = require("express").Router();
-const {signUp,login,deleteAccount,getProfiles,getProfile,updateProfile,deleteProfile,getPosts,getPost,updatePost,deletePost,getWatches,getWatch,updateWatch,deleteWatch,setUserPassword,getStats,getReportedPosts,getReportedProfiles,updateReportStatus} = require('../controllers/adminController')
+const {signUp,login,deleteAccount,getProfiles,getProfile,updateProfile,deleteProfile,getPosts,getPost,updatePost,deletePost,getWatches,getWatch,updateWatch,deleteWatch,setUserPassword,getStats,getReportedPosts,getReportedProfiles,updateReportStatus,forgotPassword,resetPassword} = require('../controllers/adminController')
 const {uploadImage} = require('../controllers/uploadControllers')
 const multer = require('multer');
 
@@ -7,6 +7,8 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 Router.post('/signup',signUp)
 Router.post('/login',login)
+Router.post('/forgot-password', forgotPassword)
+Router.post('/reset-password/:token', resetPassword)
 Router.post('/delete',deleteAccount)
 Router.get('/profiles',getProfiles)
 Router.get('/profile/:id',getProfile)
