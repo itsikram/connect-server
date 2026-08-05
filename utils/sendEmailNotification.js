@@ -1,29 +1,61 @@
+const nodemailer = require('nodemailer');
 
-const axios = require('axios');
+let transporter = null;
 
-let sendEmailNotification = async(email,subject = null, message, senderName) => {
+function getTransporter() {
+  if (transporter) return transporter;
 
-    try {
-        const response = await axios.post('https://storefrontsignonline.com/wp-json/connect/v1/send-mail', {
-          name: senderName,
-          email: email,
-          message,
-          subject: subject ||  `New message from ${senderName} On Connect`,
-        }, {
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        });
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
 
-        if(response.status === 200) {
-          console.log('Mail sent successfully');
-        } else {
-          console.error('Error sending mail:', response.data);
-        }
-    
-      } catch (err) {
-        console.error('Error sending mail:', err.response?.data || err.message);
-      }
+  if (!user || !pass) {
+    throw new Error('SMTP_USER and SMTP_PASS must be set in server .env');
+  }
+
+  // Gmail SMTP (gsmtp) via nodemailer
+  transporter = nodemailer.createTransport({
+    service: 'gmail',
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: Number(process.env.SMTP_PORT) || 465,
+    secure: process.env.SMTP_SECURE !== 'false',
+    auth: {
+      user,
+      pass,
+    },
+  });
+
+  return transporter;
 }
 
-module.exports = sendEmailNotification
+/**
+ * Send an email via Gmail SMTP (gsmtp).
+ * @param {string} email - Recipient address
+ * @param {string|null} subject - Email subject (optional)
+ * @param {string} message - Plain-text body
+ * @param {string} senderName - Display name used in From / default subject
+ */
+let sendEmailNotification = async (email, subject = null, message, senderName) => {
+  if (!email) {
+    console.error('Error sending mail: missing recipient email');
+    return;
+  }
+
+  try {
+    const mailTransport = getTransporter();
+    const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER;
+    const fromName = senderName || process.env.SMTP_FROM_NAME || 'Connect';
+
+    const info = await mailTransport.sendMail({
+      from: `"${fromName}" <${fromAddress}>`,
+      to: email,
+      subject: subject || `New message from ${senderName || 'Connect'} On Connect`,
+      text: message,
+    });
+
+    console.log('Mail sent successfully via gsmtp:', info.messageId);
+  } catch (err) {
+    console.error('Error sending mail:', err.response || err.message || err);
+  }
+};
+
+module.exports = sendEmailNotification;
