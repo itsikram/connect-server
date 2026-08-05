@@ -8,9 +8,19 @@ const {
     sendNotificationToAllBrowsers,
     updateBrowserActivity,
     sendTestNotification,
-    unregisterAllBrowsers
+    unregisterAllBrowsers,
+    getVapidPublicKeyHandler,
+    subscribeWebPush,
+    unsubscribeWebPush,
 } = require('../controllers/webNotificationController');
 const isAuth = require('../middlewares/isAuth');
+
+// VAPID public key (needed before PushManager.subscribe)
+router.get('/vapid-public-key', getVapidPublicKeyHandler);
+
+// Web Push subscription (iOS Home Screen / PWA background notifications)
+router.post('/subscribe', isAuth, subscribeWebPush);
+router.post('/unsubscribe', isAuth, unsubscribeWebPush);
 
 // Register browser ID for notifications
 router.post('/register-browser', isAuth, registerBrowserId);

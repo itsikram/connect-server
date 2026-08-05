@@ -2,6 +2,7 @@ const { mongoose } = require('mongoose')
 const Notification = require('../models/Notification')
 const Profile = require('../models/Profile')
 const { sendPushToProfile } = require('../utils/pushNotifications')
+const { sendWebPushToProfile } = require('../utils/webPush')
 
 exports.notificationSocket = async (io, socket) => {
     socket.on('fetchNotifications',async(profileId) => {
@@ -21,6 +22,7 @@ exports.saveNotification = async (io, data) => {
     let notificationIcon = data.icon || null;
     let notificationType = data.type || null;
     let browserIds = data.browserIds || [];
+    let notificationTitle = data.title || 'Connect';
     
     let notification = new Notification({
         receiverId,
@@ -44,6 +46,20 @@ exports.saveNotification = async (io, data) => {
                 io.to(`browser_${browserId}`).emit('browserNotification', newNotification);
             });
         }
+
+        // Background delivery for iOS Home Screen / PWA (and other browsers)
+        sendWebPushToProfile(receiverId, {
+            title: notificationTitle,
+            body: notificationText,
+            text: notificationText,
+            icon: notificationIcon || '/apple-touch-icon.png',
+            link: notificationLink,
+            type: notificationType,
+            tag: notificationType || 'connect',
+            data: data.data || {},
+        }).catch((err) => {
+            console.warn('[web-push] saveNotification push failed:', err?.message || err);
+        });
     }
 }
 

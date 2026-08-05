@@ -529,7 +529,7 @@ async function sendChatMessageDataPush(receiverId, payload) {
 
   const profile = await Profile.findOne({
     $or: [{ _id: receiverId }, { user: receiverId }],
-  }).select('deviceTokens');
+  }).select('deviceTokens webPushSubscriptions');
   const tokens = profile?.deviceTokens || [];
 
   if (!tokens.length) {
@@ -538,7 +538,35 @@ async function sendChatMessageDataPush(receiverId, payload) {
     });
   }
 
-  return sendChatMessagePushToTokens(tokens, { title, body, data });
+  const fcmResult = await sendChatMessagePushToTokens(tokens, { title, body, data });
+
+  // Also wake iOS / desktop PWA via Web Push when the web app is not active
+  try {
+    const { sendWebPushToProfile } = require('./webPush');
+    const webResult = await sendWebPushToProfile(receiverId, {
+      title,
+      body,
+      link: `/message/${senderId}`,
+      type: 'chat',
+      tag: `chat-${room || senderId}`,
+      urgency: 'high',
+      data: {
+        type: 'chat',
+        senderId: String(senderId),
+        room: String(room || ''),
+        url: `/message/${senderId}`,
+      },
+    });
+    return {
+      successCount: (fcmResult?.successCount || 0) + (webResult?.successCount || 0),
+      failureCount: (fcmResult?.failureCount || 0) + (webResult?.failureCount || 0),
+      fcm: fcmResult,
+      webPush: webResult,
+    };
+  } catch (webErr) {
+    console.warn('[web-push] chat push failed:', webErr?.message || webErr);
+    return fcmResult;
+  }
 }
 
 module.exports.sendDataPushToTokens = sendDataPushToTokens;

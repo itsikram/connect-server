@@ -2,6 +2,125 @@ const { mongoose } = require('mongoose');
 const Profile = require('../models/Profile');
 const Notification = require('../models/Notification');
 const config = require('../config/config.json');
+const { getVapidPublicKey, isWebPushReady, sendWebPushToProfile } = require('../utils/webPush');
+
+// Public VAPID key for PushManager.subscribe (safe to expose)
+exports.getVapidPublicKeyHandler = async (req, res) => {
+    try {
+        const publicKey = getVapidPublicKey();
+        if (!publicKey) {
+            return res.status(503).json({
+                success: false,
+                message: 'Web Push is not configured on the server',
+            });
+        }
+        return res.json({
+            success: true,
+            publicKey,
+            ready: isWebPushReady(),
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
+
+// Save / refresh a PushManager subscription for background iOS/PWA notifications
+exports.subscribeWebPush = async (req, res) => {
+    try {
+        const { profileId, subscription, browserId, userAgent } = req.body;
+        const endpoint = subscription?.endpoint;
+        const p256dh = subscription?.keys?.p256dh;
+        const auth = subscription?.keys?.auth;
+
+        if (!profileId || !endpoint || !p256dh || !auth) {
+            return res.status(400).json({
+                success: false,
+                message: 'profileId and a full Push subscription are required',
+            });
+        }
+
+        const profileExists = await Profile.findById(profileId).select('_id');
+        if (!profileExists) {
+            return res.status(404).json({
+                success: false,
+                message: 'Profile not found',
+            });
+        }
+
+        // Upsert by endpoint
+        const updated = await Profile.updateOne(
+            { _id: profileId, 'webPushSubscriptions.endpoint': endpoint },
+            {
+                $set: {
+                    'webPushSubscriptions.$.keys.p256dh': p256dh,
+                    'webPushSubscriptions.$.keys.auth': auth,
+                    'webPushSubscriptions.$.userAgent': userAgent || '',
+                    'webPushSubscriptions.$.browserId': browserId || '',
+                    'webPushSubscriptions.$.lastUsedAt': new Date(),
+                },
+            }
+        );
+
+        if (updated.matchedCount === 0) {
+            await Profile.updateOne(
+                { _id: profileId },
+                {
+                    $push: {
+                        webPushSubscriptions: {
+                            endpoint,
+                            keys: { p256dh, auth },
+                            userAgent: userAgent || '',
+                            browserId: browserId || '',
+                            createdAt: new Date(),
+                            lastUsedAt: new Date(),
+                        },
+                    },
+                }
+            );
+        }
+
+        return res.json({
+            success: true,
+            message: 'Web Push subscription saved',
+        });
+    } catch (error) {
+        console.error('subscribeWebPush error:', error);
+        return res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
+
+exports.unsubscribeWebPush = async (req, res) => {
+    try {
+        const { profileId, endpoint } = req.body;
+        if (!profileId || !endpoint) {
+            return res.status(400).json({
+                success: false,
+                message: 'profileId and endpoint are required',
+            });
+        }
+
+        await Profile.updateOne(
+            { _id: profileId },
+            { $pull: { webPushSubscriptions: { endpoint } } }
+        );
+
+        return res.json({
+            success: true,
+            message: 'Web Push subscription removed',
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
 
 // Register browser ID for a profile
 exports.registerBrowserId = async (req, res, next) => {
@@ -496,23 +615,26 @@ exports.sendTestNotification = async (req, res, next) => {
                 io.to(profileId).emit('newNotification', notification);
             }
 
+            const webPush = await sendWebPushToProfile(profileId, {
+                title: notificationData.title,
+                body: notificationData.text,
+                icon: notificationData.icon,
+                link: notificationData.link,
+                type: notificationData.type,
+                requireInteraction: true,
+            });
+
             result = {
                 notificationId: notification._id,
                 sentToBrowsers: validBrowserIds.length,
-                totalRequested: browserIds.length
+                totalRequested: browserIds.length,
+                webPush,
             };
         } else {
             // Send to all browsers
-            const activeBrowserIds = profile.browserIds
+            const activeBrowserIds = (profile.browserIds || [])
                 .filter(browser => browser.isActive)
                 .map(browser => browser.browserId);
-
-            if (activeBrowserIds.length === 0) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'No active browser IDs found for this profile'
-                });
-            }
 
             // Create notification in database
             const notification = new Notification({
@@ -536,10 +658,20 @@ exports.sendTestNotification = async (req, res, next) => {
                 io.to(profileId).emit('newNotification', notification);
             }
 
+            const webPush = await sendWebPushToProfile(profileId, {
+                title: notificationData.title,
+                body: notificationData.text,
+                icon: notificationData.icon,
+                link: notificationData.link,
+                type: notificationData.type,
+                requireInteraction: true,
+            });
+
             result = {
                 notificationId: notification._id,
                 sentToBrowsers: activeBrowserIds.length,
-                browserIds: activeBrowserIds
+                browserIds: activeBrowserIds,
+                webPush,
             };
         }
 

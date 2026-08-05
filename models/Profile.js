@@ -104,6 +104,18 @@ let profileSchema = new Schema({
             default: true
         }
     }],
+    // Web Push subscriptions (iOS Home Screen / PWA background notifications)
+    webPushSubscriptions: [{
+        endpoint: { type: String, required: true },
+        keys: {
+            p256dh: { type: String, required: true },
+            auth: { type: String, required: true }
+        },
+        userAgent: String,
+        browserId: String,
+        createdAt: { type: Date, default: Date.now },
+        lastUsedAt: { type: Date, default: Date.now }
+    }],
     user: {
         type: Schema.Types.ObjectId,
         ref: 'User'
