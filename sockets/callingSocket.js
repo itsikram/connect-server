@@ -28,6 +28,13 @@ async function sendIncomingCallWebPush(to, {
         requireInteraction: true,
         urgency: 'high',
         ttl: 120, // ring window — don't deliver stale calls hours later
+        silent: false,
+        sound: '/assets/audio/default-ringtone.mp3',
+        vibrate: [300, 100, 300, 100, 300],
+        actions: [
+            { action: 'accept_call', title: 'Accept' },
+            { action: 'reject_call', title: 'Reject' },
+        ],
         data: {
             type: 'incoming_call',
             isAudio: audio ? 'true' : 'false',

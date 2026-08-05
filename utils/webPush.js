@@ -62,6 +62,11 @@ async function sendWebPushToProfile(profileId, payload = {}) {
     badge: '/apple-touch-icon.png',
     tag,
     requireInteraction: !!payload.requireInteraction,
+    silent: payload.silent === true,
+    // Custom sound where supported (Android Chrome); iOS uses system sound
+    sound: payload.sound || undefined,
+    vibrate: payload.vibrate || undefined,
+    actions: Array.isArray(payload.actions) ? payload.actions : [],
     data: {
       ...(payload.data || {}),
       url: link,
