@@ -47,7 +47,11 @@ exports.saveNotification = async (io, data) => {
             });
         }
 
-        // Background delivery for iOS Home Screen / PWA (and other browsers)
+        // Background delivery for iOS Home Screen / PWA (single path — avoid double-send elsewhere)
+        const dedupeId =
+            data.data?.messageId ||
+            newNotification?._id ||
+            `${notificationType || 'n'}-${Date.now()}`;
         sendWebPushToProfile(receiverId, {
             title: notificationTitle,
             body: notificationText,
@@ -55,7 +59,7 @@ exports.saveNotification = async (io, data) => {
             icon: notificationIcon || '/apple-touch-icon.png',
             link: notificationLink,
             type: notificationType,
-            tag: notificationType || 'connect',
+            tag: `connect-${String(dedupeId)}`,
             data: data.data || {},
         }).catch((err) => {
             console.warn('[web-push] saveNotification push failed:', err?.message || err);

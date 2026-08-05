@@ -50,6 +50,21 @@ exports.subscribeWebPush = async (req, res) => {
             });
         }
 
+        // Drop older subs for this browser so one device does not get duplicate pushes
+        if (browserId) {
+            await Profile.updateOne(
+                { _id: profileId },
+                {
+                    $pull: {
+                        webPushSubscriptions: {
+                            browserId,
+                            endpoint: { $ne: endpoint },
+                        },
+                    },
+                }
+            );
+        }
+
         // Upsert by endpoint
         const updated = await Profile.updateOne(
             { _id: profileId, 'webPushSubscriptions.endpoint': endpoint },

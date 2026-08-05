@@ -89,7 +89,8 @@ async function sendWebPushToProfile(profileId, payload = {}) {
       }
       try {
         await webpush.sendNotification(subscription, notificationPayload, {
-          TTL: 60 * 60 * 24,
+          // Calls should expire quickly; default 24h for other alerts
+          TTL: typeof payload.ttl === 'number' ? payload.ttl : 60 * 60 * 24,
           urgency: payload.urgency || 'high',
         });
         successCount += 1;

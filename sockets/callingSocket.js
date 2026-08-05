@@ -4,9 +4,42 @@ const Profile = require('../models/Profile')
 const checkIsActive = require('../utils/checkIsActive')
 const axios = require('axios')
 const { sendPushToProfile, sendDataPushToProfile } = require('../utils/pushNotifications')
+const { sendWebPushToProfile } = require('../utils/webPush')
 const config = require('../config/config.json');
 
 const sendEmailNotification = require('../utils/sendEmailNotification')
+
+async function sendIncomingCallWebPush(to, {
+    isAudio,
+    callerId,
+    callerName,
+    callerProfilePic,
+    channelName,
+}) {
+    const audio = !!isAudio;
+    const name = callerName || 'Someone';
+    return sendWebPushToProfile(to, {
+        title: audio ? 'Incoming audio call' : 'Incoming video call',
+        body: `${name} is calling`,
+        icon: callerProfilePic || '/apple-touch-icon.png',
+        link: `/message/${callerId}`,
+        type: 'incoming_call',
+        tag: `incoming-call-${channelName || Date.now()}`,
+        requireInteraction: true,
+        urgency: 'high',
+        ttl: 120, // ring window — don't deliver stale calls hours later
+        data: {
+            type: 'incoming_call',
+            isAudio: audio ? 'true' : 'false',
+            callerId: String(callerId),
+            callerName: name,
+            callerProfilePic: callerProfilePic || '',
+            channelName: channelName || '',
+            url: `/message/${callerId}`,
+            link: `/message/${callerId}`,
+        },
+    });
+}
 
 module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
 
@@ -56,6 +89,14 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                     channelName: channelName || ''
                 }
             });
+            // iOS Home Screen / PWA (no FCM) — wake via Web Push
+            await sendIncomingCallWebPush(to, {
+                isAudio: false,
+                callerId: profileId,
+                callerName,
+                callerProfilePic: myProfileData.profilePic || '',
+                channelName,
+            });
         } catch (e) { }
 
         // Schedule missed-call push if not accepted within timeout
@@ -71,6 +112,14 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                         title: 'Missed video call',
                         body: 'You missed a video call',
                         data: { type: 'missed_call', isVideo: 'true' }
+                    });
+                    await sendWebPushToProfile(to, {
+                        title: 'Missed video call',
+                        body: 'You missed a video call',
+                        type: 'missed_call',
+                        tag: `missed-call-${channelName || Date.now()}`,
+                        link: `/message/${profileId}`,
+                        data: { type: 'missed_call', isVideo: 'true', url: `/message/${profileId}` },
                     });
                 } catch (err) { }
                 callTimeouts.delete(key);
@@ -183,6 +232,14 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                     channelName: channelName || ''
                 }
             });
+            // iOS Home Screen / PWA (no FCM) — wake via Web Push
+            await sendIncomingCallWebPush(to, {
+                isAudio: true,
+                callerId: profileId,
+                callerName,
+                callerProfilePic: myProfileData.profilePic || '',
+                channelName,
+            });
         } catch (e) { }
 
         // Schedule missed-call push if not accepted within timeout
@@ -198,6 +255,14 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                         title: 'Missed audio call',
                         body: 'You missed an audio call',
                         data: { type: 'missed_call', isVideo: 'false' }
+                    });
+                    await sendWebPushToProfile(to, {
+                        title: 'Missed audio call',
+                        body: 'You missed an audio call',
+                        type: 'missed_call',
+                        tag: `missed-call-${channelName || Date.now()}`,
+                        link: `/message/${profileId}`,
+                        data: { type: 'missed_call', isVideo: 'false', url: `/message/${profileId}` },
                     });
                 } catch (err) { }
                 callTimeouts.delete(key);
