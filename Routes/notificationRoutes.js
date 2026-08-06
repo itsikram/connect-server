@@ -1,5 +1,5 @@
 const Router = require('express').Router()
-const {getNotifications,deleteAllNotifications,postNotification,notificationView,notificationViewAll, registerDeviceToken, unregisterDeviceToken, unregisterAllOtherDeviceTokens, sendTestPush,getNewNotifications, rejectIncomingCallFromPush, notifyIncomingCallRingingFromPush} = require('../controllers/notificationController')
+const {getNotifications,deleteAllNotifications,deleteNotification,postNotification,notificationView,notificationViewAll, registerDeviceToken, unregisterDeviceToken, unregisterAllOtherDeviceTokens, sendTestPush,getNewNotifications, rejectIncomingCallFromPush, notifyIncomingCallRingingFromPush} = require('../controllers/notificationController')
 const isAuth = require('../middlewares/isAuth')
 
 
@@ -14,6 +14,7 @@ Router.post('/call/notify-ringing', isAuth, notifyIncomingCallRingingFromPush)
 Router.post('/viewall',isAuth, notificationViewAll)
 Router.get('/',isAuth,getNotifications)
 Router.get('/new',isAuth,getNewNotifications)
-Router.post('/deleteall',deleteAllNotifications)
+Router.post('/delete', isAuth, deleteNotification)
+Router.post('/deleteall', isAuth, deleteAllNotifications)
 
 module.exports = Router;

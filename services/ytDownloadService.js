@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const ytdl = require('@distube/ytdl-core');
 const { v2: cloudinary } = require('cloudinary');
@@ -138,6 +139,7 @@ const uploadVideoToCloudinary = (filePath, folder = 'yt-downloads') =>
     });
 
 const createWatchFromVideo = async (videoUrl, caption, profileId) => {
+    const watchCaption = String(caption || 'YouTube Video').trim().slice(0, 500) || 'YouTube Video';
     let thumbnail = '';
     try {
         const result = await generateAndUploadThumbnail(videoUrl);
@@ -152,7 +154,7 @@ const createWatchFromVideo = async (videoUrl, caption, profileId) => {
     }
 
     const watch = new Watch({
-        caption: caption || 'YouTube Video',
+        caption: watchCaption,
         videoUrl,
         author: profileId,
         thumbnail,
@@ -161,6 +163,22 @@ const createWatchFromVideo = async (videoUrl, caption, profileId) => {
     });
 
     return watch.save();
+};
+
+/** Reliable YouTube title for Watch caption (works even when yt-dlp filename is a UUID). */
+const fetchYouTubeTitle = async (url) => {
+    try {
+        const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+        const res = await axios.get(oembedUrl, {
+            timeout: 15000,
+            headers: { 'User-Agent': 'Connect-Server/1.0' },
+        });
+        const title = res.data?.title;
+        if (title && String(title).trim()) return String(title).trim();
+    } catch (err) {
+        console.warn('[yt-download] oEmbed title failed:', err.message);
+    }
+    return null;
 };
 
 const downloadWithYtDlpBackend = async ({ progressId, url, height }) => {
@@ -199,46 +217,73 @@ const downloadWithYtDlpBackend = async ({ progressId, url, height }) => {
     return { title: title || 'video', source: 'yt-dlp', filePath };
 };
 
+const downloadViaCobaltBackend = async ({ progressId, url, height }) => {
+    let lastPct = 5;
+    const report = (pct) => {
+        if (pct >= lastPct) lastPct = pct;
+        updateProgress(progressId, {
+            status: 'running',
+            stage: 'downloading',
+            pct: lastPct,
+            source: 'cobalt',
+            title: 'video',
+            download_title: 'video',
+        });
+    };
+
+    console.log('[yt-download] Downloading via Cobalt API');
+    report(5);
+    return downloadViaCobalt({
+        url,
+        height,
+        outputDir: DOWNLOAD_DIR,
+        outputPrefix: progressId,
+        onProgress: report,
+    });
+};
+
 const downloadVideo = async ({ progressId, url, height }) => {
     let lastError = null;
+    const cobaltEnabled = process.env.YT_DL_DISABLE_COBALT !== 'true';
+    const hasCobaltUrl = Boolean(process.env.COBALT_API_URL);
+    // On Render, YouTube blocks datacenter IPs — prefer Cobalt when configured
+    const preferCobalt =
+        cobaltEnabled &&
+        hasCobaltUrl &&
+        (isRenderHost() || process.env.YT_DL_PREFER_COBALT === 'true');
 
-    // Primary: yt-dlp on this server
-    try {
-        return await downloadWithYtDlpBackend({ progressId, url, height });
-    } catch (err) {
-        lastError = err;
-        console.warn('[yt-download] yt-dlp failed:', err.message);
-    }
-
-    // Fallback: Cobalt API (works when Render IP is blocked by YouTube)
-    if (process.env.YT_DL_DISABLE_COBALT !== 'true') {
+    const tryYtDlp = async () => {
         try {
-            let lastPct = 5;
-            const report = (pct) => {
-                if (pct >= lastPct) lastPct = pct;
-                updateProgress(progressId, {
-                    status: 'running',
-                    stage: 'downloading',
-                    pct: lastPct,
-                    source: 'cobalt',
-                    title: 'video',
-                    download_title: 'video',
-                });
-            };
+            return await downloadWithYtDlpBackend({ progressId, url, height });
+        } catch (err) {
+            lastError = err;
+            console.warn('[yt-download] yt-dlp failed:', err.message);
+            return null;
+        }
+    };
 
-            console.log('[yt-download] Falling back to Cobalt API');
-            report(5);
-            return await downloadViaCobalt({
-                url,
-                height,
-                outputDir: DOWNLOAD_DIR,
-                outputPrefix: progressId,
-                onProgress: report,
-            });
+    const tryCobalt = async () => {
+        if (!cobaltEnabled) return null;
+        try {
+            return await downloadViaCobaltBackend({ progressId, url, height });
         } catch (cobaltErr) {
             console.warn('[yt-download] Cobalt failed:', cobaltErr.message);
             lastError = cobaltErr;
+            return null;
         }
+    };
+
+    if (preferCobalt) {
+        console.log('[yt-download] Render/cloud mode: trying Cobalt first (YouTube blocks datacenter IPs)');
+        const cobaltResult = await tryCobalt();
+        if (cobaltResult) return cobaltResult;
+        const ytResult = await tryYtDlp();
+        if (ytResult) return ytResult;
+    } else {
+        const ytResult = await tryYtDlp();
+        if (ytResult) return ytResult;
+        const cobaltResult = await tryCobalt();
+        if (cobaltResult) return cobaltResult;
     }
 
     // Local-dev-only: ytdl-core
@@ -288,6 +333,14 @@ const downloadVideo = async ({ progressId, url, height }) => {
         }
     }
 
+    if (isRenderHost() && !hasCobaltUrl) {
+        throw new Error(
+            'YouTube blocks Render IPs. Localhost works because your home IP is allowed. ' +
+            'For the live site, set COBALT_API_URL to your own Cobalt instance on Render, then redeploy. ' +
+            'Also copy the same YOUTUBE_COOKIES_B64 that works locally.'
+        );
+    }
+
     const msg = lastError?.message || 'YouTube download failed.';
     throw new Error(
         isBotBlockError(msg) || isFormatUnavailableError(msg)
@@ -314,13 +367,27 @@ const runDownloadJob = async ({
             throw new Error('Invalid YouTube URL');
         }
 
+        // Always post to Watch when the user is authenticated
+        const shouldPostWatch = Boolean(profileId) && postAsWatch !== false;
+
+        // Fetch real YouTube title early for Watch caption + UI
+        const oembedTitle = await fetchYouTubeTitle(normalizedUrl);
+        if (oembedTitle) {
+            updateProgress(progressId, {
+                title: oembedTitle,
+                download_title: oembedTitle,
+            });
+        }
+
         const result = await downloadVideo({
             progressId,
             url: normalizedUrl,
             height,
         });
 
-        const finalTitle = result.title || 'video';
+        const looksLikeUuid = (t) => /^[a-f0-9-]{16,}$/i.test(String(t || '').replace(/\s/g, ''));
+        const downloadedTitle = result.title && !looksLikeUuid(result.title) ? result.title : null;
+        const finalTitle = oembedTitle || downloadedTitle || 'YouTube Video';
         filePath = result.filePath;
 
         if (!filePath || !fs.existsSync(filePath)) {
@@ -336,7 +403,7 @@ const runDownloadJob = async ({
         });
 
         // Always upload to Cloudinary — do not serve from local/public disk
-        const uploadFolder = postAsWatch ? 'watch-videos' : 'yt-downloads';
+        const uploadFolder = shouldPostWatch ? 'watch-videos' : 'yt-downloads';
         const uploadResult = await uploadVideoToCloudinary(filePath, uploadFolder);
         if (!uploadResult?.secure_url) {
             throw new Error('Failed to upload video to Cloudinary');
@@ -345,7 +412,7 @@ const runDownloadJob = async ({
         const fileUrl = uploadResult.secure_url;
         let watchPosted = false;
 
-        if (postAsWatch && profileId) {
+        if (shouldPostWatch) {
             updateProgress(progressId, {
                 stage: 'uploading_watch',
                 status: 'running',
@@ -353,8 +420,10 @@ const runDownloadJob = async ({
                 title: finalTitle,
                 download_title: finalTitle,
             });
+            // Caption = YouTube video title
             await createWatchFromVideo(fileUrl, finalTitle, profileId);
             watchPosted = true;
+            console.log(`[yt-download] Posted Watch with caption: ${finalTitle.slice(0, 80)}`);
         }
 
         // Remove temp file after Cloudinary upload
@@ -369,6 +438,7 @@ const runDownloadJob = async ({
             title: finalTitle,
             download_title: finalTitle,
             watch_posted: watchPosted,
+            watch_caption: watchPosted ? finalTitle : undefined,
             source: result.source,
             storage: 'cloudinary',
         });

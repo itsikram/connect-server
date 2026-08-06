@@ -52,7 +52,7 @@ exports.postAddReact = async (req, res, next) => {
                         receiverId: friendProfile._id,
                         text: `${myProfileData.fullName} Reacted your post`,
                         link: '/post/' + addPostReact._id,
-                        type: 'postCommentReply',
+                        type: 'postReact',
                         icon: myProfileData.profilePic,
                         browserIds: activeBrowserIds,
                         data: {
@@ -119,8 +119,15 @@ exports.postAddReact = async (req, res, next) => {
                         receiverId: friendProfile._id,
                         text: `${myProfileData.fullName} Reacted your Story`,
                         link: '/story/' + addStoryReact._id,
-                        type: 'postCommentReply',
-                        icon: friendProfile.profilePic
+                        type: 'storyReact',
+                        icon: myProfileData.profilePic,
+                        data: {
+                            senderId: profile,
+                            senderName: myProfileData.fullName,
+                            senderProfilePic: myProfileData.profilePic,
+                            storyId: addStoryReact._id,
+                            reactType: reactType
+                        }
                     }
                     saveNotification(io, postStoryNotification)
                     try {

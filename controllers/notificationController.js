@@ -144,13 +144,13 @@ exports.notificationViewAll = async (req, res, next) => {
 }
 
 exports.getNotifications = async (req, res, next) => {
-    let io = req.app.get('io')
-    let receverId = req.query.receverId || req.profile._id;
-    let notifications =  await Notification.find({ receiverId: receverId }).limit(25).sort({timestamp: -1})
+    let receverId = req.query.receverId || req.query.profileId || req.profile._id;
+    let limit = Math.min(Number(req.query.limit) || 50, 100)
+    let notifications = await Notification.find({ receiverId: receverId }).limit(limit).sort({ timestamp: -1 })
     if (notifications) {
-        return res.json(notifications).status(200)
+        return res.status(200).json(notifications)
     }
-    return res.json({ message: 'Failed to get notificaiton' }).status(400)
+    return res.status(400).json({ message: 'Failed to get notificaiton' })
 
 }
 
@@ -168,7 +168,7 @@ exports.getNewNotifications = async (req, res, next) => {
         const notifications = await Notification.find({ 
             receiverId: profileId,
             timestamp: { $gte: fiveMinutesAgo }
-        }).limit(10).sort({timestamp: -1});
+        }).limit(20).sort({timestamp: -1});
         
         return res.status(200).json({ notifications });
         
@@ -177,16 +177,49 @@ exports.getNewNotifications = async (req, res, next) => {
         return res.status(500).json({ notifications: [] });
     }
 };
-exports.deleteAllNotifications = async (req, res, next) => {
-let profileId = req.body.profile
-    let deletedNotification = await Notification.deleteMany({ receiverId: profileId})
-    if (deletedNotification) {
-        return res.json({
-            message: 'All Notifications Are deleted'
-        }).status(200)
-    }
-    return res.json({ message: 'Failed to get notificaiton' }).status(400)
 
+exports.deleteNotification = async (req, res, next) => {
+    try {
+        const notificationId = req.body.notificationId
+        const profileId = req.profile?._id
+
+        if (!mongoose.isValidObjectId(notificationId)) {
+            return res.status(400).json({ message: 'Invalid notification id' })
+        }
+
+        const deleted = await Notification.findOneAndDelete({
+            _id: notificationId,
+            receiverId: profileId,
+        })
+
+        if (!deleted) {
+            return res.status(404).json({ message: 'Notification not found' })
+        }
+
+        return res.status(200).json({ message: 'Notification deleted' })
+    } catch (error) {
+        console.error('Error deleting notification:', error)
+        return res.status(500).json({ message: 'Failed to delete notification' })
+    }
+}
+
+exports.deleteAllNotifications = async (req, res, next) => {
+    try {
+        const profileId = req.profile?._id || req.body.profile
+        if (!profileId) {
+            return res.status(400).json({ message: 'Profile required' })
+        }
+        let deletedNotification = await Notification.deleteMany({ receiverId: profileId })
+        if (deletedNotification) {
+            return res.status(200).json({
+                message: 'All Notifications Are deleted'
+            })
+        }
+        return res.status(400).json({ message: 'Failed to delete notifications' })
+    } catch (error) {
+        console.error('Error deleting notifications:', error)
+        return res.status(500).json({ message: 'Failed to delete notifications' })
+    }
 }
 
 // Register a device token to the authenticated profile

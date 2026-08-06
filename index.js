@@ -1,6 +1,13 @@
 
 
 require('dotenv').config();
+const dns = require('dns');
+// Local DNS (e.g. 192.168.1.1) often refuses MongoDB SRV lookups → querySrv ECONNREFUSED.
+// Prefer public resolvers so mongodb+srv:// still works if used.
+try {
+  dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
+} catch (_) { /* ignore if unsupported */ }
+
 const express = require('express')
 const PORT = process.env.PORT || 4000;
 const mongoose = require('mongoose')
@@ -527,7 +534,11 @@ app.get('/fcm', async (req, res) => {
 
 // Root route should serve index.html
 
-mongoose.connect(process.env.PROD_MONGODB_URI, {}).then(() => {
+const mongoUri = process.env.PROD_MONGODB_URI || process.env.MONGODB_URI || MONGODB_URI;
+mongoose.connect(mongoUri, {
+  serverSelectionTimeoutMS: 20000,
+  family: 4, // prefer IPv4 — avoids flaky IPv6 on some local networks
+}).then(() => {
   console.log('MongoDB connected');
 }).catch((e) => {
   console.error('MongoDB connection failed — server will still start, but DB features may not work:', e.message || e);

@@ -231,21 +231,31 @@ exports.updateWatch = async (req, res, next) => {
 
     try {
 
-        let { watchId, caption } = req.body
+        let { watchId, caption, audience } = req.body
+        let authorId = req.profile?._id
 
-        let updatedWatch = await Watch.findOneAndUpdate({
-            _id: watchId,
-        }, {
-            caption
-        })
+        let updateFields = {}
+        if (caption !== undefined) updateFields.caption = caption
+        if (audience !== undefined) updateFields.audience = Number(audience)
+
+        if (!watchId || Object.keys(updateFields).length === 0) {
+            return res.status(400).json({ message: 'Nothing to update' })
+        }
+
+        let query = { _id: watchId }
+        if (authorId) query.author = authorId
+
+        let updatedWatch = await Watch.findOneAndUpdate(query, updateFields, { new: true })
 
         if (updatedWatch) {
-            return res.json({ message: 'Caption Updated' }).status(200)
+            return res.status(200).json({ message: 'Watch updated', watch: updatedWatch })
         }
+
+        return res.status(404).json({ message: 'Watch not found or not authorized' })
 
     } catch (error) {
         console.log(error)
-
+        return res.status(500).json({ message: 'Failed to update watch' })
     }
 }
 

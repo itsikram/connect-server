@@ -5,7 +5,8 @@ exports.startDownload = async (req, res) => {
         const url = req.query.url;
         const height = req.query.height ? parseInt(req.query.height, 10) : null;
         const asyncJob = req.query.async_job !== 'false';
-        const postAsWatch = req.query.post_as_watch === 'true';
+        // Always post to Watch after download (requires auth)
+        const postAsWatch = req.query.post_as_watch !== 'false';
 
         if (!url) {
             return res.status(400).json({ error: 'url query parameter is required' });
@@ -14,10 +15,10 @@ exports.startDownload = async (req, res) => {
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         const profileId = req.profile?._id;
 
-        if (postAsWatch && !profileId) {
+        if (!profileId) {
             return res.status(401).json({
-                error: 'Authentication required to post as Watch',
-                message: 'Please log in to post videos to Watch',
+                error: 'Authentication required',
+                message: 'Please log in to download and post videos to Watch',
             });
         }
 
@@ -31,7 +32,7 @@ exports.startDownload = async (req, res) => {
             baseUrl,
             url,
             height: Number.isFinite(height) ? height : null,
-            postAsWatch,
+            postAsWatch: true,
             profileId,
         });
 

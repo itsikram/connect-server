@@ -10,7 +10,8 @@ const { pipeline } = require('stream/promises');
  */
 const DEFAULT_INSTANCES = [
     process.env.COBALT_API_URL,
-    'https://api.cobalt.tools',
+    // Public api.cobalt.tools is not intended for apps — only used if no COBALT_API_URL
+    !process.env.COBALT_API_URL ? 'https://api.cobalt.tools' : null,
 ].filter(Boolean);
 
 const heightToQuality = (height) => {
@@ -46,7 +47,7 @@ const resolveDownloadUrl = (data) => {
     return null;
 };
 
-const requestCobalt = async (baseUrl, youtubeUrl, height) => {
+const requestCobalt = async (baseUrl, youtubeUrl, height, extras = {}) => {
     const endpoint = baseUrl.replace(/\/$/, '') + '/';
     const body = {
         url: youtubeUrl,
@@ -55,6 +56,8 @@ const requestCobalt = async (baseUrl, youtubeUrl, height) => {
         youtubeVideoCodec: 'h264',
         youtubeVideoContainer: 'mp4',
         filenameStyle: 'basic',
+        alwaysProxy: true,
+        ...extras,
     };
 
     const res = await axios.post(endpoint, body, {
@@ -63,9 +66,9 @@ const requestCobalt = async (baseUrl, youtubeUrl, height) => {
         validateStatus: () => true,
     });
 
-    if (res.status >= 400) {
+    if (res.status >= 400 || res.data?.status === 'error') {
         const msg = res.data?.error?.code || res.data?.text || res.data?.error || `HTTP ${res.status}`;
-        throw new Error(`Cobalt ${endpoint} error: ${msg}`);
+        throw new Error(`Cobalt ${endpoint} error: ${typeof msg === 'object' ? JSON.stringify(msg) : msg}`);
     }
 
     const mediaUrl = resolveDownloadUrl(res.data);
@@ -83,17 +86,34 @@ const requestCobalt = async (baseUrl, youtubeUrl, height) => {
 };
 
 const downloadFileFromUrl = async (mediaUrl, destPath, onProgress) => {
+    // Tunnel/redirect URLs must not get API JSON headers
     const res = await axios.get(mediaUrl, {
         responseType: 'stream',
         timeout: 300000,
         headers: {
-            ...cobaltHeaders(),
             Accept: '*/*',
+            'User-Agent': 'Connect-Server/1.0',
         },
         maxRedirects: 5,
+        validateStatus: () => true,
     });
 
-    const total = Number(res.headers['content-length'] || 0);
+    if (res.status >= 400) {
+        // Drain and throw
+        const chunks = [];
+        for await (const chunk of res.data) chunks.push(chunk);
+        const body = Buffer.concat(chunks).toString('utf8').slice(0, 300);
+        throw new Error(`Cobalt media download HTTP ${res.status}: ${body}`);
+    }
+
+    const contentType = String(res.headers['content-type'] || '');
+    if (contentType.includes('application/json')) {
+        const chunks = [];
+        for await (const chunk of res.data) chunks.push(chunk);
+        throw new Error(`Cobalt returned JSON instead of video: ${Buffer.concat(chunks).toString('utf8').slice(0, 300)}`);
+    }
+
+    const total = Number(res.headers['content-length'] || res.headers['estimated-content-length'] || 0);
     let downloaded = 0;
 
     res.data.on('data', (chunk) => {
@@ -108,6 +128,10 @@ const downloadFileFromUrl = async (mediaUrl, destPath, onProgress) => {
     });
 
     await pipeline(res.data, fs.createWriteStream(destPath));
+
+    if (downloaded < 1000 && fs.existsSync(destPath) && fs.statSync(destPath).size < 1000) {
+        throw new Error(`Cobalt download too small (${fs.statSync(destPath).size} bytes)`);
+    }
 };
 
 const downloadViaCobalt = async ({ url, height, outputDir, outputPrefix, onProgress }) => {

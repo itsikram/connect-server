@@ -341,6 +341,7 @@ const buildSpawnArgs = (url, { outputPath, height, playerClient, formatMode, use
         '--merge-output-format', 'mp4',
         '-o', outputPath,
         '--newline',
+        '--print', 'before_dl:%(title)s',
         normalizeYouTubeUrl(url)
     );
     return args;
@@ -419,15 +420,23 @@ const extractYtDlpError = (stderr, code, outputDir, outputPrefix) => {
     return `yt-dlp exited with code ${code} (no output file found; dir=${listing})`;
 };
 
-const resolveOutput = ({ outputDir, outputPrefix, stderr }) => {
+const resolveOutput = ({ outputDir, outputPrefix, stderr, stdout }) => {
     const fromStderr = findFileFromStderr(stderr);
     const fromDir = findDownloadedFile(outputDir, outputPrefix);
+    const printedTitle = String(stdout || '')
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .pop();
+
     for (const candidate of [fromStderr, fromDir].filter(Boolean)) {
         if (fs.existsSync(candidate) && fs.statSync(candidate).size > 0) {
-            return {
-                filePath: candidate,
-                title: titleFromFilename(path.basename(candidate), outputPrefix),
-            };
+            const fromName = titleFromFilename(path.basename(candidate), outputPrefix);
+            const title =
+                (printedTitle && printedTitle.length > 2 && !printedTitle.includes(outputPrefix)
+                    ? printedTitle
+                    : null) || fromName;
+            return { filePath: candidate, title };
         }
     }
     return null;
@@ -457,9 +466,10 @@ const downloadWithStandalone = ({ url, outputDir, outputPrefix, height, onProgre
             stdio: ['ignore', 'pipe', 'pipe'],
             env: { ...process.env, PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH || ''}` },
         });
+        let stdout = '';
         let stderr = '';
 
-        proc.stdout.on('data', () => {});
+        proc.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
         proc.stderr.on('data', (chunk) => {
             const text = chunk.toString();
             stderr += text;
@@ -476,7 +486,7 @@ const downloadWithStandalone = ({ url, outputDir, outputPrefix, height, onProgre
 
         proc.on('error', reject);
         proc.on('close', (code) => {
-            const resolved = resolveOutput({ outputDir, outputPrefix, stderr });
+            const resolved = resolveOutput({ outputDir, outputPrefix, stderr, stdout });
             if (resolved) {
                 if (code !== 0) {
                     console.warn(`[yt-download] yt-dlp exit ${code} but file exists (${path.basename(resolved.filePath)})`);
@@ -509,6 +519,7 @@ const downloadWithExec = ({ url, outputDir, outputPrefix, height, onProgress, pl
             extractorArgs: buildExtractorArgs(playerClient),
             output: outputPath,
             newline: true,
+            print: 'before_dl:%(title)s',
         };
         if (formatMode !== 'omit') {
             flags.format = buildFormat(height, formatMode);
@@ -525,8 +536,12 @@ const downloadWithExec = ({ url, outputDir, outputPrefix, height, onProgress, pl
         }
 
         const subprocess = youtubedl.exec(normalizeYouTubeUrl(url), flags);
+        let stdout = '';
         let stderr = '';
 
+        if (subprocess.stdout) {
+            subprocess.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+        }
         if (subprocess.stderr) {
             subprocess.stderr.on('data', (chunk) => {
                 const text = chunk.toString();
@@ -543,7 +558,7 @@ const downloadWithExec = ({ url, outputDir, outputPrefix, height, onProgress, pl
             });
         }
 
-        const finish = () => resolveOutput({ outputDir, outputPrefix, stderr });
+        const finish = () => resolveOutput({ outputDir, outputPrefix, stderr, stdout });
 
         subprocess
             .then(() => {
