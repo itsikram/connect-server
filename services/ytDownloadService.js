@@ -20,6 +20,33 @@ const { downloadViaCobalt } = require('./ytCobaltFallback');
 const DOWNLOAD_DIR = path.join(require('os').tmpdir(), 'connect-yt-downloads');
 const JOB_PROGRESS = new Map();
 
+/** Limit parallel YouTube jobs so home Cobalt / PC stays responsive. */
+const YT_DL_MAX_CONCURRENT = Math.max(
+    1,
+    parseInt(process.env.YT_DL_MAX_CONCURRENT || '2', 10) || 2
+);
+let ytDownloadActive = 0;
+const ytDownloadWaiters = [];
+
+const acquireDownloadSlot = () =>
+    new Promise((resolve) => {
+        if (ytDownloadActive < YT_DL_MAX_CONCURRENT) {
+            ytDownloadActive += 1;
+            resolve();
+            return;
+        }
+        ytDownloadWaiters.push(resolve);
+    });
+
+const releaseDownloadSlot = () => {
+    ytDownloadActive = Math.max(0, ytDownloadActive - 1);
+    const next = ytDownloadWaiters.shift();
+    if (next) {
+        ytDownloadActive += 1;
+        next();
+    }
+};
+
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME || '',
     api_key: process.env.CLOUDINARY_API_KEY || '',
@@ -370,6 +397,7 @@ const runDownloadJob = async ({
     profileId,
 }) => {
     let filePath = null;
+    await acquireDownloadSlot();
 
     try {
         updateProgress(progressId, { stage: 'starting', status: 'running', pct: 0 });
@@ -465,6 +493,8 @@ const runDownloadJob = async ({
             status: 'failed',
             error: error.message || 'Download failed',
         });
+    } finally {
+        releaseDownloadSlot();
     }
 };
 

@@ -14,6 +14,17 @@ const getCobaltInstances = () => {
     return [...new Set([primary, fallback].filter(Boolean).map((u) => u.replace(/\/$/, '')))];
 };
 
+const isRemoteHomeCobalt = () => {
+    const u = process.env.COBALT_API_URL || '';
+    return u.startsWith('http') && !/localhost|127\.0\.0\.1/i.test(u);
+};
+
+const cobaltApiTimeoutMs = () =>
+    Number(process.env.COBALT_API_TIMEOUT_MS) || (isRemoteHomeCobalt() ? 180000 : 120000);
+
+const cobaltMediaTimeoutMs = () =>
+    Number(process.env.COBALT_MEDIA_TIMEOUT_MS) || (isRemoteHomeCobalt() ? 420000 : 300000);
+
 const heightToQuality = (height) => {
     if (!height) return '720';
     const allowed = [144, 240, 360, 480, 720, 1080, 1440, 2160, 4320];
@@ -63,7 +74,7 @@ const requestCobalt = async (baseUrl, youtubeUrl, height, extras = {}) => {
 
     const res = await axios.post(endpoint, body, {
         headers: cobaltHeaders(),
-        timeout: 120000,
+        timeout: cobaltApiTimeoutMs(),
         validateStatus: () => true,
     });
 
@@ -91,7 +102,7 @@ const downloadFileFromUrl = async (mediaUrl, destPath, onProgress) => {
     // Tunnel/redirect URLs must not get API JSON headers
     const res = await axios.get(mediaUrl, {
         responseType: 'stream',
-        timeout: 300000,
+        timeout: cobaltMediaTimeoutMs(),
         headers: {
             Accept: '*/*',
             'User-Agent': 'Connect-Server/1.0',
