@@ -11,7 +11,7 @@ const LOCAL_YT_DLP = path.join(
     process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp'
 );
 
-const PLAYER_CLIENTS = ['android', 'tv_embedded', 'ios', 'mweb', 'web_creator', 'web'];
+const PLAYER_CLIENTS = ['mweb', 'web', 'tv_embedded', 'ios', 'android', 'web_creator'];
 
 const ESSENTIAL_COOKIE_NAMES = ['__Secure-1PSID', '__Secure-3PSID', 'VISITOR_INFO1_LIVE'];
 
@@ -192,23 +192,68 @@ const getStandaloneBinaryPath = () => {
     return null;
 };
 
-const buildFormat = (height) =>
-    height
-        ? `best[height<=${height}][ext=mp4]/best[height<=${height}]/best[ext=mp4]/best`
-        : 'best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best';
+/**
+ * Prefer adaptive streams (android/ios often have no progressive MP4),
+ * then progressive, then any best. Always ends with /best so yt-dlp never
+ * fails with "Requested format is not available" when *some* format exists.
+ */
+const buildFormat = (height, loose = false) => {
+    if (loose) {
+        return 'bv*+ba/b';
+    }
+    if (height) {
+        return [
+            `bv*[height<=${height}][ext=mp4]+ba[ext=m4a]/bv*[height<=${height}]+ba`,
+            `b[height<=${height}][ext=mp4]/b[height<=${height}]`,
+            'bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b',
+        ].join('/');
+    }
+    return 'bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b';
+};
 
 const buildExtractorArgs = (playerClient) => {
+    if (process.env.YOUTUBE_EXTRACTOR_ARGS) {
+        return process.env.YOUTUBE_EXTRACTOR_ARGS;
+    }
     const parts = [`youtube:player_client=${playerClient}`];
     if (process.env.YOUTUBE_PO_TOKEN) {
         parts.push(`po_token=${process.env.YOUTUBE_PO_TOKEN}`);
     }
-    if (process.env.YOUTUBE_EXTRACTOR_ARGS) {
-        return process.env.YOUTUBE_EXTRACTOR_ARGS;
-    }
     return parts.join(';');
 };
 
-const buildSpawnArgs = (url, { outputTemplate, height, playerClient }) => {
+const isFormatUnavailableError = (message) => {
+    const lower = String(message || '').toLowerCase();
+    return (
+        lower.includes('requested format is not available') ||
+        lower.includes('only images are available') ||
+        lower.includes('no video formats') ||
+        lower.includes('format not available')
+    );
+};
+
+const isRetryableDownloadError = (message) =>
+    isBotBlockError(message) || isFormatUnavailableError(message);
+
+const normalizeYouTubeUrl = (rawUrl) => {
+    const input = String(rawUrl || '').trim().replace('m.youtube.com', 'www.youtube.com');
+    try {
+        const u = new URL(input);
+        let videoId = u.searchParams.get('v');
+        if (!videoId && u.hostname.includes('youtu.be')) {
+            videoId = u.pathname.replace(/^\//, '').split('/')[0];
+        }
+        if (!videoId && u.pathname.startsWith('/shorts/')) {
+            videoId = u.pathname.split('/')[2];
+        }
+        if (videoId) {
+            return `https://www.youtube.com/watch?v=${videoId}`;
+        }
+    } catch (_) {}
+    return input;
+};
+
+const buildSpawnArgs = (url, { outputTemplate, height, playerClient, looseFormat }) => {
     const args = [
         '--no-playlist',
         '--no-warnings',
@@ -217,6 +262,7 @@ const buildSpawnArgs = (url, { outputTemplate, height, playerClient }) => {
         '--retries', '3',
         '--fragment-retries', '3',
         '--socket-timeout', '30',
+        '--force-ipv4',
     ];
 
     const cookies = initCookiesFromEnv();
@@ -225,12 +271,12 @@ const buildSpawnArgs = (url, { outputTemplate, height, playerClient }) => {
     }
 
     args.push(
-        '-f', buildFormat(height),
+        '-f', buildFormat(height, looseFormat),
         '--merge-output-format', 'mp4',
         '-o', outputTemplate,
         '--newline',
         '--print', '%(title)s',
-        url
+        normalizeYouTubeUrl(url)
     );
     return args;
 };
@@ -259,7 +305,7 @@ const titleFromFilename = (filename, prefix) =>
         .replace(/_/g, ' ')
         .trim() || 'video';
 
-const downloadWithStandalone = ({ url, outputDir, outputPrefix, height, onProgress, playerClient }) =>
+const downloadWithStandalone = ({ url, outputDir, outputPrefix, height, onProgress, playerClient, looseFormat }) =>
     new Promise((resolve, reject) => {
         const bin = getStandaloneBinaryPath();
         if (!bin) {
@@ -268,7 +314,7 @@ const downloadWithStandalone = ({ url, outputDir, outputPrefix, height, onProgre
         }
 
         const outputTemplate = path.join(outputDir, `${outputPrefix}_%(title).100B.%(ext)s`);
-        const args = buildSpawnArgs(url, { outputTemplate, height, playerClient });
+        const args = buildSpawnArgs(url, { outputTemplate, height, playerClient, looseFormat });
         const proc = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
         let stdout = '';
         let stderr = '';
@@ -298,7 +344,7 @@ const downloadWithStandalone = ({ url, outputDir, outputPrefix, height, onProgre
         });
     });
 
-const downloadWithExec = ({ url, outputDir, outputPrefix, height, onProgress, playerClient }) =>
+const downloadWithExec = ({ url, outputDir, outputPrefix, height, onProgress, playerClient, looseFormat }) =>
     new Promise((resolve, reject) => {
         if (!youtubedl) {
             reject(new Error('youtube-dl-exec not installed'));
@@ -313,8 +359,9 @@ const downloadWithExec = ({ url, outputDir, outputPrefix, height, onProgress, pl
             mergeOutputFormat: 'mp4',
             retries: 3,
             fragmentRetries: 3,
+            forceIpv4: true,
             extractorArgs: buildExtractorArgs(playerClient),
-            format: buildFormat(height),
+            format: buildFormat(height, looseFormat),
             output: outputTemplate,
             newline: true,
             print: '%(title)s',
@@ -322,7 +369,7 @@ const downloadWithExec = ({ url, outputDir, outputPrefix, height, onProgress, pl
         const cookies = initCookiesFromEnv();
         if (cookies) flags.cookies = cookies;
 
-        const subprocess = youtubedl.exec(url, flags);
+        const subprocess = youtubedl.exec(normalizeYouTubeUrl(url), flags);
         let stdout = '';
 
         if (subprocess.stdout) {
@@ -355,26 +402,47 @@ const downloadWithExec = ({ url, outputDir, outputPrefix, height, onProgress, pl
             .catch(reject);
     });
 
+const cleanupPartial = (outputDir, outputPrefix) => {
+    const partial = findDownloadedFile(outputDir, outputPrefix);
+    if (partial) {
+        try { fs.unlinkSync(partial); } catch (_) {}
+    }
+};
+
 const downloadWithYtDlp = async ({ url, outputDir, outputPrefix, height, onProgress }) => {
     let lastError = null;
+    const cleanUrl = normalizeYouTubeUrl(url);
+    const formatModes = height ? [false, true] : [false];
 
     for (const client of PLAYER_CLIENTS) {
-        try {
-            console.log(`[yt-download] Trying player_client=${client}${hasCookies() ? ' (with cookies)' : ''}`);
-            const attempt = isStandaloneAvailable()
-                ? downloadWithStandalone({ url, outputDir, outputPrefix, height, onProgress, playerClient: client })
-                : downloadWithExec({ url, outputDir, outputPrefix, height, onProgress, playerClient: client });
+        for (const looseFormat of formatModes) {
+            try {
+                console.log(
+                    `[yt-download] Trying player_client=${client}` +
+                    `${hasCookies() ? ' (with cookies)' : ''}` +
+                    `${looseFormat ? ' [loose format]' : height ? ` [height<=${height}]` : ''}`
+                );
+                const opts = {
+                    url: cleanUrl,
+                    outputDir,
+                    outputPrefix,
+                    height,
+                    onProgress,
+                    playerClient: client,
+                    looseFormat,
+                };
+                const attempt = isStandaloneAvailable()
+                    ? downloadWithStandalone(opts)
+                    : downloadWithExec(opts);
 
-            return await attempt;
-        } catch (err) {
-            lastError = err;
-            console.warn(`[yt-download] player_client=${client} failed:`, err.message?.slice(0, 220));
-            const partial = findDownloadedFile(outputDir, outputPrefix);
-            if (partial) {
-                try { fs.unlinkSync(partial); } catch (_) {}
-            }
-            if (!isBotBlockError(err.message)) {
-                throw err;
+                return await attempt;
+            } catch (err) {
+                lastError = err;
+                console.warn(`[yt-download] player_client=${client} failed:`, err.message?.slice(0, 220));
+                cleanupPartial(outputDir, outputPrefix);
+                if (!isRetryableDownloadError(err.message)) {
+                    throw err;
+                }
             }
         }
     }
@@ -392,6 +460,8 @@ module.exports = {
     getStandaloneBinaryPath,
     hasCookies,
     isBotBlockError,
+    isFormatUnavailableError,
     formatBotBlockError,
     validateNetscapeCookies,
+    normalizeYouTubeUrl,
 };

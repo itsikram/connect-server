@@ -11,6 +11,7 @@ const {
     getBundledYtDlpPath,
     isBotBlockError,
     formatBotBlockError,
+    normalizeYouTubeUrl,
 } = require('./ytDlpRunner');
 
 const DOWNLOAD_DIR = path.join(__dirname, '..', 'downloads');
@@ -270,7 +271,7 @@ const runDownloadJob = async ({
     try {
         updateProgress(progressId, { stage: 'starting', status: 'running', pct: 0 });
 
-        const normalizedUrl = (url || '').replace('m.youtube.com', 'www.youtube.com');
+        const normalizedUrl = normalizeYouTubeUrl(url);
         if (!isValidYouTubeUrl(normalizedUrl)) {
             throw new Error('Invalid YouTube URL');
         }
