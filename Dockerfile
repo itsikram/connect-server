@@ -23,14 +23,18 @@ RUN apt-get update && apt-get install -y \
 # Install yt-dlp for reliable YouTube downloads on cloud servers
 RUN pip3 install --no-cache-dir -U yt-dlp
 
-# Copy package files
+# Copy package files and install scripts needed for postinstall
 COPY package*.json ./
+COPY scripts/install-yt-dlp.js scripts/postinstall.js ./scripts/
 
 # Install dependencies
 RUN npm ci --only=production
 
 # Copy application files
 COPY . .
+
+# Ensure standalone yt-dlp binary is present (postinstall may have run above)
+RUN node scripts/install-yt-dlp.js || true
 
 # Create logs directory
 RUN mkdir -p /var/log/nginx
