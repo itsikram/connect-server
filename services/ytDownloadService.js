@@ -7,7 +7,6 @@ const Watch = require('../models/Watch');
 const generateAndUploadThumbnail = require('../utils/generateThumbnail');
 const {
     isYtDlpAvailable,
-    getVideoTitle,
     downloadWithYtDlp,
     getBundledYtDlpPath,
     isBotBlockError,
@@ -161,7 +160,7 @@ const createWatchFromVideo = async (videoUrl, caption, profileId) => {
     return watch.save();
 };
 
-const downloadWithYtDlpBackend = async ({ progressId, url, height, filePath }) => {
+const downloadWithYtDlpBackend = async ({ progressId, url, height }) => {
     let lastPct = 5;
     const report = (patch) => {
         if (patch.pct !== undefined && patch.pct >= lastPct) {
@@ -186,34 +185,28 @@ const downloadWithYtDlpBackend = async ({ progressId, url, height, filePath }) =
     console.log('[yt-download] Downloading with yt-dlp on Node.js server');
     report({ stage: 'downloading', pct: 5, source: 'yt-dlp' });
 
-    let title = 'video';
-    try {
-        title = await getVideoTitle(url);
-    } catch (_) {}
-
-    await downloadWithYtDlp({
+    const { filePath, title } = await downloadWithYtDlp({
         url,
-        outputPath: filePath,
+        outputDir: DOWNLOAD_DIR,
+        outputPrefix: progressId,
         height,
-        onProgress: (pct) => report({ stage: 'downloading', pct, title, download_title: title }),
+        onProgress: (pct) => report({ stage: 'downloading', pct, title: 'video', download_title: 'video' }),
     });
 
-    return { title, source: 'yt-dlp' };
+    return { title: title || 'video', source: 'yt-dlp', filePath };
 };
 
-const downloadVideo = async ({ progressId, url, height, filePath }) => {
+const downloadVideo = async ({ progressId, url, height }) => {
     // Primary: yt-dlp via youtube-dl-exec (Node.js — works on Render)
     try {
-        return await downloadWithYtDlpBackend({ progressId, url, height, filePath });
+        return await downloadWithYtDlpBackend({ progressId, url, height });
     } catch (err) {
         console.warn('[yt-download] yt-dlp failed:', err.message);
-        if (filePath && fs.existsSync(filePath)) {
-            try { fs.unlinkSync(filePath); } catch (_) {}
-        }
 
         // Fallback for local dev only — ytdl-core (blocked on cloud IPs)
         if (shouldUseYtdlCore() && ytdl.validateURL(url)) {
             const agent = getYtdlAgent();
+            const filePath = path.join(DOWNLOAD_DIR, `${progressId}_video.mp4`);
             let lastPct = 5;
             const report = (patch) => {
                 if (patch.pct !== undefined && patch.pct >= lastPct) {
@@ -247,7 +240,7 @@ const downloadVideo = async ({ progressId, url, height, filePath }) => {
                     report({ stage: 'downloading', pct, title, download_title: title });
                 });
 
-                return { title, source: 'ytdl-core' };
+                return { title, source: 'ytdl-core', filePath };
             } catch (ytdlErr) {
                 console.warn('[yt-download] ytdl-core failed:', ytdlErr.message);
                 if (filePath && fs.existsSync(filePath)) {
@@ -282,22 +275,17 @@ const runDownloadJob = async ({
             throw new Error('Invalid YouTube URL');
         }
 
-        const safeName = `${progressId}_video.mp4`;
-        filePath = path.join(DOWNLOAD_DIR, safeName);
-
         const result = await downloadVideo({
             progressId,
             url: normalizedUrl,
             height,
-            filePath,
         });
 
         const finalTitle = result.title || 'video';
-        const finalName = `${progressId}_${sanitizeFileName(finalTitle)}.mp4`;
-        const finalPath = path.join(DOWNLOAD_DIR, finalName);
-        if (fs.existsSync(filePath) && finalPath !== filePath) {
-            fs.renameSync(filePath, finalPath);
-            filePath = finalPath;
+        filePath = result.filePath;
+
+        if (!filePath || !fs.existsSync(filePath)) {
+            throw new Error('Download completed but file was not found on server');
         }
 
         const encodedName = encodeURIComponent(path.basename(filePath));

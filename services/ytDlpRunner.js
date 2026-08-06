@@ -11,14 +11,9 @@ const LOCAL_YT_DLP = path.join(
     process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp'
 );
 
-/** Player clients to try in order when YouTube blocks datacenter IPs */
-const PLAYER_CLIENTS = [
-    'android',
-    'tv_embedded',
-    'ios',
-    'mweb',
-    'web',
-];
+const PLAYER_CLIENTS = ['android', 'tv_embedded', 'ios', 'mweb', 'web_creator', 'web'];
+
+const ESSENTIAL_COOKIE_NAMES = ['__Secure-1PSID', '__Secure-3PSID', 'VISITOR_INFO1_LIVE'];
 
 let youtubedl = null;
 try {
@@ -28,10 +23,17 @@ try {
 }
 
 let cookiesFilePath = null;
+let cookieValidation = null;
 
 const normalizeCookieText = (raw) => {
     let text = String(raw || '').trim();
     if (!text) return '';
+
+    if (text.startsWith('[')) {
+        try {
+            text = jsonCookiesToNetscape(JSON.parse(text));
+        } catch (_) {}
+    }
 
     if (!text.includes('# Netscape HTTP Cookie File')) {
         text = `# Netscape HTTP Cookie File\n${text}`;
@@ -39,44 +41,112 @@ const normalizeCookieText = (raw) => {
     return text.endsWith('\n') ? text : `${text}\n`;
 };
 
+const jsonCookiesToNetscape = (cookies) => {
+    if (!Array.isArray(cookies)) {
+        throw new Error('YOUTUBE_COOKIES_JSON must be a JSON array');
+    }
+
+    const lines = [
+        '# Netscape HTTP Cookie File',
+        '# https://curl.haxx.se/rfc/cookie_spec.html',
+        '',
+    ];
+
+    for (const c of cookies) {
+        if (!c?.name || c.value === undefined) continue;
+        const domain = c.domain || '.youtube.com';
+        const flag = domain.startsWith('.') ? 'TRUE' : 'FALSE';
+        const cookiePath = c.path || '/';
+        const secure = c.secure ? 'TRUE' : 'FALSE';
+        const expiry = Math.floor(c.expirationDate || c.expires || (Date.now() / 1000 + 86400 * 30));
+        lines.push([domain, flag, cookiePath, secure, expiry, c.name, String(c.value)].join('\t'));
+    }
+
+    return `${lines.join('\n')}\n`;
+};
+
+const validateNetscapeCookies = (text) => {
+    const names = new Set();
+    let youtubeRows = 0;
+
+    for (const line of String(text).split('\n')) {
+        if (!line || line.startsWith('#')) continue;
+        const parts = line.split('\t');
+        if (parts.length < 7) continue;
+        names.add(parts[5]);
+        if (parts[0].includes('youtube.com')) youtubeRows += 1;
+    }
+
+    const missing = ESSENTIAL_COOKIE_NAMES.filter((n) => !names.has(n));
+    return {
+        total: names.size,
+        youtubeRows,
+        missing,
+        ok: youtubeRows > 0 && missing.length === 0,
+    };
+};
+
+const decodeCookiesPayload = (raw) => {
+    const trimmed = String(raw || '').trim().replace(/^['"]|['"]$/g, '');
+
+    if (trimmed.startsWith('[')) {
+        return jsonCookiesToNetscape(JSON.parse(trimmed));
+    }
+
+    if (trimmed.includes('youtube.com') || trimmed.startsWith('# Netscape')) {
+        return normalizeCookieText(trimmed);
+    }
+
+    try {
+        const decoded = Buffer.from(trimmed, 'base64').toString('utf8');
+        if (decoded.includes('youtube.com') || decoded.startsWith('# Netscape') || decoded.startsWith('[')) {
+            return normalizeCookieText(decoded);
+        }
+    } catch (_) {}
+
+    return normalizeCookieText(trimmed);
+};
+
 const initCookiesFromEnv = () => {
     if (cookiesFilePath && fs.existsSync(cookiesFilePath)) {
         return cookiesFilePath;
     }
 
-    const cookiesB64 = process.env.YOUTUBE_COOKIES_B64;
-    if (cookiesB64) {
-        try {
-            const decoded = Buffer.from(String(cookiesB64).trim(), 'base64').toString('utf8');
-            cookiesFilePath = path.join(os.tmpdir(), 'connect-yt-cookies.txt');
-            fs.writeFileSync(cookiesFilePath, normalizeCookieText(decoded), 'utf8');
-            console.log('[yt-download] Loaded cookies from YOUTUBE_COOKIES_B64');
-            return cookiesFilePath;
-        } catch (err) {
-            console.warn('Failed to decode YOUTUBE_COOKIES_B64:', err.message);
-        }
-    }
+    const sources = [
+        ['YOUTUBE_COOKIES_JSON', process.env.YOUTUBE_COOKIES_JSON],
+        ['YOUTUBE_COOKIES_B64', process.env.YOUTUBE_COOKIES_B64],
+        ['YOUTUBE_COOKIES', process.env.YOUTUBE_COOKIES?.replace(/\\n/g, '\n')],
+    ];
 
-    const cookiesRaw = process.env.YOUTUBE_COOKIES;
-    if (cookiesRaw) {
+    for (const [label, value] of sources) {
+        if (!value) continue;
         try {
-            const decoded = String(cookiesRaw).replace(/\\n/g, '\n');
+            const netscape = decodeCookiesPayload(value);
+            cookieValidation = validateNetscapeCookies(netscape);
             cookiesFilePath = path.join(os.tmpdir(), 'connect-yt-cookies.txt');
-            fs.writeFileSync(cookiesFilePath, normalizeCookieText(decoded), 'utf8');
-            console.log('[yt-download] Loaded cookies from YOUTUBE_COOKIES');
+            fs.writeFileSync(cookiesFilePath, netscape, 'utf8');
+            console.log(
+                `[yt-download] Cookies loaded from ${label}: ${cookieValidation.youtubeRows} youtube.com rows, ${cookieValidation.total} unique names` +
+                (cookieValidation.missing.length
+                    ? `, MISSING: ${cookieValidation.missing.join(', ')}`
+                    : ', essential cookies present')
+            );
             return cookiesFilePath;
         } catch (err) {
-            console.warn('Failed to write YOUTUBE_COOKIES:', err.message);
+            console.warn(`[yt-download] Failed to load ${label}:`, err.message);
         }
     }
 
     const envFile = process.env.YOUTUBE_COOKIES_FILE;
     if (envFile && fs.existsSync(envFile)) {
+        const netscape = fs.readFileSync(envFile, 'utf8');
+        cookieValidation = validateNetscapeCookies(netscape);
         cookiesFilePath = envFile;
-        console.log('[yt-download] Loaded cookies from YOUTUBE_COOKIES_FILE');
+        console.log('[yt-download] Cookies loaded from YOUTUBE_COOKIES_FILE');
         return cookiesFilePath;
     }
 
+    cookieValidation = null;
     return null;
 };
 
@@ -88,12 +158,29 @@ const isBotBlockError = (message) => {
         lower.includes('sign in to confirm') ||
         lower.includes('not a bot') ||
         lower.includes('confirm you') ||
-        lower.includes('cookies') && lower.includes('authentication')
+        (lower.includes('cookies') && lower.includes('authentication'))
     );
 };
 
-const formatBotBlockError = () =>
-    'YouTube blocked this server (bot check). Add YOUTUBE_COOKIES_B64 to Render env vars — export cookies.txt from your browser while logged into YouTube, then base64-encode it.';
+const formatBotBlockError = () => {
+    const parts = [
+        'YouTube bot check failed on the cloud server.',
+        'Re-export fresh cookies.txt from youtube.com while logged in (use Get cookies.txt LOCALLY extension).',
+        'Required cookie names: __Secure-1PSID, __Secure-3PSID, VISITOR_INFO1_LIVE.',
+        'Set YOUTUBE_COOKIES_B64 on Render with base64 of that file.',
+        'Run locally: node scripts/encode-yt-cookies.js path/to/cookies.txt',
+    ];
+
+    if (cookieValidation) {
+        parts.push(
+            `Current cookies: ${cookieValidation.youtubeRows} youtube rows, missing: ${cookieValidation.missing.join(', ') || 'none'}.`
+        );
+    } else {
+        parts.push('No valid cookies detected on the server.');
+    }
+
+    return parts.join(' ');
+};
 
 const getStandaloneBinaryPath = () => {
     if (process.env.YT_DLP_PATH && fs.existsSync(process.env.YT_DLP_PATH)) {
@@ -110,12 +197,23 @@ const buildFormat = (height) =>
         ? `best[height<=${height}][ext=mp4]/best[height<=${height}]/best[ext=mp4]/best`
         : 'best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best';
 
-const buildSpawnArgs = (url, { outputPath, height, titleOnly, playerClient }) => {
+const buildExtractorArgs = (playerClient) => {
+    const parts = [`youtube:player_client=${playerClient}`];
+    if (process.env.YOUTUBE_PO_TOKEN) {
+        parts.push(`po_token=${process.env.YOUTUBE_PO_TOKEN}`);
+    }
+    if (process.env.YOUTUBE_EXTRACTOR_ARGS) {
+        return process.env.YOUTUBE_EXTRACTOR_ARGS;
+    }
+    return parts.join(';');
+};
+
+const buildSpawnArgs = (url, { outputTemplate, height, playerClient }) => {
     const args = [
         '--no-playlist',
         '--no-warnings',
         '--ffmpeg-location', FFMPEG_DIR,
-        '--extractor-args', `youtube:player_client=${playerClient}`,
+        '--extractor-args', buildExtractorArgs(playerClient),
         '--retries', '3',
         '--fragment-retries', '3',
         '--socket-timeout', '30',
@@ -126,16 +224,12 @@ const buildSpawnArgs = (url, { outputPath, height, titleOnly, playerClient }) =>
         args.push('--cookies', cookies);
     }
 
-    if (titleOnly) {
-        args.push('--print', '%(title)s', '--skip-download', url);
-        return args;
-    }
-
     args.push(
         '-f', buildFormat(height),
         '--merge-output-format', 'mp4',
-        '-o', outputPath,
+        '-o', outputTemplate,
         '--newline',
+        '--print', '%(title)s',
         url
     );
     return args;
@@ -146,15 +240,26 @@ const isStandaloneAvailable = () => {
     return Boolean(bin && fs.existsSync(bin));
 };
 
-const isYtDlpExecAvailable = () => Boolean(youtubedl);
-
-const isYtDlpAvailable = async () => isStandaloneAvailable() || isYtDlpExecAvailable();
+const isYtDlpAvailable = async () => isStandaloneAvailable() || Boolean(youtubedl);
 
 const getBundledYtDlpPath = () => getStandaloneBinaryPath();
 
 const hasCookies = () => Boolean(initCookiesFromEnv());
 
-const spawnYtDlp = (args) =>
+const findDownloadedFile = (outputDir, prefix) => {
+    const files = fs.readdirSync(outputDir).filter((f) => f.startsWith(prefix) && /\.(mp4|mkv|webm)$/i.test(f));
+    if (!files.length) return null;
+    return path.join(outputDir, files[0]);
+};
+
+const titleFromFilename = (filename, prefix) =>
+    filename
+        .replace(new RegExp(`^${prefix}_`), '')
+        .replace(/\.(mp4|mkv|webm)$/i, '')
+        .replace(/_/g, ' ')
+        .trim() || 'video';
+
+const downloadWithStandalone = ({ url, outputDir, outputPrefix, height, onProgress, playerClient }) =>
     new Promise((resolve, reject) => {
         const bin = getStandaloneBinaryPath();
         if (!bin) {
@@ -162,90 +267,13 @@ const spawnYtDlp = (args) =>
             return;
         }
 
+        const outputTemplate = path.join(outputDir, `${outputPrefix}_%(title).100B.%(ext)s`);
+        const args = buildSpawnArgs(url, { outputTemplate, height, playerClient });
         const proc = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
         let stdout = '';
         let stderr = '';
 
         proc.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
-        proc.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
-
-        proc.on('error', reject);
-        proc.on('close', (code) => {
-            if (code === 0) {
-                resolve({ stdout, stderr });
-                return;
-            }
-            reject(new Error(stderr.trim() || stdout.trim() || `yt-dlp exited with code ${code}`));
-        });
-    });
-
-const runWithClientRetries = async (runFn) => {
-    let lastError = null;
-
-    for (const client of PLAYER_CLIENTS) {
-        try {
-            console.log(`[yt-download] Trying player_client=${client}${hasCookies() ? ' (with cookies)' : ''}`);
-            return await runFn(client);
-        } catch (err) {
-            lastError = err;
-            console.warn(`[yt-download] player_client=${client} failed:`, err.message?.slice(0, 200));
-            if (!isBotBlockError(err.message)) {
-                throw err;
-            }
-        }
-    }
-
-    if (isBotBlockError(lastError?.message)) {
-        throw new Error(formatBotBlockError());
-    }
-    throw lastError || new Error('yt-dlp failed for all player clients');
-};
-
-const getVideoTitle = async (url) => {
-    if (isStandaloneAvailable()) {
-        return runWithClientRetries(async (client) => {
-            const { stdout } = await spawnYtDlp(buildSpawnArgs(url, { titleOnly: true, playerClient: client }));
-            const title = stdout.trim();
-            if (title) return title;
-            throw new Error('Could not read video title');
-        });
-    }
-
-    if (youtubedl) {
-        return runWithClientRetries(async (client) => {
-            const flags = {
-                noPlaylist: true,
-                noWarnings: true,
-                ffmpegLocation: FFMPEG_DIR,
-                extractorArgs: `youtube:player_client=${client}`,
-                print: '%(title)s',
-                skipDownload: true,
-            };
-            const cookies = initCookiesFromEnv();
-            if (cookies) flags.cookies = cookies;
-
-            const result = await youtubedl(url, flags);
-            const title = typeof result === 'string' ? result.trim() : String(result || '').trim();
-            if (title) return title;
-            throw new Error('Could not read video title');
-        });
-    }
-
-    throw new Error('yt-dlp is not available on this server');
-};
-
-const downloadWithStandalone = ({ url, outputPath, height, onProgress, playerClient }) =>
-    new Promise((resolve, reject) => {
-        const bin = getStandaloneBinaryPath();
-        if (!bin) {
-            reject(new Error('Standalone yt-dlp binary not found'));
-            return;
-        }
-
-        const args = buildSpawnArgs(url, { outputPath, height, titleOnly: false, playerClient });
-        const proc = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-        let stderr = '';
-
         proc.stderr.on('data', (chunk) => {
             const text = chunk.toString();
             stderr += text;
@@ -259,21 +287,25 @@ const downloadWithStandalone = ({ url, outputPath, height, onProgress, playerCli
 
         proc.on('error', reject);
         proc.on('close', (code) => {
-            if (code === 0 && fs.existsSync(outputPath)) {
-                resolve(outputPath);
+            const filePath = findDownloadedFile(outputDir, outputPrefix);
+            if (code === 0 && filePath) {
+                const titleFromStdout = stdout.trim().split('\n').filter(Boolean).pop();
+                const title = titleFromStdout || titleFromFilename(path.basename(filePath), outputPrefix);
+                resolve({ filePath, title });
                 return;
             }
-            reject(new Error(stderr.trim() || `yt-dlp exited with code ${code}`));
+            reject(new Error(stderr.trim() || stdout.trim() || `yt-dlp exited with code ${code}`));
         });
     });
 
-const downloadWithExec = ({ url, outputPath, height, onProgress, playerClient }) =>
+const downloadWithExec = ({ url, outputDir, outputPrefix, height, onProgress, playerClient }) =>
     new Promise((resolve, reject) => {
         if (!youtubedl) {
             reject(new Error('youtube-dl-exec not installed'));
             return;
         }
 
+        const outputTemplate = path.join(outputDir, `${outputPrefix}_%(title).100B.%(ext)s`);
         const flags = {
             noPlaylist: true,
             noWarnings: true,
@@ -281,16 +313,21 @@ const downloadWithExec = ({ url, outputPath, height, onProgress, playerClient })
             mergeOutputFormat: 'mp4',
             retries: 3,
             fragmentRetries: 3,
-            extractorArgs: `youtube:player_client=${playerClient}`,
+            extractorArgs: buildExtractorArgs(playerClient),
             format: buildFormat(height),
-            output: outputPath,
+            output: outputTemplate,
             newline: true,
+            print: '%(title)s',
         };
         const cookies = initCookiesFromEnv();
         if (cookies) flags.cookies = cookies;
 
         const subprocess = youtubedl.exec(url, flags);
+        let stdout = '';
 
+        if (subprocess.stdout) {
+            subprocess.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+        }
         if (subprocess.stderr) {
             subprocess.stderr.on('data', (chunk) => {
                 chunk.toString().split('\n').forEach((line) => {
@@ -304,8 +341,13 @@ const downloadWithExec = ({ url, outputPath, height, onProgress, playerClient })
 
         subprocess
             .then(() => {
-                if (fs.existsSync(outputPath)) {
-                    resolve(outputPath);
+                const filePath = findDownloadedFile(outputDir, outputPrefix);
+                if (filePath) {
+                    const titleFromStdout = stdout.trim().split('\n').filter(Boolean).pop();
+                    resolve({
+                        filePath,
+                        title: titleFromStdout || titleFromFilename(path.basename(filePath), outputPrefix),
+                    });
                     return;
                 }
                 reject(new Error('yt-dlp did not produce an output file'));
@@ -313,36 +355,43 @@ const downloadWithExec = ({ url, outputPath, height, onProgress, playerClient })
             .catch(reject);
     });
 
-const downloadWithYtDlp = async ({ url, outputPath, height, onProgress }) => {
-    const attempt = async (playerClient) => {
-        if (isStandaloneAvailable()) {
-            return downloadWithStandalone({ url, outputPath, height, onProgress, playerClient });
-        }
-        if (youtubedl) {
-            return downloadWithExec({ url, outputPath, height, onProgress, playerClient });
-        }
-        throw new Error('yt-dlp is not available. Run: node scripts/install-yt-dlp.js');
-    };
+const downloadWithYtDlp = async ({ url, outputDir, outputPrefix, height, onProgress }) => {
+    let lastError = null;
 
-    return runWithClientRetries(async (client) => {
+    for (const client of PLAYER_CLIENTS) {
         try {
-            return await attempt(client);
+            console.log(`[yt-download] Trying player_client=${client}${hasCookies() ? ' (with cookies)' : ''}`);
+            const attempt = isStandaloneAvailable()
+                ? downloadWithStandalone({ url, outputDir, outputPrefix, height, onProgress, playerClient: client })
+                : downloadWithExec({ url, outputDir, outputPrefix, height, onProgress, playerClient: client });
+
+            return await attempt;
         } catch (err) {
-            if (fs.existsSync(outputPath)) {
-                try { fs.unlinkSync(outputPath); } catch (_) {}
+            lastError = err;
+            console.warn(`[yt-download] player_client=${client} failed:`, err.message?.slice(0, 220));
+            const partial = findDownloadedFile(outputDir, outputPrefix);
+            if (partial) {
+                try { fs.unlinkSync(partial); } catch (_) {}
             }
-            throw err;
+            if (!isBotBlockError(err.message)) {
+                throw err;
+            }
         }
-    });
+    }
+
+    if (isBotBlockError(lastError?.message)) {
+        throw new Error(formatBotBlockError());
+    }
+    throw lastError || new Error('yt-dlp failed for all player clients');
 };
 
 module.exports = {
     isYtDlpAvailable,
-    getVideoTitle,
     downloadWithYtDlp,
     getBundledYtDlpPath,
     getStandaloneBinaryPath,
     hasCookies,
     isBotBlockError,
     formatBotBlockError,
+    validateNetscapeCookies,
 };
