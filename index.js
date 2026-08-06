@@ -13,6 +13,7 @@ const cors = require('cors');
 const middilewares = require('./middlewares/middlewares')
 const routes = require('./Routes/routes');
 const agoraRoutes = require('./Routes/agoraRoutes');
+const ytDownloadRoutes = require('./Routes/ytDownloadRoutes');
 let app = express();
 const socketHandler = require('./sockets/socketHandler')
 const httpServer = createServer(app)
@@ -397,6 +398,9 @@ middilewares(app)
 
 // setting up routes
 routes(app)
+
+// YouTube download service (Node.js ytdl-core)
+app.use(ytDownloadRoutes)
 
 // setup Agora routes
 app.use('/api/agora', agoraRoutes);
