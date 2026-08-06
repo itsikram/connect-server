@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 const ytdl = require('@distube/ytdl-core');
 const { v2: cloudinary } = require('cloudinary');
