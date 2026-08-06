@@ -17,7 +17,7 @@
     "nodemon": "^3.1.9"
   },
   "dependencies": {
-    "@distube/ytdl-core": "^4.16.9",
+    "@distube/ytdl-core": "^4.16.12",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@tensorflow/tfjs": "^4.22.0",
     "@tensorflow/tfjs-node": "^4.22.0",
@@ -48,6 +48,7 @@
     "streamifier": "^0.1.1",
     "uuid": "^11.1.0",
     "web-push": "^3.6.7",
+    "youtube-dl-exec": "^3.1.11",
     "ytdl-core": "^4.11.5"
   },
   "type": "commonjs"

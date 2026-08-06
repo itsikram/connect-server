@@ -3,6 +3,28 @@ const Notification = require('../models/Notification')
 const Profile = require('../models/Profile')
 const { sendPushToProfile } = require('../utils/pushNotifications')
 const { sendWebPushToProfile } = require('../utils/webPush')
+const { getPostId, postLink } = require('../utils/getPostId')
+
+const VALID_POST_LINK = /^\/post\/([a-f0-9]{24})$/i
+const OBJECT_ID_IN_TEXT = /([a-f0-9]{24})/i
+
+function sanitizeNotificationLink(link, data = {}) {
+    if (!link || typeof link !== 'string') return '/'
+
+    if (VALID_POST_LINK.test(link)) return link
+
+    const postId = getPostId(data.postId)
+    if (link.startsWith('/post/') && /^[a-f0-9]{24}$/i.test(postId)) {
+        return postLink(postId)
+    }
+
+    if (link.startsWith('/post/')) {
+        const match = link.match(OBJECT_ID_IN_TEXT)
+        if (match) return `/post/${match[1]}`
+    }
+
+    return link
+}
 
 exports.notificationSocket = async (io, socket) => {
     socket.on('fetchNotifications',async(profileId) => {
@@ -18,7 +40,7 @@ exports.saveNotification = async (io, data) => {
 
     let receiverId = (data.receiverId).toString() || ''
     let notificationText = data.text || ''
-    let notificationLink = data.link || '/';
+    let notificationLink = sanitizeNotificationLink(data.link || '/', data.data || {});
     let notificationIcon = data.icon || null;
     let notificationType = data.type || null;
     let browserIds = data.browserIds || [];

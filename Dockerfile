@@ -13,9 +13,15 @@ RUN apt-get update && apt-get install -y \
     libgif-dev \
     librsvg2-dev \
     python3 \
+    python3-pip \
+    ffmpeg \
+    curl \
     make \
     g++ \
     && rm -rf /var/lib/apt/lists/*
+
+# Install yt-dlp for reliable YouTube downloads on cloud servers
+RUN pip3 install --no-cache-dir -U yt-dlp
 
 # Copy package files
 COPY package*.json ./

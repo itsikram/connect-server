@@ -5,6 +5,7 @@ const CmntReply = require('../models/CmntReply')
 const {saveNotification} = require('./notificationController')
 const checkIsActive = require('../utils/checkIsActive')
 const { sendPushToProfile } = require('../utils/pushNotifications')
+const { getPostId, postLink } = require('../utils/getPostId')
 const Story = require('../models/Story')
 const mongoose = require('mongoose')
 exports.postAddComment = async (req, res, next) => {
@@ -48,7 +49,7 @@ exports.postAddComment = async (req, res, next) => {
             let notification = {
                 receiverId: updatePost.author._id,
                 text: `${myProfileData.fullName} Commented in your post`,
-                link: '/post/'+post,
+                link: postLink(post),
                 type: 'postComment',
                 icon: myProfileData.profilePic,
                 browserIds: activeBrowserIds,
@@ -56,7 +57,7 @@ exports.postAddComment = async (req, res, next) => {
                     senderId: profile,
                     senderName: myProfileData.fullName,
                     senderProfilePic: myProfileData.profilePic,
-                    postId: post,
+                    postId: getPostId(post),
                     commentId: savedCommentData._id,
                     commentBody: body
                 }
@@ -78,7 +79,7 @@ exports.postAddComment = async (req, res, next) => {
                     await sendPushToProfile(updatePost.author._id, {
                         title: 'New comment',
                         body: `${myProfileData.fullName} commented on your post`,
-                        data: { type: 'post_comment', postId: String(post) }
+                        data: { type: 'post_comment', postId: getPostId(post) }
                     });
                 }
             } catch (e) {}
@@ -222,7 +223,7 @@ exports.addCommentReact = async (req, res, next) => {
                     const notification = {
                         receiverId: comment.author._id,
                         text: `${myProfile.fullName} liked your comment`,
-                        link: '/post/' + String(comment.post),
+                        link: postLink(comment.post),
                         type: 'commentReact',
                         icon: myProfile.profilePic
                     };
@@ -233,7 +234,7 @@ exports.addCommentReact = async (req, res, next) => {
                             await sendPushToProfile(comment.author._id, {
                                 title: 'Comment liked',
                                 body: `${myProfile.fullName} liked your comment`,
-                                data: { type: 'comment_like', postId: String(comment.post), commentId: String(comment._id) }
+                                data: { type: 'comment_like', postId: getPostId(comment.post), commentId: String(comment._id) }
                             });
                         }
                     } catch (e) {}
@@ -320,13 +321,13 @@ exports.postCommentReply = async (req, res, next) => {
                         let notification = {
                             receiverId: updateComment.post.author._id,
                             text: `${myProfile.fullName} Replied to your comment`,
-                            link: '/post/'+(updateComment.post).toString(),
+                            link: postLink(updateComment.post),
                             type: 'postCommentReply',
                             icon: myProfile.profilePic,
                             data: {
                                 replyMsg,
                                 commentId,
-                                postId: String(updateComment.post),
+                                postId: getPostId(updateComment.post),
                                 senderId: myProfileId,
                                 senderName: myProfile.fullName,
                             }
@@ -339,7 +340,7 @@ exports.postCommentReply = async (req, res, next) => {
                                 await sendPushToProfile(updateComment.post.author._id, {
                                     title: 'New reply',
                                     body: `${myProfile.fullName} replied to your comment`,
-                                    data: { type: 'comment_reply', postId: String(updateComment.post) }
+                                    data: { type: 'comment_reply', postId: getPostId(updateComment.post) }
                                 });
                             }
                         } catch (e) {}
@@ -352,13 +353,13 @@ exports.postCommentReply = async (req, res, next) => {
                             const notifForCommentAuthor = {
                                 receiverId: parentComment.author._id,
                                 text: `${myProfile.fullName} replied to your comment`,
-                                link: '/post/' + String(updateComment.post),
+                                link: postLink(updateComment.post),
                                 type: 'commentReply',
                                 icon: myProfile.profilePic,
                                 data: {
                                     replyMsg,
                                     commentId,
-                                    postId: String(updateComment.post),
+                                    postId: getPostId(updateComment.post),
                                     senderId: myProfileId,
                                     senderName: myProfile.fullName,
                                 }
@@ -370,7 +371,7 @@ exports.postCommentReply = async (req, res, next) => {
                                     await sendPushToProfile(parentComment.author._id, {
                                         title: 'New reply',
                                         body: `${myProfile.fullName} replied to your comment`,
-                                        data: { type: 'comment_reply', postId: String(updateComment.post), commentId: String(parentComment._id) }
+                                        data: { type: 'comment_reply', postId: getPostId(updateComment.post), commentId: String(parentComment._id) }
                                     });
                                 }
                             } catch (e) {}
