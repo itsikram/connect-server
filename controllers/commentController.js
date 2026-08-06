@@ -157,7 +157,13 @@ exports.storyAddComment = async (req, res, next) => {
                 text: `${myProfileData.fullName} Commented in your Story`,
                 link: '/story/'+storyId,
                 type: 'storyComment',
-                icon: myProfileData.profilePic
+                icon: myProfileData.profilePic,
+                data: {
+                    commentBody: body,
+                    storyId,
+                    senderId: profile,
+                    senderName: myProfileData.fullName,
+                }
             }
     
             saveNotification(io, notification)
@@ -316,7 +322,14 @@ exports.postCommentReply = async (req, res, next) => {
                             text: `${myProfile.fullName} Replied to your comment`,
                             link: '/post/'+(updateComment.post).toString(),
                             type: 'postCommentReply',
-                            icon: myProfile.profilePic
+                            icon: myProfile.profilePic,
+                            data: {
+                                replyMsg,
+                                commentId,
+                                postId: String(updateComment.post),
+                                senderId: myProfileId,
+                                senderName: myProfile.fullName,
+                            }
                         }
                 
                         saveNotification(io, notification)
@@ -341,7 +354,14 @@ exports.postCommentReply = async (req, res, next) => {
                                 text: `${myProfile.fullName} replied to your comment`,
                                 link: '/post/' + String(updateComment.post),
                                 type: 'commentReply',
-                                icon: myProfile.profilePic
+                                icon: myProfile.profilePic,
+                                data: {
+                                    replyMsg,
+                                    commentId,
+                                    postId: String(updateComment.post),
+                                    senderId: myProfileId,
+                                    senderName: myProfile.fullName,
+                                }
                             };
                             saveNotification(io, notifForCommentAuthor)
                             try {

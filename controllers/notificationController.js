@@ -27,11 +27,12 @@ exports.saveNotification = async (io, data) => {
     let notification = new Notification({
         receiverId,
         text: notificationText,
+        title: notificationTitle,
         link: notificationLink,
         icon: notificationIcon,
         type: notificationType,
         data: {
-            ...data.data,
+            ...(data.data || {}),
             browserIds: browserIds
         }
     })

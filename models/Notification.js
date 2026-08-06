@@ -16,6 +16,10 @@ const NotificationSchema = new Schema({
     },
     link: String,
     type: String,
+    data: {
+        type: Schema.Types.Mixed,
+        default: {}
+    },
     reacts: [{
         type: Object,
         ref: Profile
