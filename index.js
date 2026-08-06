@@ -22,6 +22,7 @@ const routes = require('./Routes/routes');
 const agoraRoutes = require('./Routes/agoraRoutes');
 const ytDownloadRoutes = require('./Routes/ytDownloadRoutes');
 let app = express();
+app.set('trust proxy', 1);
 const socketHandler = require('./sockets/socketHandler')
 const httpServer = createServer(app)
 const path = require('path');

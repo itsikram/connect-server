@@ -1,5 +1,18 @@
 const { startDownloadJob, getProgress } = require('../services/ytDownloadService');
 
+const getPublicBaseUrl = (req) => {
+    const fromEnv = process.env.PUBLIC_SERVER_URL || process.env.RENDER_EXTERNAL_URL;
+    if (fromEnv) return String(fromEnv).replace(/\/+$/, '');
+
+    const proto = String(req.get('x-forwarded-proto') || req.protocol || 'https')
+        .split(',')[0]
+        .trim();
+    const host = String(req.get('x-forwarded-host') || req.get('host') || '')
+        .split(',')[0]
+        .trim();
+    return `${proto}://${host}`;
+};
+
 exports.startDownload = async (req, res) => {
     try {
         const url = req.query.url;
@@ -12,7 +25,7 @@ exports.startDownload = async (req, res) => {
             return res.status(400).json({ error: 'url query parameter is required' });
         }
 
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const baseUrl = getPublicBaseUrl(req);
         const profileId = req.profile?._id;
 
         if (!profileId) {
@@ -48,8 +61,14 @@ exports.startDownload = async (req, res) => {
     }
 };
 
-exports.getProgress = (req, res) => {
-    const data = getProgress(req.params.progressId);
+exports.getProgress = async (req, res) => {
+    res.set({
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        Pragma: 'no-cache',
+        Expires: '0',
+    });
+
+    const data = await getProgress(req.params.progressId);
     if (!data) {
         return res.status(404).json({ error: 'Progress id not found' });
     }

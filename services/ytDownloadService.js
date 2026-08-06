@@ -5,6 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 const ytdl = require('@distube/ytdl-core');
 const { v2: cloudinary } = require('cloudinary');
 const Watch = require('../models/Watch');
+const YtDownloadProgress = require('../models/YtDownloadProgress');
 const generateAndUploadThumbnail = require('../utils/generateThumbnail');
 const {
     isYtDlpAvailable,
@@ -116,12 +117,45 @@ const pickFormat = (formats, targetHeight) => {
     return matching[0] || withAv.sort((a, b) => (b.height || 0) - (a.height || 0))[0];
 };
 
-const updateProgress = (progressId, patch) => {
-    const prev = JOB_PROGRESS.get(progressId) || {};
-    JOB_PROGRESS.set(progressId, { ...prev, ...patch });
+const persistProgressToDb = (progressId, data) => {
+    if (!isRenderHost() || mongoose.connection.readyState !== 1) return;
+
+    YtDownloadProgress.findByIdAndUpdate(
+        progressId,
+        { $set: { ...data, _id: progressId } },
+        { upsert: true }
+    ).catch((err) => {
+        console.warn('[yt-download] progress persist failed:', err.message);
+    });
 };
 
-const getProgress = (progressId) => JOB_PROGRESS.get(progressId) || null;
+const updateProgress = (progressId, patch) => {
+    const prev = JOB_PROGRESS.get(progressId) || {};
+    const next = { ...prev, ...patch };
+    JOB_PROGRESS.set(progressId, next);
+    persistProgressToDb(progressId, next);
+};
+
+const getProgress = async (progressId) => {
+    const cached = JOB_PROGRESS.get(progressId);
+    if (cached) return cached;
+
+    if (!isRenderHost() || mongoose.connection.readyState !== 1) {
+        return null;
+    }
+
+    try {
+        const doc = await YtDownloadProgress.findById(progressId).lean();
+        if (!doc) return null;
+
+        const { _id, __v, createdAt, updatedAt, ...data } = doc;
+        JOB_PROGRESS.set(progressId, data);
+        return data;
+    } catch (err) {
+        console.warn('[yt-download] progress load failed:', err.message);
+        return null;
+    }
+};
 
 const shouldUseYtdlCore = () => {
     if (isRenderHost()) return false;
