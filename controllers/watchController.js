@@ -74,27 +74,39 @@ exports.createWatch = async (req, res, next) => {
 
 exports.deleteWatch = async (req, res, next) => {
     try {
-        let profileId = req.profile._id
-        let watchId = req.body.watchId
-        let authorId = req.body.authorId;
+        const profileId = req.profile?._id
+        const watchId = req.body.watchId
 
-        if (profileId == authorId) {
-            let deleteWatch = await Watch.findOneAndDelete({ _id: watchId })
-
-            if (deleteWatch) {
-                res.json({
-                    message: 'Watch Deleted Successfully'
-                }).status(200)
-            }
-
-
+        if (!profileId) {
+            return res.status(401).json({ message: 'Authentication required' })
         }
 
+        if (!watchId || !mongoose.isValidObjectId(watchId)) {
+            return res.status(400).json({ message: 'Valid watchId is required' })
+        }
 
+        // Only the author can delete — verify ownership server-side
+        const deleted = await Watch.findOneAndDelete({
+            _id: watchId,
+            author: profileId,
+        })
 
+        if (!deleted) {
+            // Distinguish not found vs not authorized
+            const existing = await Watch.findById(watchId).select('author')
+            if (!existing) {
+                return res.status(404).json({ message: 'Watch not found' })
+            }
+            return res.status(403).json({ message: 'Not authorized to delete this watch' })
+        }
 
+        return res.status(200).json({
+            message: 'Watch Deleted Successfully',
+            watchId,
+        })
     } catch (error) {
-        next(error)
+        console.error('deleteWatch error:', error)
+        return next(error)
     }
 }
 

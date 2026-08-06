@@ -8,11 +8,11 @@ const { pipeline } = require('stream/promises');
  * Set COBALT_API_URL to your instance (recommended).
  * Optional: COBALT_API_KEY for Authorization: Api-Key / Bearer.
  */
-const DEFAULT_INSTANCES = [
-    process.env.COBALT_API_URL,
-    // Public api.cobalt.tools is not intended for apps — only used if no COBALT_API_URL
-    !process.env.COBALT_API_URL ? 'https://api.cobalt.tools' : null,
-].filter(Boolean);
+const getCobaltInstances = () => {
+    const primary = process.env.COBALT_API_URL;
+    const fallback = !primary ? 'https://api.cobalt.tools' : null;
+    return [...new Set([primary, fallback].filter(Boolean).map((u) => u.replace(/\/$/, '')))];
+};
 
 const heightToQuality = (height) => {
     if (!height) return '720';
@@ -49,15 +49,16 @@ const resolveDownloadUrl = (data) => {
 
 const requestCobalt = async (baseUrl, youtubeUrl, height, extras = {}) => {
     const endpoint = baseUrl.replace(/\/$/, '') + '/';
+    const { videoQuality, ...rest } = extras;
     const body = {
         url: youtubeUrl,
         downloadMode: 'auto',
-        videoQuality: heightToQuality(height),
+        videoQuality: videoQuality || heightToQuality(height),
         youtubeVideoCodec: 'h264',
         youtubeVideoContainer: 'mp4',
         filenameStyle: 'basic',
         alwaysProxy: true,
-        ...extras,
+        ...rest,
     };
 
     const res = await axios.post(endpoint, body, {
@@ -82,6 +83,7 @@ const requestCobalt = async (baseUrl, youtubeUrl, height, extras = {}) => {
         title: res.data?.filename
             ? String(res.data.filename).replace(/\.[^.]+$/, '')
             : 'video',
+        status: res.data?.status || null,
     };
 };
 
@@ -114,6 +116,12 @@ const downloadFileFromUrl = async (mediaUrl, destPath, onProgress) => {
     }
 
     const total = Number(res.headers['content-length'] || res.headers['estimated-content-length'] || 0);
+    // Cobalt closes the tunnel empty when YouTube HEAD fails (bot/cookies)
+    if (total === 0 && String(res.headers['content-length']) === '0') {
+        res.data.destroy?.();
+        throw new Error('Cobalt download too small (0 bytes)');
+    }
+
     let downloaded = 0;
 
     res.data.on('data', (chunk) => {
@@ -134,37 +142,48 @@ const downloadFileFromUrl = async (mediaUrl, destPath, onProgress) => {
     }
 };
 
+/** Few quality attempts — empty tunnels are usually bot/IP blocks, not quality. */
+const buildAttemptExtras = (height) => {
+    const q = Math.min(Number(heightToQuality(height)) || 720, 720);
+    return [{ videoQuality: String(q) }, { videoQuality: '360' }]
+        .filter((a, i, arr) => arr.findIndex((b) => b.videoQuality === a.videoQuality) === i);
+};
+
 const downloadViaCobalt = async ({ url, height, outputDir, outputPrefix, onProgress }) => {
-    const instances = [...new Set(DEFAULT_INSTANCES.map((u) => u.replace(/\/$/, '')))];
+    const instances = getCobaltInstances();
     if (!instances.length) {
         throw new Error('No Cobalt API URL configured. Set COBALT_API_URL.');
     }
 
     fs.mkdirSync(outputDir, { recursive: true });
     let lastError = null;
+    const attempts = buildAttemptExtras(height);
 
     for (const base of instances) {
-        try {
-            console.log(`[yt-download] Cobalt fallback via ${base}`);
-            if (typeof onProgress === 'function') onProgress(8);
-
-            const { mediaUrl, title } = await requestCobalt(base, url, height);
-            if (typeof onProgress === 'function') onProgress(15);
-
+        for (const extras of attempts) {
             const destPath = path.join(outputDir, `${outputPrefix}.mp4`);
-            await downloadFileFromUrl(mediaUrl, destPath, onProgress);
+            try {
+                console.log(
+                    `[yt-download] Cobalt via ${base} quality=${extras.videoQuality}${extras.youtubeHLS ? ' hls' : ''}`
+                );
+                if (typeof onProgress === 'function') onProgress(8);
 
-            if (!fs.existsSync(destPath) || fs.statSync(destPath).size < 1000) {
-                throw new Error('Cobalt download produced an empty file');
-            }
+                const { mediaUrl, title } = await requestCobalt(base, url, height, extras);
+                if (typeof onProgress === 'function') onProgress(15);
 
-            return { filePath: destPath, title: title || 'video', source: 'cobalt' };
-        } catch (err) {
-            lastError = err;
-            console.warn(`[yt-download] Cobalt ${base} failed:`, err.message?.slice(0, 220));
-            const partial = path.join(outputDir, `${outputPrefix}.mp4`);
-            if (fs.existsSync(partial)) {
-                try { fs.unlinkSync(partial); } catch (_) {}
+                await downloadFileFromUrl(mediaUrl, destPath, onProgress);
+
+                if (!fs.existsSync(destPath) || fs.statSync(destPath).size < 1000) {
+                    throw new Error('Cobalt download produced an empty file');
+                }
+
+                return { filePath: destPath, title: title || 'video', source: 'cobalt' };
+            } catch (err) {
+                lastError = err;
+                console.warn(`[yt-download] Cobalt ${base} failed:`, err.message?.slice(0, 220));
+                if (fs.existsSync(destPath)) {
+                    try { fs.unlinkSync(destPath); } catch (_) {}
+                }
             }
         }
     }

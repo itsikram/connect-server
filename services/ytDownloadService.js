@@ -246,13 +246,20 @@ const downloadVideo = async ({ progressId, url, height }) => {
     let lastError = null;
     const cobaltEnabled = process.env.YT_DL_DISABLE_COBALT !== 'true';
     const hasCobaltUrl = Boolean(process.env.COBALT_API_URL);
-    // On Render, YouTube blocks datacenter IPs — prefer Cobalt when configured
+    const cobaltOnly = process.env.YT_DL_COBALT_ONLY === 'true';
+    // Prefer Cobalt on Render, or when YT_DL_PREFER_COBALT / YT_DL_COBALT_ONLY (local test)
     const preferCobalt =
         cobaltEnabled &&
         hasCobaltUrl &&
-        (isRenderHost() || process.env.YT_DL_PREFER_COBALT === 'true');
+        (isRenderHost() ||
+            process.env.YT_DL_PREFER_COBALT === 'true' ||
+            cobaltOnly);
 
     const tryYtDlp = async () => {
+        if (cobaltOnly) {
+            console.log('[yt-download] Skipping yt-dlp (YT_DL_COBALT_ONLY=true)');
+            return null;
+        }
         try {
             return await downloadWithYtDlpBackend({ progressId, url, height });
         } catch (err) {
@@ -274,9 +281,14 @@ const downloadVideo = async ({ progressId, url, height }) => {
     };
 
     if (preferCobalt) {
-        console.log('[yt-download] Render/cloud mode: trying Cobalt first (YouTube blocks datacenter IPs)');
+        console.log(
+            cobaltOnly
+                ? '[yt-download] Cobalt-only mode (local test)'
+                : '[yt-download] Prefer Cobalt first'
+        );
         const cobaltResult = await tryCobalt();
         if (cobaltResult) return cobaltResult;
+        console.warn('[yt-download] Cobalt unavailable — falling back to yt-dlp');
         const ytResult = await tryYtDlp();
         if (ytResult) return ytResult;
     } else {

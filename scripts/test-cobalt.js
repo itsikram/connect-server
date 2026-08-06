@@ -2,13 +2,16 @@
  * Smoke-test Cobalt download path.
  * Usage: node scripts/test-cobalt.js [youtube-url]
  */
-require('dotenv').config();
+require('dotenv').config({ override: true });
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
 
+// Allow: node scripts/test-cobalt.js [youtube-url] [cobalt-api-url]
+if (process.argv[3]) {
+    process.env.COBALT_API_URL = process.argv[3];
+}
 process.env.COBALT_API_URL = process.env.COBALT_API_URL || 'https://api.cobalt.tools';
-// Public instance usually has no API key — clear if pointing at public
 if ((process.env.COBALT_API_URL || '').includes('api.cobalt.tools')) {
     delete process.env.COBALT_API_KEY;
 }
