@@ -127,10 +127,12 @@ const downloadFileFromUrl = async (mediaUrl, destPath, onProgress) => {
     }
 
     const total = Number(res.headers['content-length'] || res.headers['estimated-content-length'] || 0);
-    // Cobalt closes the tunnel empty when YouTube HEAD fails (bot/cookies)
+    // Cobalt closes the tunnel empty when YouTube HEAD/range probe fails (bot/cookies/poToken)
     if (total === 0 && String(res.headers['content-length']) === '0') {
         res.data.destroy?.();
-        throw new Error('Cobalt download too small (0 bytes)');
+        throw new Error(
+            'Cobalt download too small (0 bytes). Refresh home Cobalt cookies or set YOUTUBE_PO_TOKEN + YOUTUBE_VISITOR_DATA in live.env.'
+        );
     }
 
     let downloaded = 0;
@@ -156,8 +158,14 @@ const downloadFileFromUrl = async (mediaUrl, destPath, onProgress) => {
 /** Few quality attempts — empty tunnels are usually bot/IP blocks, not quality. */
 const buildAttemptExtras = (height) => {
     const q = Math.min(Number(heightToQuality(height)) || 720, 720);
-    return [{ videoQuality: String(q) }, { videoQuality: '360' }]
-        .filter((a, i, arr) => arr.findIndex((b) => b.videoQuality === a.videoQuality) === i);
+    const base = [
+        { videoQuality: String(q) },
+        { videoQuality: '360' },
+        { videoQuality: '360', youtubeHLS: true },
+    ];
+    return base.filter((a, i, arr) =>
+        arr.findIndex((b) => b.videoQuality === a.videoQuality && Boolean(b.youtubeHLS) === Boolean(a.youtubeHLS)) === i
+    );
 };
 
 const downloadViaCobalt = async ({ url, height, outputDir, outputPrefix, onProgress }) => {
