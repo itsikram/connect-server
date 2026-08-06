@@ -260,8 +260,17 @@ const isFormatUnavailableError = (message) => {
     );
 };
 
-const isRetryableDownloadError = (message) =>
-    isBotBlockError(message) || isFormatUnavailableError(message);
+const isRetryableDownloadError = (message) => {
+    if (isBotBlockError(message) || isFormatUnavailableError(message)) return true;
+    const lower = String(message || '').toLowerCase();
+    return (
+        lower.includes('no output file') ||
+        lower.includes('exited with code') ||
+        lower.includes('http error') ||
+        lower.includes('unable to download') ||
+        lower.includes('fragment not found')
+    );
+};
 
 const normalizeYouTubeUrl = (rawUrl) => {
     const input = String(rawUrl || '').trim().replace('m.youtube.com', 'www.youtube.com');
@@ -344,17 +353,42 @@ const getBundledYtDlpPath = () => getStandaloneBinaryPath();
 const hasCookies = () => Boolean(initCookiesFromEnv());
 
 const findDownloadedFile = (outputDir, prefix) => {
-    const files = fs.readdirSync(outputDir).filter((f) => f.startsWith(prefix) && /\.(mp4|mkv|webm)$/i.test(f));
+    if (!fs.existsSync(outputDir)) return null;
+    const files = fs.readdirSync(outputDir)
+        .filter((f) => f.startsWith(prefix) && !f.endsWith('.part') && !f.endsWith('.ytdl'))
+        .filter((f) => /\.(mp4|mkv|webm|m4a|opus)$/i.test(f))
+        .map((f) => ({
+            name: f,
+            mtime: fs.statSync(path.join(outputDir, f)).mtimeMs,
+        }))
+        .sort((a, b) => b.mtime - a.mtime);
     if (!files.length) return null;
-    return path.join(outputDir, files[0]);
+    return path.join(outputDir, files[0].name);
 };
 
 const titleFromFilename = (filename, prefix) =>
     filename
-        .replace(new RegExp(`^${prefix}_`), '')
-        .replace(/\.(mp4|mkv|webm)$/i, '')
+        .replace(new RegExp(`^${prefix}[_-]?`), '')
+        .replace(/\.(mp4|mkv|webm|m4a|opus)$/i, '')
         .replace(/_/g, ' ')
         .trim() || 'video';
+
+/** Never treat --print title (stdout) as the failure reason. */
+const extractYtDlpError = (stderr, stdout, code) => {
+    const errLines = String(stderr || '')
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => /^ERROR:/i.test(l));
+    if (errLines.length) return errLines[errLines.length - 1];
+
+    const useful = String(stderr || '')
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => l && !/^\[download\]/i.test(l) && !/%/.test(l) && !/^WARNING:/i.test(l));
+    if (useful.length) return useful[useful.length - 1].slice(0, 500);
+
+    return `yt-dlp exited with code ${code}${stdout?.trim() ? ' (no output file found)' : ''}`;
+};
 
 const downloadWithStandalone = ({ url, outputDir, outputPrefix, height, onProgress, playerClient, formatMode }) =>
     new Promise((resolve, reject) => {
@@ -364,7 +398,8 @@ const downloadWithStandalone = ({ url, outputDir, outputPrefix, height, onProgre
             return;
         }
 
-        const outputTemplate = path.join(outputDir, `${outputPrefix}_%(title).100B.%(ext)s`);
+        // Fixed name — titles with &, !! break path matching and fake "errors"
+        const outputTemplate = path.join(outputDir, `${outputPrefix}.%(ext)s`);
         const args = buildSpawnArgs(url, { outputTemplate, height, playerClient, formatMode });
         console.log(`[yt-download] spawn yt-dlp node=${process.versions.node} jsArgs=${getJsRuntimeArgs().join(' ') || 'none'}`);
         const proc = spawn(bin, args, {
@@ -379,7 +414,7 @@ const downloadWithStandalone = ({ url, outputDir, outputPrefix, height, onProgre
             const text = chunk.toString();
             stderr += text;
             text.split('\n').forEach((line) => {
-                if (/javascript runtime|ejs|no video formats|sign in/i.test(line)) {
+                if (/javascript runtime|ejs|no video formats|sign in|ERROR:/i.test(line)) {
                     console.warn('[yt-download]', line.trim().slice(0, 240));
                 }
                 const match = line.match(/(\d+(?:\.\d+)?)%/);
@@ -392,13 +427,16 @@ const downloadWithStandalone = ({ url, outputDir, outputPrefix, height, onProgre
         proc.on('error', reject);
         proc.on('close', (code) => {
             const filePath = findDownloadedFile(outputDir, outputPrefix);
-            if (code === 0 && filePath) {
+            if (filePath && fs.existsSync(filePath) && fs.statSync(filePath).size > 0) {
+                if (code !== 0) {
+                    console.warn(`[yt-download] yt-dlp exit ${code} but file exists (${path.basename(filePath)})`);
+                }
                 const titleFromStdout = stdout.trim().split('\n').filter(Boolean).pop();
                 const title = titleFromStdout || titleFromFilename(path.basename(filePath), outputPrefix);
                 resolve({ filePath, title });
                 return;
             }
-            reject(new Error(stderr.trim() || stdout.trim() || `yt-dlp exited with code ${code}`));
+            reject(new Error(extractYtDlpError(stderr, stdout, code)));
         });
     });
 
@@ -409,7 +447,7 @@ const downloadWithExec = ({ url, outputDir, outputPrefix, height, onProgress, pl
             return;
         }
 
-        const outputTemplate = path.join(outputDir, `${outputPrefix}_%(title).100B.%(ext)s`);
+        const outputTemplate = path.join(outputDir, `${outputPrefix}.%(ext)s`);
         const flags = {
             noPlaylist: true,
             ffmpegLocation: resolveFfmpegLocation(),
@@ -436,14 +474,17 @@ const downloadWithExec = ({ url, outputDir, outputPrefix, height, onProgress, pl
 
         const subprocess = youtubedl.exec(normalizeYouTubeUrl(url), flags);
         let stdout = '';
+        let stderr = '';
 
         if (subprocess.stdout) {
             subprocess.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
         }
         if (subprocess.stderr) {
             subprocess.stderr.on('data', (chunk) => {
-                chunk.toString().split('\n').forEach((line) => {
-                    if (/javascript runtime|ejs|no video formats|sign in/i.test(line)) {
+                const text = chunk.toString();
+                stderr += text;
+                text.split('\n').forEach((line) => {
+                    if (/javascript runtime|ejs|no video formats|sign in|ERROR:/i.test(line)) {
                         console.warn('[yt-download]', line.trim().slice(0, 240));
                     }
                     const match = line.match(/(\d+(?:\.\d+)?)%/);
@@ -454,20 +495,35 @@ const downloadWithExec = ({ url, outputDir, outputPrefix, height, onProgress, pl
             });
         }
 
+        const finishOk = () => {
+            const filePath = findDownloadedFile(outputDir, outputPrefix);
+            if (filePath && fs.existsSync(filePath) && fs.statSync(filePath).size > 0) {
+                const titleFromStdout = stdout.trim().split('\n').filter(Boolean).pop();
+                return {
+                    filePath,
+                    title: titleFromStdout || titleFromFilename(path.basename(filePath), outputPrefix),
+                };
+            }
+            return null;
+        };
+
         subprocess
             .then(() => {
-                const filePath = findDownloadedFile(outputDir, outputPrefix);
-                if (filePath) {
-                    const titleFromStdout = stdout.trim().split('\n').filter(Boolean).pop();
-                    resolve({
-                        filePath,
-                        title: titleFromStdout || titleFromFilename(path.basename(filePath), outputPrefix),
-                    });
+                const ok = finishOk();
+                if (ok) {
+                    resolve(ok);
                     return;
                 }
-                reject(new Error('yt-dlp did not produce an output file'));
+                reject(new Error(extractYtDlpError(stderr, stdout, 0)));
             })
-            .catch(reject);
+            .catch((err) => {
+                const ok = finishOk();
+                if (ok) {
+                    resolve(ok);
+                    return;
+                }
+                reject(new Error(err?.message || extractYtDlpError(stderr, stdout, 1)));
+            });
     });
 
 const cleanupPartial = (outputDir, outputPrefix) => {
