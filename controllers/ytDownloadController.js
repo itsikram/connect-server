@@ -5,7 +5,7 @@ exports.startDownload = async (req, res) => {
         const url = req.query.url;
         const height = req.query.height ? parseInt(req.query.height, 10) : null;
         const asyncJob = req.query.async_job !== 'false';
-        // Always post to Watch after download (requires auth)
+        // Post to Watch after download when requested (requires auth)
         const postAsWatch = req.query.post_as_watch !== 'false';
 
         if (!url) {
@@ -18,7 +18,7 @@ exports.startDownload = async (req, res) => {
         if (!profileId) {
             return res.status(401).json({
                 error: 'Authentication required',
-                message: 'Please log in to download and post videos to Watch',
+                message: 'Please log in to download videos',
             });
         }
 
@@ -32,7 +32,7 @@ exports.startDownload = async (req, res) => {
             baseUrl,
             url,
             height: Number.isFinite(height) ? height : null,
-            postAsWatch: true,
+            postAsWatch,
             profileId,
         });
 

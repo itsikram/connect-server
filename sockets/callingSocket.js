@@ -154,19 +154,16 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
         callTimeouts.delete(`agora:${channelName}`);
 
         let friendId = to;
-        // io.to(friendId).emit('video-call-ended', { friendId, channelName });
 
         try {
             console.log(`Server: Received leaveVideoCall from ${profileId} for friend ${friendId}`);
 
-            // Emit to the friend (other user)
-            const targetSocketId = onlineUsers.get(friendId);
-            console.log(`Server: Target socket ID for ${friendId}: ${targetSocketId}`);
-            if (targetSocketId) {
-                console.log(`Server: Emitting videoCallEnd to ${friendId} (socket: ${targetSocketId})`);
-                io.to(targetSocketId).emit('video-call-ended', profileId);
-            } else {
-                console.log(`Server: No socket found for friend ${friendId}`);
+            // Emit to the friend's profile room (all tabs), not a single socket id
+            if (friendId) {
+                io.to(String(friendId)).emit('video-call-ended', {
+                    from: profileId,
+                    channelName,
+                });
             }
             try {
                 for (const [key, entry] of callTimeouts.entries()) {
@@ -279,11 +276,17 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
         } catch (err) { }
     });
 
-    socket.on("call-status-update", async ({ to, channelName, status }) => {
-        console.log('call-status-update', { to, channelName, status })
-        callTimeouts.set(key, { timer, to, from: profileId, isAudio: true, transport: 'agora', channelName });
-        io.to(to).emit('call-status-updated', { friendId: profileId, channelName, status });
-    });
+    const relayCallStatus = async ({ to, status }) => {
+        if (!to) return;
+        console.log('update-call-status', { to, status, from: profileId });
+        io.to(String(to)).emit('updated-call-status', {
+            from: profileId,
+            status: status || '',
+        });
+    };
+    // Clients emit `update-call-status`; keep legacy alias too
+    socket.on("update-call-status", relayCallStatus);
+    socket.on("call-status-update", relayCallStatus);
 
     socket.on("audio-call-cancel", async ({ to, channelName }) => {
         console.log('call-cancelled', { to, channelName })
@@ -301,18 +304,13 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
     socket.on('audio-call-end', async ({to: friendId, channelName}) => {
         try {
             console.log(`Server: Received audio-call-end from ${profileId} for friend ${friendId}`);
-            console.log(`Server: Current onlineUsers map:`, Array.from(onlineUsers.entries()));
 
-            // Emit to the friend (other user)
-            const targetSocketId = onlineUsers.get(friendId);
-            console.log(`Server: Target socket ID for ${friendId}: ${targetSocketId}`);
-            if (targetSocketId) {
-                console.log(`Server: About to emit audioCallEnd to ${friendId} (socket: ${targetSocketId})`);
-                io.to(targetSocketId).emit('audio-call-ended', profileId);
-                console.log(`Server: audioCallEnd event emitted successfully to socket ${targetSocketId}`);
-            } else {
-                console.log(`Server: No socket found for friend ${friendId}`);
-                console.log(`Server: Available users in onlineUsers:`, Array.from(onlineUsers.keys()));
+            // Emit to the friend's profile room (all tabs)
+            if (friendId) {
+                io.to(String(friendId)).emit('audio-call-ended', {
+                    from: profileId,
+                    channelName,
+                });
             }
 
             // Clear any pending missed-call timers for this caller<->friend pair
