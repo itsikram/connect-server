@@ -2,15 +2,23 @@ const { startDownloadJob, getProgress } = require('../services/ytDownloadService
 
 const getPublicBaseUrl = (req) => {
     const fromEnv = process.env.PUBLIC_SERVER_URL || process.env.RENDER_EXTERNAL_URL;
-    if (fromEnv) return String(fromEnv).replace(/\/+$/, '');
+    let base = fromEnv ? String(fromEnv).replace(/\/+$/, '') : '';
 
-    const proto = String(req.get('x-forwarded-proto') || req.protocol || 'https')
-        .split(',')[0]
-        .trim();
-    const host = String(req.get('x-forwarded-host') || req.get('host') || '')
-        .split(',')[0]
-        .trim();
-    return `${proto}://${host}`;
+    if (!base) {
+        const proto = String(req.get('x-forwarded-proto') || req.protocol || 'https')
+            .split(',')[0]
+            .trim();
+        const host = String(req.get('x-forwarded-host') || req.get('host') || '')
+            .split(',')[0]
+            .trim();
+        base = `${proto}://${host}`;
+    }
+
+    if (process.env.RENDER === 'true' || /\.onrender\.com$/i.test(base)) {
+        base = base.replace(/^http:\/\//i, 'https://');
+    }
+
+    return base;
 };
 
 exports.startDownload = async (req, res) => {
