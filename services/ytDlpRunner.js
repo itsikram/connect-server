@@ -11,16 +11,17 @@ const LOCAL_YT_DLP = path.join(
     process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp'
 );
 
-// Prefer android without cookies (formats often empty when logged-in cookies are forced on android)
+// On cloud IPs, cookie-less clients almost always hit bot-check — try cookies first.
 const DOWNLOAD_ATTEMPTS = [
-    { client: 'android', useCookies: false, formatMode: 'any' },
-    { client: 'android', useCookies: false, formatMode: 'preferred' },
-    { client: 'tv_embedded', useCookies: false, formatMode: 'any' },
-    { client: 'web', useCookies: true, formatMode: 'any' },
-    { client: 'web', useCookies: true, formatMode: 'preferred' },
-    { client: 'mweb', useCookies: true, formatMode: 'any' },
-    { client: 'ios', useCookies: true, formatMode: 'any' },
     { client: 'android', useCookies: true, formatMode: 'any' },
+    { client: 'ios', useCookies: true, formatMode: 'any' },
+    { client: 'web', useCookies: true, formatMode: 'any' },
+    { client: 'mweb', useCookies: true, formatMode: 'any' },
+    { client: 'android,ios,web,mweb', useCookies: true, formatMode: 'any' },
+    { client: 'android', useCookies: true, formatMode: 'preferred' },
+    { client: 'web', useCookies: true, formatMode: 'preferred' },
+    // Local / non-blocked IPs only — skipped on Render when cookies exist
+    { client: 'android', useCookies: false, formatMode: 'any', localOnly: true },
 ];
 
 const ESSENTIAL_COOKIE_NAMES = ['__Secure-1PSID', '__Secure-3PSID', 'VISITOR_INFO1_LIVE'];
@@ -176,11 +177,10 @@ const isBotBlockError = (message) => {
 
 const formatBotBlockError = () => {
     const parts = [
-        'YouTube bot check failed on the cloud server.',
-        'Re-export fresh cookies.txt from youtube.com while logged in (use Get cookies.txt LOCALLY extension).',
-        'Required cookie names: __Secure-1PSID, __Secure-3PSID, VISITOR_INFO1_LIVE.',
-        'Set YOUTUBE_COOKIES_B64 on Render with base64 of that file.',
-        'Run locally: node scripts/encode-yt-cookies.js path/to/cookies.txt',
+        'YouTube blocked this cloud server IP (bot check / 403).',
+        'Refresh YOUTUBE_COOKIES_B64 from a logged-in browser (Get cookies.txt LOCALLY).',
+        'Optional: set YOUTUBE_PO_TOKEN and YOUTUBE_VISITOR_DATA.',
+        'Recommended for Render: set COBALT_API_URL to a Cobalt instance for reliable downloads.',
     ];
 
     if (cookieValidation) {
@@ -235,6 +235,9 @@ const buildExtractorArgs = (playerClient) => {
     if (process.env.YOUTUBE_PO_TOKEN) {
         parts.push(`po_token=${process.env.YOUTUBE_PO_TOKEN}`);
     }
+    if (process.env.YOUTUBE_VISITOR_DATA) {
+        parts.push(`visitor_data=${process.env.YOUTUBE_VISITOR_DATA}`);
+    }
     return parts.join(';');
 };
 
@@ -261,7 +264,9 @@ const isFormatUnavailableError = (message) => {
         lower.includes('requested format is not available') ||
         lower.includes('only images are available') ||
         lower.includes('no video formats') ||
-        lower.includes('format not available')
+        lower.includes('format not available') ||
+        lower.includes('http error 403') ||
+        lower.includes('unable to download api page')
     );
 };
 
@@ -577,10 +582,10 @@ const downloadWithYtDlp = async ({ url, outputDir, outputPrefix, height, onProgr
     console.log(`[yt-download] JS runtime args: ${getJsRuntimeArgs().join(' ') || 'none'}`);
 
     for (const attempt of DOWNLOAD_ATTEMPTS) {
-        // Skip preferred-height passes when no height requested
         if (attempt.formatMode === 'preferred' && !height) continue;
-        // Skip cookie attempts when no cookies configured
         if (attempt.useCookies && !hasCookies()) continue;
+        // Skip cookie-less attempts on cloud when we already have cookies (they only waste time)
+        if (attempt.localOnly && (process.env.RENDER === 'true' || hasCookies())) continue;
 
         try {
             console.log(

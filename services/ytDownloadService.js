@@ -12,7 +12,9 @@ const {
     isBotBlockError,
     formatBotBlockError,
     normalizeYouTubeUrl,
+    isFormatUnavailableError,
 } = require('./ytDlpRunner');
+const { downloadViaCobalt } = require('./ytCobaltFallback');
 
 const DOWNLOAD_DIR = path.join(require('os').tmpdir(), 'connect-yt-downloads');
 const JOB_PROGRESS = new Map();
@@ -198,64 +200,100 @@ const downloadWithYtDlpBackend = async ({ progressId, url, height }) => {
 };
 
 const downloadVideo = async ({ progressId, url, height }) => {
-    // Primary: yt-dlp via youtube-dl-exec (Node.js — works on Render)
+    let lastError = null;
+
+    // Primary: yt-dlp on this server
     try {
         return await downloadWithYtDlpBackend({ progressId, url, height });
     } catch (err) {
+        lastError = err;
         console.warn('[yt-download] yt-dlp failed:', err.message);
+    }
 
-        // Fallback for local dev only — ytdl-core (blocked on cloud IPs)
-        if (shouldUseYtdlCore() && ytdl.validateURL(url)) {
-            const agent = getYtdlAgent();
-            const filePath = path.join(DOWNLOAD_DIR, `${progressId}_video.mp4`);
+    // Fallback: Cobalt API (works when Render IP is blocked by YouTube)
+    if (process.env.YT_DL_DISABLE_COBALT !== 'true') {
+        try {
             let lastPct = 5;
-            const report = (patch) => {
-                if (patch.pct !== undefined && patch.pct >= lastPct) {
-                    lastPct = patch.pct;
-                }
+            const report = (pct) => {
+                if (pct >= lastPct) lastPct = pct;
                 updateProgress(progressId, {
                     status: 'running',
-                    ...patch,
-                    pct: patch.pct !== undefined ? patch.pct : lastPct,
+                    stage: 'downloading',
+                    pct: lastPct,
+                    source: 'cobalt',
+                    title: 'video',
+                    download_title: 'video',
                 });
             };
 
-            try {
-                report({ stage: 'downloading', pct: 5, source: 'ytdl-core' });
-                const info = await ytdl.getInfo(url, agent ? { agent } : undefined);
-                const title = info.videoDetails?.title || 'video';
-                const format = pickFormat(info.formats, height);
-
-                if (!format) {
-                    throw new Error('No suitable video format found');
-                }
-
-                await downloadToFileYtdlCore(info, format, filePath, agent, (downloaded) => {
-                    const contentLength = format.contentLength ? Number(format.contentLength) : 0;
-                    let pct = lastPct;
-                    if (contentLength > 0) {
-                        pct = Math.min(95, Math.round((downloaded / contentLength) * 100));
-                    } else {
-                        pct = Math.min(95, lastPct + 1);
-                    }
-                    report({ stage: 'downloading', pct, title, download_title: title });
-                });
-
-                return { title, source: 'ytdl-core', filePath };
-            } catch (ytdlErr) {
-                console.warn('[yt-download] ytdl-core failed:', ytdlErr.message);
-                if (filePath && fs.existsSync(filePath)) {
-                    try { fs.unlinkSync(filePath); } catch (_) {}
-                }
-            }
+            console.log('[yt-download] Falling back to Cobalt API');
+            report(5);
+            return await downloadViaCobalt({
+                url,
+                height,
+                outputDir: DOWNLOAD_DIR,
+                outputPrefix: progressId,
+                onProgress: report,
+            });
+        } catch (cobaltErr) {
+            console.warn('[yt-download] Cobalt failed:', cobaltErr.message);
+            lastError = cobaltErr;
         }
-
-        throw new Error(
-            isBotBlockError(err.message)
-                ? formatBotBlockError()
-                : (err.message || 'YouTube download failed.')
-        );
     }
+
+    // Local-dev-only: ytdl-core
+    if (shouldUseYtdlCore() && ytdl.validateURL(url)) {
+        const agent = getYtdlAgent();
+        const filePath = path.join(DOWNLOAD_DIR, `${progressId}_video.mp4`);
+        let lastPct = 5;
+        const report = (patch) => {
+            if (patch.pct !== undefined && patch.pct >= lastPct) {
+                lastPct = patch.pct;
+            }
+            updateProgress(progressId, {
+                status: 'running',
+                ...patch,
+                pct: patch.pct !== undefined ? patch.pct : lastPct,
+            });
+        };
+
+        try {
+            report({ stage: 'downloading', pct: 5, source: 'ytdl-core' });
+            const info = await ytdl.getInfo(url, agent ? { agent } : undefined);
+            const title = info.videoDetails?.title || 'video';
+            const format = pickFormat(info.formats, height);
+
+            if (!format) {
+                throw new Error('No suitable video format found');
+            }
+
+            await downloadToFileYtdlCore(info, format, filePath, agent, (downloaded) => {
+                const contentLength = format.contentLength ? Number(format.contentLength) : 0;
+                let pct = lastPct;
+                if (contentLength > 0) {
+                    pct = Math.min(95, Math.round((downloaded / contentLength) * 100));
+                } else {
+                    pct = Math.min(95, lastPct + 1);
+                }
+                report({ stage: 'downloading', pct, title, download_title: title });
+            });
+
+            return { title, source: 'ytdl-core', filePath };
+        } catch (ytdlErr) {
+            console.warn('[yt-download] ytdl-core failed:', ytdlErr.message);
+            if (filePath && fs.existsSync(filePath)) {
+                try { fs.unlinkSync(filePath); } catch (_) {}
+            }
+            lastError = ytdlErr;
+        }
+    }
+
+    const msg = lastError?.message || 'YouTube download failed.';
+    throw new Error(
+        isBotBlockError(msg) || isFormatUnavailableError(msg)
+            ? formatBotBlockError()
+            : msg
+    );
 };
 
 const runDownloadJob = async ({
