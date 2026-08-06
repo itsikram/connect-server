@@ -187,15 +187,32 @@ const downloadFileFromUrl = async (mediaUrl, destPath, onProgress) => {
     }
 };
 
-/** Quality attempts — skip HLS on home Cobalt (IOS has no HLS manifest); yt-dlp handles full files. */
+/** Quality attempts — retry several Cobalt modes before failing. */
 const buildAttemptExtras = (height) => {
     const q = Math.min(Number(heightToQuality(height)) || 720, 720);
     const base = [
         { videoQuality: String(q) },
+        { videoQuality: '720' },
+        { videoQuality: '480' },
         { videoQuality: '360' },
+        { videoQuality: 'max', youtubeHLS: true },
     ];
     return base.filter((a, i, arr) =>
-        arr.findIndex((b) => b.videoQuality === a.videoQuality && Boolean(b.youtubeHLS) === Boolean(a.youtubeHLS)) === i
+        arr.findIndex((b) =>
+            b.videoQuality === a.videoQuality &&
+            Boolean(b.youtubeHLS) === Boolean(a.youtubeHLS)
+        ) === i
+    );
+};
+
+const isRetryableCobaltError = (message) => {
+    const lower = String(message || '').toLowerCase();
+    return (
+        lower.includes('video.unavailable') ||
+        lower.includes('no_matching_format') ||
+        lower.includes('fetch.fail') ||
+        lower.includes('login') ||
+        lower.includes('format')
     );
 };
 
@@ -233,6 +250,9 @@ const downloadViaCobalt = async ({ url, height, outputDir, outputPrefix, onProgr
                 console.warn(`[yt-download] Cobalt ${base} failed:`, err.message?.slice(0, 220));
                 if (fs.existsSync(destPath)) {
                     try { fs.unlinkSync(destPath); } catch (_) {}
+                }
+                if (!isRetryableCobaltError(err.message)) {
+                    break;
                 }
             }
         }
