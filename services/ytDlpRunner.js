@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { spawn } = require('child_process');
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 
@@ -12,6 +13,35 @@ try {
 
 const YT_DLP_BIN = process.env.YT_DLP_PATH || 'yt-dlp';
 const FFMPEG_DIR = path.dirname(ffmpegInstaller.path);
+let cookiesFilePath = null;
+
+const initCookiesFromEnv = () => {
+    if (cookiesFilePath && fs.existsSync(cookiesFilePath)) {
+        return cookiesFilePath;
+    }
+
+    const cookiesB64 = process.env.YOUTUBE_COOKIES_B64;
+    if (cookiesB64) {
+        try {
+            const decoded = Buffer.from(String(cookiesB64).trim(), 'base64').toString('utf8');
+            cookiesFilePath = path.join(os.tmpdir(), 'connect-yt-cookies.txt');
+            fs.writeFileSync(cookiesFilePath, decoded, 'utf8');
+            return cookiesFilePath;
+        } catch (err) {
+            console.warn('Failed to decode YOUTUBE_COOKIES_B64:', err.message);
+        }
+    }
+
+    const envFile = process.env.YOUTUBE_COOKIES_FILE;
+    if (envFile && fs.existsSync(envFile)) {
+        cookiesFilePath = envFile;
+        return cookiesFilePath;
+    }
+
+    return null;
+};
+
+initCookiesFromEnv();
 
 const buildFormat = (height) =>
     height
@@ -24,11 +54,14 @@ const buildCommonFlags = () => {
         noWarnings: true,
         ffmpegLocation: FFMPEG_DIR,
         mergeOutputFormat: 'mp4',
+        retries: 3,
+        fragmentRetries: 3,
+        extractorArgs: 'youtube:player_client=android,web',
     };
 
-    const cookiesFile = process.env.YOUTUBE_COOKIES_FILE;
-    if (cookiesFile && fs.existsSync(cookiesFile)) {
-        flags.cookies = cookiesFile;
+    const cookies = initCookiesFromEnv();
+    if (cookies) {
+        flags.cookies = cookies;
     }
 
     return flags;
@@ -42,6 +75,14 @@ const isSystemYtDlpAvailable = () =>
     });
 
 const isYtDlpAvailable = async () => Boolean(youtubedl) || isSystemYtDlpAvailable();
+
+const getBundledYtDlpPath = () => {
+    if (!youtubedl?.constants?.YOUTUBE_DL_PATH) {
+        return null;
+    }
+    const binPath = youtubedl.constants.YOUTUBE_DL_PATH;
+    return fs.existsSync(binPath) ? binPath : null;
+};
 
 const getVideoTitleViaExec = async (url) => {
     if (!youtubedl) {
@@ -64,6 +105,12 @@ const getVideoTitleViaExec = async (url) => {
 const getVideoTitleViaSpawn = (url) =>
     new Promise((resolve, reject) => {
         const args = ['--print', '%(title)s', '--no-playlist', '--no-warnings', '--ffmpeg-location', FFMPEG_DIR, url];
+        const cookies = initCookiesFromEnv();
+        if (cookies) {
+            args.push('--cookies', cookies);
+        }
+        args.push('--extractor-args', 'youtube:player_client=android,web');
+
         const proc = spawn(YT_DLP_BIN, args, { stdio: ['ignore', 'pipe', 'pipe'] });
         let stdout = '';
         let stderr = '';
@@ -91,7 +138,7 @@ const getVideoTitle = async (url) => {
     if (await isSystemYtDlpAvailable()) {
         return getVideoTitleViaSpawn(url);
     }
-    throw new Error('No yt-dlp backend available');
+    throw new Error('yt-dlp is not available on this server');
 };
 
 const downloadWithExec = ({ url, outputPath, height, onProgress }) =>
@@ -140,12 +187,13 @@ const downloadWithSpawn = ({ url, outputPath, height, onProgress }) =>
             '--no-warnings',
             '--newline',
             '--ffmpeg-location', FFMPEG_DIR,
+            '--extractor-args', 'youtube:player_client=android,web',
             url,
         ];
 
-        const cookiesFile = process.env.YOUTUBE_COOKIES_FILE;
-        if (cookiesFile && fs.existsSync(cookiesFile)) {
-            args.push('--cookies', cookiesFile);
+        const cookies = initCookiesFromEnv();
+        if (cookies) {
+            args.push('--cookies', cookies);
         }
 
         const proc = spawn(YT_DLP_BIN, args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -172,27 +220,28 @@ const downloadWithSpawn = ({ url, outputPath, height, onProgress }) =>
         });
     });
 
-const downloadWithYtDlp = ({ url, outputPath, height, onProgress }) => {
+const downloadWithYtDlp = async ({ url, outputPath, height, onProgress }) => {
     if (youtubedl) {
-        return downloadWithExec({ url, outputPath, height, onProgress }).catch((err) => {
-            console.warn('youtube-dl-exec download failed:', err.message);
+        try {
+            return await downloadWithExec({ url, outputPath, height, onProgress });
+        } catch (err) {
             if (fs.existsSync(outputPath)) {
                 try { fs.unlinkSync(outputPath); } catch (_) {}
             }
             throw err;
-        });
+        }
     }
 
-    return isSystemYtDlpAvailable().then((available) => {
-        if (!available) {
-            throw new Error('No yt-dlp backend available');
-        }
+    if (await isSystemYtDlpAvailable()) {
         return downloadWithSpawn({ url, outputPath, height, onProgress });
-    });
+    }
+
+    throw new Error('yt-dlp is not available. Ensure youtube-dl-exec is installed (npm install).');
 };
 
 module.exports = {
     isYtDlpAvailable,
     getVideoTitle,
     downloadWithYtDlp,
+    getBundledYtDlpPath,
 };

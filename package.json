@@ -7,6 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node index.js",
     "dev": "nodemon index.js",
+    "postinstall": "node -e \"try{const p=require('youtube-dl-exec/constants').YOUTUBE_DL_PATH;require('fs').accessSync(p);console.log('yt-dlp ready:',p)}catch(e){console.log('youtube-dl-exec will fetch yt-dlp on first use')}\"",
     "client": "cd ../client && npm start"
   },
   "keywords": [],
