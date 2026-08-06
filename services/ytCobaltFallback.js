@@ -23,10 +23,10 @@ const cobaltApiTimeoutMs = () =>
     Number(process.env.COBALT_API_TIMEOUT_MS) || (isRemoteHomeCobalt() ? 180000 : 120000);
 
 const cobaltMediaTimeoutMs = () =>
-    Number(process.env.COBALT_MEDIA_TIMEOUT_MS) || (isRemoteHomeCobalt() ? 420000 : 300000);
+    Number(process.env.COBALT_MEDIA_TIMEOUT_MS) || (isRemoteHomeCobalt() ? 600000 : 360000);
 
 const heightToQuality = (height) => {
-    if (!height) return '720';
+    if (!height) return '1080';
     const allowed = [144, 240, 360, 480, 720, 1080, 1440, 2160, 4320];
     const match = allowed.find((q) => q >= height) || allowed[allowed.length - 1];
     // Prefer exact or next-lower for speed on free tier
@@ -67,6 +67,7 @@ const requestCobalt = async (baseUrl, youtubeUrl, height, extras = {}) => {
         videoQuality: videoQuality || heightToQuality(height),
         youtubeVideoCodec: 'h264',
         youtubeVideoContainer: 'mp4',
+        youtubeBetterAudio: true,
         filenameStyle: 'basic',
         alwaysProxy: true,
         ...rest,
@@ -187,22 +188,34 @@ const downloadFileFromUrl = async (mediaUrl, destPath, onProgress) => {
     }
 };
 
-/** Quality attempts — retry several Cobalt modes before failing. */
+/** Quality attempts — HQ merged video+audio first, then step down. */
 const buildAttemptExtras = (height) => {
-    const q = Math.min(Number(heightToQuality(height)) || 720, 720);
-    const base = [
-        { videoQuality: String(q) },
-        { videoQuality: '720' },
-        { videoQuality: '480' },
-        { videoQuality: '360' },
-        { videoQuality: 'max', youtubeHLS: true },
-    ];
-    return base.filter((a, i, arr) =>
-        arr.findIndex((b) =>
-            b.videoQuality === a.videoQuality &&
-            Boolean(b.youtubeHLS) === Boolean(a.youtubeHLS)
-        ) === i
-    );
+    const requested = heightToQuality(height);
+    const requestedNum = Number(requested);
+    const ordered = [];
+    const seen = new Set();
+
+    const add = (videoQuality, extra = {}) => {
+        const key = `${videoQuality}:${extra.youtubeHLS ? 'hls' : ''}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        ordered.push({
+            videoQuality: String(videoQuality),
+            youtubeBetterAudio: true,
+            ...extra,
+        });
+    };
+
+    if (!height || requestedNum >= 1080) {
+        add('max');
+    }
+    add(requested);
+    for (const q of ['2160', '1440', '1080', '720', '480', '360']) {
+        if (q !== String(requested)) add(q);
+    }
+    add('max', { youtubeHLS: true });
+
+    return ordered;
 };
 
 const isRetryableCobaltError = (message) => {
