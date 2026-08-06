@@ -11,8 +11,17 @@ const LOCAL_YT_DLP = path.join(
     process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp'
 );
 
-// "default" uses web + JS challenge solving when a JS runtime is available
-const PLAYER_CLIENTS = ['default', 'android', 'mweb', 'tv_embedded', 'ios', 'web'];
+// Prefer android without cookies (formats often empty when logged-in cookies are forced on android)
+const DOWNLOAD_ATTEMPTS = [
+    { client: 'android', useCookies: false, formatMode: 'any' },
+    { client: 'android', useCookies: false, formatMode: 'preferred' },
+    { client: 'tv_embedded', useCookies: false, formatMode: 'any' },
+    { client: 'web', useCookies: true, formatMode: 'any' },
+    { client: 'web', useCookies: true, formatMode: 'preferred' },
+    { client: 'mweb', useCookies: true, formatMode: 'any' },
+    { client: 'ios', useCookies: true, formatMode: 'any' },
+    { client: 'android', useCookies: true, formatMode: 'any' },
+];
 
 const ESSENTIAL_COOKIE_NAMES = ['__Secure-1PSID', '__Secure-3PSID', 'VISITOR_INFO1_LIVE'];
 
@@ -222,8 +231,7 @@ const buildExtractorArgs = (playerClient) => {
     if (process.env.YOUTUBE_EXTRACTOR_ARGS) {
         return process.env.YOUTUBE_EXTRACTOR_ARGS;
     }
-    const client = playerClient === 'default' ? 'default' : playerClient;
-    const parts = [`youtube:player_client=${client}`];
+    const parts = [`youtube:player_client=${playerClient}`];
     if (process.env.YOUTUBE_PO_TOKEN) {
         parts.push(`po_token=${process.env.YOUTUBE_PO_TOKEN}`);
     }
@@ -232,18 +240,15 @@ const buildExtractorArgs = (playerClient) => {
 
 const getJsRuntimeArgs = () => {
     const args = [];
-    // Prefer Deno when present (yt-dlp recommended); fall back to Node 22+.
     if (process.env.YT_DLP_JS_RUNTIME) {
         args.push('--js-runtimes', process.env.YT_DLP_JS_RUNTIME);
     } else if (fs.existsSync('/usr/local/bin/deno') || fs.existsSync('/usr/bin/deno')) {
         const deno = fs.existsSync('/usr/local/bin/deno') ? '/usr/local/bin/deno' : '/usr/bin/deno';
         args.push('--js-runtimes', `deno:${deno}`);
     } else if (nodeMajor >= 20) {
-        // yt-dlp ideally wants Node 22+, but 20 often still works better than none
         args.push('--js-runtimes', `node:${process.execPath}`);
     }
 
-    // Fetch EJS challenge scripts so signature solving works on cloud hosts
     if (args.length) {
         args.push('--remote-components', process.env.YT_DLP_REMOTE_COMPONENTS || 'ejs:github');
     }
@@ -291,7 +296,6 @@ const normalizeYouTubeUrl = (rawUrl) => {
 };
 
 const resolveFfmpegLocation = () => {
-    // Prefer system ffmpeg (Docker installs it); fall back to npm binary
     const candidates = [
         process.env.FFMPEG_PATH,
         '/usr/bin/ffmpeg',
@@ -307,9 +311,10 @@ const resolveFfmpegLocation = () => {
     return FFMPEG_DIR;
 };
 
-const buildSpawnArgs = (url, { outputTemplate, height, playerClient, formatMode }) => {
+const buildSpawnArgs = (url, { outputPath, height, playerClient, formatMode, useCookies }) => {
     const args = [
         '--no-playlist',
+        '--no-simulate',
         '--ffmpeg-location', resolveFfmpegLocation(),
         '--extractor-args', buildExtractorArgs(playerClient),
         '--retries', '5',
@@ -319,23 +324,18 @@ const buildSpawnArgs = (url, { outputTemplate, height, playerClient, formatMode 
         ...getJsRuntimeArgs(),
     ];
 
-    const cookies = initCookiesFromEnv();
-    if (cookies) {
-        args.push('--cookies', cookies);
+    if (useCookies) {
+        const cookies = initCookiesFromEnv();
+        if (cookies) args.push('--cookies', cookies);
     }
 
-    // Omit -f only for last-resort "default" mode so yt-dlp picks anything downloadable
     if (formatMode !== 'omit') {
         args.push('-f', buildFormat(height, formatMode));
-        args.push('--merge-output-format', 'mp4');
-    } else {
-        args.push('--merge-output-format', 'mp4');
     }
-
     args.push(
-        '-o', outputTemplate,
+        '--merge-output-format', 'mp4',
+        '-o', outputPath,
         '--newline',
-        '--print', '%(title)s',
         normalizeYouTubeUrl(url)
     );
     return args;
@@ -366,6 +366,30 @@ const findDownloadedFile = (outputDir, prefix) => {
     return path.join(outputDir, files[0].name);
 };
 
+const findFileFromStderr = (stderr) => {
+    const text = String(stderr || '');
+    const patterns = [
+        /\[Merger\] Merging formats into "([^"]+)"/i,
+        /\[download\] Destination: (.+)$/im,
+        /\[Fixup[^\]]*\] Destination: (.+)$/im,
+    ];
+    for (const re of patterns) {
+        const m = text.match(re);
+        if (m?.[1] && fs.existsSync(m[1].trim())) return m[1].trim();
+    }
+    return null;
+};
+
+const listDirDebug = (outputDir, prefix) => {
+    try {
+        if (!fs.existsSync(outputDir)) return `(missing dir ${outputDir})`;
+        const names = fs.readdirSync(outputDir).filter((f) => f.includes(prefix) || f.startsWith(prefix));
+        return names.length ? names.join(', ') : '(none matching prefix)';
+    } catch (err) {
+        return `(readdir failed: ${err.message})`;
+    }
+};
+
 const titleFromFilename = (filename, prefix) =>
     filename
         .replace(new RegExp(`^${prefix}[_-]?`), '')
@@ -373,8 +397,7 @@ const titleFromFilename = (filename, prefix) =>
         .replace(/_/g, ' ')
         .trim() || 'video';
 
-/** Never treat --print title (stdout) as the failure reason. */
-const extractYtDlpError = (stderr, stdout, code) => {
+const extractYtDlpError = (stderr, code, outputDir, outputPrefix) => {
     const errLines = String(stderr || '')
         .split('\n')
         .map((l) => l.trim())
@@ -387,10 +410,25 @@ const extractYtDlpError = (stderr, stdout, code) => {
         .filter((l) => l && !/^\[download\]/i.test(l) && !/%/.test(l) && !/^WARNING:/i.test(l));
     if (useful.length) return useful[useful.length - 1].slice(0, 500);
 
-    return `yt-dlp exited with code ${code}${stdout?.trim() ? ' (no output file found)' : ''}`;
+    const listing = listDirDebug(outputDir, outputPrefix);
+    return `yt-dlp exited with code ${code} (no output file found; dir=${listing})`;
 };
 
-const downloadWithStandalone = ({ url, outputDir, outputPrefix, height, onProgress, playerClient, formatMode }) =>
+const resolveOutput = ({ outputDir, outputPrefix, stderr }) => {
+    const fromStderr = findFileFromStderr(stderr);
+    const fromDir = findDownloadedFile(outputDir, outputPrefix);
+    for (const candidate of [fromStderr, fromDir].filter(Boolean)) {
+        if (fs.existsSync(candidate) && fs.statSync(candidate).size > 0) {
+            return {
+                filePath: candidate,
+                title: titleFromFilename(path.basename(candidate), outputPrefix),
+            };
+        }
+    }
+    return null;
+};
+
+const downloadWithStandalone = ({ url, outputDir, outputPrefix, height, onProgress, playerClient, formatMode, useCookies }) =>
     new Promise((resolve, reject) => {
         const bin = getStandaloneBinaryPath();
         if (!bin) {
@@ -398,23 +436,30 @@ const downloadWithStandalone = ({ url, outputDir, outputPrefix, height, onProgre
             return;
         }
 
-        // Fixed name — titles with &, !! break path matching and fake "errors"
-        const outputTemplate = path.join(outputDir, `${outputPrefix}.%(ext)s`);
-        const args = buildSpawnArgs(url, { outputTemplate, height, playerClient, formatMode });
-        console.log(`[yt-download] spawn yt-dlp node=${process.versions.node} jsArgs=${getJsRuntimeArgs().join(' ') || 'none'}`);
+        fs.mkdirSync(outputDir, { recursive: true });
+        const outputPath = path.join(path.resolve(outputDir), `${outputPrefix}.%(ext)s`);
+        const args = buildSpawnArgs(url, {
+            outputPath,
+            height,
+            playerClient,
+            formatMode,
+            useCookies,
+        });
+        console.log(
+            `[yt-download] spawn client=${playerClient} cookies=${useCookies} format=${formatMode} -> ${outputPath}`
+        );
         const proc = spawn(bin, args, {
             stdio: ['ignore', 'pipe', 'pipe'],
             env: { ...process.env, PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH || ''}` },
         });
-        let stdout = '';
         let stderr = '';
 
-        proc.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+        proc.stdout.on('data', () => {});
         proc.stderr.on('data', (chunk) => {
             const text = chunk.toString();
             stderr += text;
             text.split('\n').forEach((line) => {
-                if (/javascript runtime|ejs|no video formats|sign in|ERROR:/i.test(line)) {
+                if (/javascript runtime|ejs|no video formats|sign in|ERROR:|Destination:|Merging|Downloading/i.test(line)) {
                     console.warn('[yt-download]', line.trim().slice(0, 240));
                 }
                 const match = line.match(/(\d+(?:\.\d+)?)%/);
@@ -426,45 +471,47 @@ const downloadWithStandalone = ({ url, outputDir, outputPrefix, height, onProgre
 
         proc.on('error', reject);
         proc.on('close', (code) => {
-            const filePath = findDownloadedFile(outputDir, outputPrefix);
-            if (filePath && fs.existsSync(filePath) && fs.statSync(filePath).size > 0) {
+            const resolved = resolveOutput({ outputDir, outputPrefix, stderr });
+            if (resolved) {
                 if (code !== 0) {
-                    console.warn(`[yt-download] yt-dlp exit ${code} but file exists (${path.basename(filePath)})`);
+                    console.warn(`[yt-download] yt-dlp exit ${code} but file exists (${path.basename(resolved.filePath)})`);
                 }
-                const titleFromStdout = stdout.trim().split('\n').filter(Boolean).pop();
-                const title = titleFromStdout || titleFromFilename(path.basename(filePath), outputPrefix);
-                resolve({ filePath, title });
+                resolve(resolved);
                 return;
             }
-            reject(new Error(extractYtDlpError(stderr, stdout, code)));
+            console.warn(`[yt-download] missing file after exit ${code}. stderrTail=${stderr.trim().slice(-400)}`);
+            reject(new Error(extractYtDlpError(stderr, code, outputDir, outputPrefix)));
         });
     });
 
-const downloadWithExec = ({ url, outputDir, outputPrefix, height, onProgress, playerClient, formatMode }) =>
+const downloadWithExec = ({ url, outputDir, outputPrefix, height, onProgress, playerClient, formatMode, useCookies }) =>
     new Promise((resolve, reject) => {
         if (!youtubedl) {
             reject(new Error('youtube-dl-exec not installed'));
             return;
         }
 
-        const outputTemplate = path.join(outputDir, `${outputPrefix}.%(ext)s`);
+        fs.mkdirSync(outputDir, { recursive: true });
+        const outputPath = path.join(path.resolve(outputDir), `${outputPrefix}.%(ext)s`);
         const flags = {
             noPlaylist: true,
+            noSimulate: true,
             ffmpegLocation: resolveFfmpegLocation(),
             mergeOutputFormat: 'mp4',
             retries: 5,
             fragmentRetries: 5,
             forceIpv4: true,
             extractorArgs: buildExtractorArgs(playerClient),
-            output: outputTemplate,
+            output: outputPath,
             newline: true,
-            print: '%(title)s',
         };
         if (formatMode !== 'omit') {
             flags.format = buildFormat(height, formatMode);
         }
-        const cookies = initCookiesFromEnv();
-        if (cookies) flags.cookies = cookies;
+        if (useCookies) {
+            const cookies = initCookiesFromEnv();
+            if (cookies) flags.cookies = cookies;
+        }
 
         const jsArgs = getJsRuntimeArgs();
         for (let i = 0; i < jsArgs.length; i += 2) {
@@ -473,18 +520,14 @@ const downloadWithExec = ({ url, outputDir, outputPrefix, height, onProgress, pl
         }
 
         const subprocess = youtubedl.exec(normalizeYouTubeUrl(url), flags);
-        let stdout = '';
         let stderr = '';
 
-        if (subprocess.stdout) {
-            subprocess.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
-        }
         if (subprocess.stderr) {
             subprocess.stderr.on('data', (chunk) => {
                 const text = chunk.toString();
                 stderr += text;
                 text.split('\n').forEach((line) => {
-                    if (/javascript runtime|ejs|no video formats|sign in|ERROR:/i.test(line)) {
+                    if (/javascript runtime|ejs|no video formats|sign in|ERROR:|Destination:|Merging/i.test(line)) {
                         console.warn('[yt-download]', line.trim().slice(0, 240));
                     }
                     const match = line.match(/(\d+(?:\.\d+)?)%/);
@@ -495,87 +538,76 @@ const downloadWithExec = ({ url, outputDir, outputPrefix, height, onProgress, pl
             });
         }
 
-        const finishOk = () => {
-            const filePath = findDownloadedFile(outputDir, outputPrefix);
-            if (filePath && fs.existsSync(filePath) && fs.statSync(filePath).size > 0) {
-                const titleFromStdout = stdout.trim().split('\n').filter(Boolean).pop();
-                return {
-                    filePath,
-                    title: titleFromStdout || titleFromFilename(path.basename(filePath), outputPrefix),
-                };
-            }
-            return null;
-        };
+        const finish = () => resolveOutput({ outputDir, outputPrefix, stderr });
 
         subprocess
             .then(() => {
-                const ok = finishOk();
+                const ok = finish();
                 if (ok) {
                     resolve(ok);
                     return;
                 }
-                reject(new Error(extractYtDlpError(stderr, stdout, 0)));
+                reject(new Error(extractYtDlpError(stderr, 0, outputDir, outputPrefix)));
             })
             .catch((err) => {
-                const ok = finishOk();
+                const ok = finish();
                 if (ok) {
                     resolve(ok);
                     return;
                 }
-                reject(new Error(err?.message || extractYtDlpError(stderr, stdout, 1)));
+                reject(new Error(err?.message || extractYtDlpError(stderr, 1, outputDir, outputPrefix)));
             });
     });
 
 const cleanupPartial = (outputDir, outputPrefix) => {
-    const partial = findDownloadedFile(outputDir, outputPrefix);
-    if (partial) {
-        try { fs.unlinkSync(partial); } catch (_) {}
-    }
+    try {
+        if (!fs.existsSync(outputDir)) return;
+        for (const f of fs.readdirSync(outputDir)) {
+            if (f.startsWith(outputPrefix)) {
+                try { fs.unlinkSync(path.join(outputDir, f)); } catch (_) {}
+            }
+        }
+    } catch (_) {}
 };
 
 const downloadWithYtDlp = async ({ url, outputDir, outputPrefix, height, onProgress }) => {
     let lastError = null;
     const cleanUrl = normalizeYouTubeUrl(url);
-    const formatModes = height ? ['preferred', 'any', 'omit'] : ['preferred', 'omit'];
 
-    if (nodeMajor < 20 && !fs.existsSync('/usr/local/bin/deno') && !fs.existsSync('/usr/bin/deno')) {
-        console.warn(
-            `[yt-download] Node ${process.versions.node} is below 20 and Deno is missing. ` +
-            'YouTube may return no formats. Use Node 22+ or install Deno (see Dockerfile).'
-        );
-    } else {
-        console.log(`[yt-download] JS runtime args: ${getJsRuntimeArgs().join(' ') || 'none'}`);
-    }
+    console.log(`[yt-download] JS runtime args: ${getJsRuntimeArgs().join(' ') || 'none'}`);
 
-    for (const client of PLAYER_CLIENTS) {
-        for (const formatMode of formatModes) {
-            try {
-                console.log(
-                    `[yt-download] Trying player_client=${client}` +
-                    `${hasCookies() ? ' (with cookies)' : ''}` +
-                    ` [format=${formatMode}${height && formatMode === 'preferred' ? ` height<=${height}` : ''}]`
-                );
-                const opts = {
-                    url: cleanUrl,
-                    outputDir,
-                    outputPrefix,
-                    height,
-                    onProgress,
-                    playerClient: client,
-                    formatMode,
-                };
-                const attempt = isStandaloneAvailable()
-                    ? downloadWithStandalone(opts)
-                    : downloadWithExec(opts);
+    for (const attempt of DOWNLOAD_ATTEMPTS) {
+        // Skip preferred-height passes when no height requested
+        if (attempt.formatMode === 'preferred' && !height) continue;
+        // Skip cookie attempts when no cookies configured
+        if (attempt.useCookies && !hasCookies()) continue;
 
-                return await attempt;
-            } catch (err) {
-                lastError = err;
-                console.warn(`[yt-download] player_client=${client} failed:`, err.message?.slice(0, 220));
-                cleanupPartial(outputDir, outputPrefix);
-                if (!isRetryableDownloadError(err.message)) {
-                    throw err;
-                }
+        try {
+            console.log(
+                `[yt-download] Trying player_client=${attempt.client}` +
+                `${attempt.useCookies ? ' (with cookies)' : ' (no cookies)'}` +
+                ` [format=${attempt.formatMode}${height && attempt.formatMode === 'preferred' ? ` height<=${height}` : ''}]`
+            );
+            const opts = {
+                url: cleanUrl,
+                outputDir,
+                outputPrefix,
+                height,
+                onProgress,
+                playerClient: attempt.client,
+                formatMode: attempt.formatMode,
+                useCookies: attempt.useCookies,
+            };
+            const result = await (isStandaloneAvailable()
+                ? downloadWithStandalone(opts)
+                : downloadWithExec(opts));
+            return result;
+        } catch (err) {
+            lastError = err;
+            console.warn(`[yt-download] player_client=${attempt.client} failed:`, err.message?.slice(0, 220));
+            cleanupPartial(outputDir, outputPrefix);
+            if (!isRetryableDownloadError(err.message)) {
+                throw err;
             }
         }
     }
@@ -604,3 +636,4 @@ module.exports = {
     validateNetscapeCookies,
     normalizeYouTubeUrl,
 };
+

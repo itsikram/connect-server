@@ -14,7 +14,7 @@ const {
     normalizeYouTubeUrl,
 } = require('./ytDlpRunner');
 
-const DOWNLOAD_DIR = path.join(__dirname, '..', 'downloads');
+const DOWNLOAD_DIR = path.join(require('os').tmpdir(), 'connect-yt-downloads');
 const JOB_PROGRESS = new Map();
 
 cloudinary.config({
@@ -123,11 +123,11 @@ const downloadToFileYtdlCore = (info, format, filePath, agent, onProgress) =>
         stream.pipe(writeStream);
     });
 
-const uploadVideoToCloudinary = (filePath) =>
+const uploadVideoToCloudinary = (filePath, folder = 'yt-downloads') =>
     new Promise((resolve, reject) => {
         cloudinary.uploader.upload(
             filePath,
-            { resource_type: 'video', folder: 'watch-videos' },
+            { resource_type: 'video', folder },
             (error, result) => {
                 if (error) return reject(error);
                 resolve(result);
@@ -289,28 +289,39 @@ const runDownloadJob = async ({
             throw new Error('Download completed but file was not found on server');
         }
 
-        const encodedName = encodeURIComponent(path.basename(filePath));
-        const fileUrl = `${baseUrl.replace(/\/$/, '')}/files/${encodedName}`;
+        updateProgress(progressId, {
+            stage: 'uploading',
+            status: 'running',
+            pct: 96,
+            title: finalTitle,
+            download_title: finalTitle,
+        });
 
+        // Always upload to Cloudinary — do not serve from local/public disk
+        const uploadFolder = postAsWatch ? 'watch-videos' : 'yt-downloads';
+        const uploadResult = await uploadVideoToCloudinary(filePath, uploadFolder);
+        if (!uploadResult?.secure_url) {
+            throw new Error('Failed to upload video to Cloudinary');
+        }
+
+        const fileUrl = uploadResult.secure_url;
         let watchPosted = false;
 
         if (postAsWatch && profileId) {
             updateProgress(progressId, {
                 stage: 'uploading_watch',
                 status: 'running',
-                pct: 96,
+                pct: 98,
                 title: finalTitle,
                 download_title: finalTitle,
             });
-
-            const uploadResult = await uploadVideoToCloudinary(filePath);
-            if (!uploadResult?.secure_url) {
-                throw new Error('Failed to upload video to cloud storage');
-            }
-
-            await createWatchFromVideo(uploadResult.secure_url, finalTitle, profileId);
+            await createWatchFromVideo(fileUrl, finalTitle, profileId);
             watchPosted = true;
         }
+
+        // Remove temp file after Cloudinary upload
+        try { fs.unlinkSync(filePath); } catch (_) {}
+        filePath = null;
 
         updateProgress(progressId, {
             stage: 'completed',
@@ -321,6 +332,7 @@ const runDownloadJob = async ({
             download_title: finalTitle,
             watch_posted: watchPosted,
             source: result.source,
+            storage: 'cloudinary',
         });
     } catch (error) {
         console.error('YouTube download job failed:', error);
