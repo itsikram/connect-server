@@ -11,9 +11,12 @@ const LOCAL_YT_DLP = path.join(
     process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp'
 );
 
-const PLAYER_CLIENTS = ['mweb', 'web', 'tv_embedded', 'ios', 'android', 'web_creator'];
+// "default" uses web + JS challenge solving when a JS runtime is available
+const PLAYER_CLIENTS = ['default', 'android', 'mweb', 'tv_embedded', 'ios', 'web'];
 
 const ESSENTIAL_COOKIE_NAMES = ['__Secure-1PSID', '__Secure-3PSID', 'VISITOR_INFO1_LIVE'];
+
+const nodeMajor = parseInt(String(process.versions.node || '0').split('.')[0], 10) || 0;
 
 let youtubedl = null;
 try {
@@ -194,18 +197,22 @@ const getStandaloneBinaryPath = () => {
 
 /**
  * Prefer adaptive streams (android/ios often have no progressive MP4),
- * then progressive, then any best. Always ends with /best so yt-dlp never
- * fails with "Requested format is not available" when *some* format exists.
+ * then progressive, then any best.
  */
-const buildFormat = (height, loose = false) => {
-    if (loose) {
+const buildFormat = (height, mode = 'preferred') => {
+    if (mode === 'any' || mode === 'loose') {
         return 'bv*+ba/b';
+    }
+    if (mode === 'progressive') {
+        return height
+            ? `b[height<=${height}][ext=mp4]/b[ext=mp4]/b`
+            : 'b[ext=mp4]/b';
     }
     if (height) {
         return [
             `bv*[height<=${height}][ext=mp4]+ba[ext=m4a]/bv*[height<=${height}]+ba`,
             `b[height<=${height}][ext=mp4]/b[height<=${height}]`,
-            'bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b',
+            'bv*+ba/b',
         ].join('/');
     }
     return 'bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b';
@@ -215,11 +222,32 @@ const buildExtractorArgs = (playerClient) => {
     if (process.env.YOUTUBE_EXTRACTOR_ARGS) {
         return process.env.YOUTUBE_EXTRACTOR_ARGS;
     }
-    const parts = [`youtube:player_client=${playerClient}`];
+    const client = playerClient === 'default' ? 'default' : playerClient;
+    const parts = [`youtube:player_client=${client}`];
     if (process.env.YOUTUBE_PO_TOKEN) {
         parts.push(`po_token=${process.env.YOUTUBE_PO_TOKEN}`);
     }
     return parts.join(';');
+};
+
+const getJsRuntimeArgs = () => {
+    const args = [];
+    // Prefer Deno when present (yt-dlp recommended); fall back to Node 22+.
+    if (process.env.YT_DLP_JS_RUNTIME) {
+        args.push('--js-runtimes', process.env.YT_DLP_JS_RUNTIME);
+    } else if (fs.existsSync('/usr/local/bin/deno') || fs.existsSync('/usr/bin/deno')) {
+        const deno = fs.existsSync('/usr/local/bin/deno') ? '/usr/local/bin/deno' : '/usr/bin/deno';
+        args.push('--js-runtimes', `deno:${deno}`);
+    } else if (nodeMajor >= 20) {
+        // yt-dlp ideally wants Node 22+, but 20 often still works better than none
+        args.push('--js-runtimes', `node:${process.execPath}`);
+    }
+
+    // Fetch EJS challenge scripts so signature solving works on cloud hosts
+    if (args.length) {
+        args.push('--remote-components', process.env.YT_DLP_REMOTE_COMPONENTS || 'ejs:github');
+    }
+    return args;
 };
 
 const isFormatUnavailableError = (message) => {
@@ -253,16 +281,33 @@ const normalizeYouTubeUrl = (rawUrl) => {
     return input;
 };
 
-const buildSpawnArgs = (url, { outputTemplate, height, playerClient, looseFormat }) => {
+const resolveFfmpegLocation = () => {
+    // Prefer system ffmpeg (Docker installs it); fall back to npm binary
+    const candidates = [
+        process.env.FFMPEG_PATH,
+        '/usr/bin/ffmpeg',
+        '/usr/local/bin/ffmpeg',
+        FFMPEG_DIR,
+    ].filter(Boolean);
+
+    for (const c of candidates) {
+        if (fs.existsSync(c)) {
+            return c.endsWith('ffmpeg') || c.endsWith('ffmpeg.exe') ? path.dirname(c) : c;
+        }
+    }
+    return FFMPEG_DIR;
+};
+
+const buildSpawnArgs = (url, { outputTemplate, height, playerClient, formatMode }) => {
     const args = [
         '--no-playlist',
-        '--no-warnings',
-        '--ffmpeg-location', FFMPEG_DIR,
+        '--ffmpeg-location', resolveFfmpegLocation(),
         '--extractor-args', buildExtractorArgs(playerClient),
-        '--retries', '3',
-        '--fragment-retries', '3',
+        '--retries', '5',
+        '--fragment-retries', '5',
         '--socket-timeout', '30',
         '--force-ipv4',
+        ...getJsRuntimeArgs(),
     ];
 
     const cookies = initCookiesFromEnv();
@@ -270,9 +315,15 @@ const buildSpawnArgs = (url, { outputTemplate, height, playerClient, looseFormat
         args.push('--cookies', cookies);
     }
 
+    // Omit -f only for last-resort "default" mode so yt-dlp picks anything downloadable
+    if (formatMode !== 'omit') {
+        args.push('-f', buildFormat(height, formatMode));
+        args.push('--merge-output-format', 'mp4');
+    } else {
+        args.push('--merge-output-format', 'mp4');
+    }
+
     args.push(
-        '-f', buildFormat(height, looseFormat),
-        '--merge-output-format', 'mp4',
         '-o', outputTemplate,
         '--newline',
         '--print', '%(title)s',
@@ -305,7 +356,7 @@ const titleFromFilename = (filename, prefix) =>
         .replace(/_/g, ' ')
         .trim() || 'video';
 
-const downloadWithStandalone = ({ url, outputDir, outputPrefix, height, onProgress, playerClient, looseFormat }) =>
+const downloadWithStandalone = ({ url, outputDir, outputPrefix, height, onProgress, playerClient, formatMode }) =>
     new Promise((resolve, reject) => {
         const bin = getStandaloneBinaryPath();
         if (!bin) {
@@ -314,8 +365,12 @@ const downloadWithStandalone = ({ url, outputDir, outputPrefix, height, onProgre
         }
 
         const outputTemplate = path.join(outputDir, `${outputPrefix}_%(title).100B.%(ext)s`);
-        const args = buildSpawnArgs(url, { outputTemplate, height, playerClient, looseFormat });
-        const proc = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+        const args = buildSpawnArgs(url, { outputTemplate, height, playerClient, formatMode });
+        console.log(`[yt-download] spawn yt-dlp node=${process.versions.node} jsArgs=${getJsRuntimeArgs().join(' ') || 'none'}`);
+        const proc = spawn(bin, args, {
+            stdio: ['ignore', 'pipe', 'pipe'],
+            env: { ...process.env, PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH || ''}` },
+        });
         let stdout = '';
         let stderr = '';
 
@@ -324,6 +379,9 @@ const downloadWithStandalone = ({ url, outputDir, outputPrefix, height, onProgre
             const text = chunk.toString();
             stderr += text;
             text.split('\n').forEach((line) => {
+                if (/javascript runtime|ejs|no video formats|sign in/i.test(line)) {
+                    console.warn('[yt-download]', line.trim().slice(0, 240));
+                }
                 const match = line.match(/(\d+(?:\.\d+)?)%/);
                 if (match && typeof onProgress === 'function') {
                     onProgress(Math.min(95, Math.round(parseFloat(match[1]))));
@@ -344,7 +402,7 @@ const downloadWithStandalone = ({ url, outputDir, outputPrefix, height, onProgre
         });
     });
 
-const downloadWithExec = ({ url, outputDir, outputPrefix, height, onProgress, playerClient, looseFormat }) =>
+const downloadWithExec = ({ url, outputDir, outputPrefix, height, onProgress, playerClient, formatMode }) =>
     new Promise((resolve, reject) => {
         if (!youtubedl) {
             reject(new Error('youtube-dl-exec not installed'));
@@ -354,20 +412,27 @@ const downloadWithExec = ({ url, outputDir, outputPrefix, height, onProgress, pl
         const outputTemplate = path.join(outputDir, `${outputPrefix}_%(title).100B.%(ext)s`);
         const flags = {
             noPlaylist: true,
-            noWarnings: true,
-            ffmpegLocation: FFMPEG_DIR,
+            ffmpegLocation: resolveFfmpegLocation(),
             mergeOutputFormat: 'mp4',
-            retries: 3,
-            fragmentRetries: 3,
+            retries: 5,
+            fragmentRetries: 5,
             forceIpv4: true,
             extractorArgs: buildExtractorArgs(playerClient),
-            format: buildFormat(height, looseFormat),
             output: outputTemplate,
             newline: true,
             print: '%(title)s',
         };
+        if (formatMode !== 'omit') {
+            flags.format = buildFormat(height, formatMode);
+        }
         const cookies = initCookiesFromEnv();
         if (cookies) flags.cookies = cookies;
+
+        const jsArgs = getJsRuntimeArgs();
+        for (let i = 0; i < jsArgs.length; i += 2) {
+            if (jsArgs[i] === '--js-runtimes') flags.jsRuntimes = jsArgs[i + 1];
+            if (jsArgs[i] === '--remote-components') flags.remoteComponents = jsArgs[i + 1];
+        }
 
         const subprocess = youtubedl.exec(normalizeYouTubeUrl(url), flags);
         let stdout = '';
@@ -378,6 +443,9 @@ const downloadWithExec = ({ url, outputDir, outputPrefix, height, onProgress, pl
         if (subprocess.stderr) {
             subprocess.stderr.on('data', (chunk) => {
                 chunk.toString().split('\n').forEach((line) => {
+                    if (/javascript runtime|ejs|no video formats|sign in/i.test(line)) {
+                        console.warn('[yt-download]', line.trim().slice(0, 240));
+                    }
                     const match = line.match(/(\d+(?:\.\d+)?)%/);
                     if (match && typeof onProgress === 'function') {
                         onProgress(Math.min(95, Math.round(parseFloat(match[1]))));
@@ -412,15 +480,24 @@ const cleanupPartial = (outputDir, outputPrefix) => {
 const downloadWithYtDlp = async ({ url, outputDir, outputPrefix, height, onProgress }) => {
     let lastError = null;
     const cleanUrl = normalizeYouTubeUrl(url);
-    const formatModes = height ? [false, true] : [false];
+    const formatModes = height ? ['preferred', 'any', 'omit'] : ['preferred', 'omit'];
+
+    if (nodeMajor < 20 && !fs.existsSync('/usr/local/bin/deno') && !fs.existsSync('/usr/bin/deno')) {
+        console.warn(
+            `[yt-download] Node ${process.versions.node} is below 20 and Deno is missing. ` +
+            'YouTube may return no formats. Use Node 22+ or install Deno (see Dockerfile).'
+        );
+    } else {
+        console.log(`[yt-download] JS runtime args: ${getJsRuntimeArgs().join(' ') || 'none'}`);
+    }
 
     for (const client of PLAYER_CLIENTS) {
-        for (const looseFormat of formatModes) {
+        for (const formatMode of formatModes) {
             try {
                 console.log(
                     `[yt-download] Trying player_client=${client}` +
                     `${hasCookies() ? ' (with cookies)' : ''}` +
-                    `${looseFormat ? ' [loose format]' : height ? ` [height<=${height}]` : ''}`
+                    ` [format=${formatMode}${height && formatMode === 'preferred' ? ` height<=${height}` : ''}]`
                 );
                 const opts = {
                     url: cleanUrl,
@@ -429,7 +506,7 @@ const downloadWithYtDlp = async ({ url, outputDir, outputPrefix, height, onProgr
                     height,
                     onProgress,
                     playerClient: client,
-                    looseFormat,
+                    formatMode,
                 };
                 const attempt = isStandaloneAvailable()
                     ? downloadWithStandalone(opts)
@@ -449,6 +526,12 @@ const downloadWithYtDlp = async ({ url, outputDir, outputPrefix, height, onProgr
 
     if (isBotBlockError(lastError?.message)) {
         throw new Error(formatBotBlockError());
+    }
+    if (isFormatUnavailableError(lastError?.message)) {
+        throw new Error(
+            'YouTube returned no downloadable formats. Ensure the server runs Node 22+ (or Deno), ' +
+            'yt-dlp is up to date, and YOUTUBE_COOKIES_B64 is valid. Redeploy with the updated Dockerfile.'
+        );
     }
     throw lastError || new Error('yt-dlp failed for all player clients');
 };

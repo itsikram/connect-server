@@ -1,10 +1,9 @@
 # Dockerfile for Connect Server
-FROM node:18-bullseye
+# Node 22+ required: yt-dlp needs a JS runtime to extract YouTube formats
+FROM node:22-bookworm
 
-# Set working directory
 WORKDIR /app
 
-# Install build and runtime dependencies for canvas package
 RUN apt-get update && apt-get install -y \
     build-essential \
     libcairo2-dev \
@@ -18,33 +17,31 @@ RUN apt-get update && apt-get install -y \
     curl \
     make \
     g++ \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
-# Install yt-dlp for reliable YouTube downloads on cloud servers
+# Deno (yt-dlp recommended JS runtime for YouTube EJS challenges)
+RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh \
+    && deno --version
+
+# System yt-dlp (fallback); standalone binary preferred at runtime
 RUN pip3 install --no-cache-dir -U yt-dlp
 
-# Copy package files and install scripts needed for postinstall
 COPY package*.json ./
 COPY scripts/install-yt-dlp.js scripts/postinstall.js ./scripts/
 
-# Install dependencies
 RUN npm ci --only=production
 
-# Copy application files
 COPY . .
 
-# Ensure standalone yt-dlp binary is present (postinstall may have run above)
+ENV YT_DLP_FORCE_UPDATE=true
 RUN node scripts/install-yt-dlp.js || true
 
-# Create logs directory
 RUN mkdir -p /var/log/nginx
 
-# Expose port (will be overridden by environment variable)
 EXPOSE 4000
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD node -e "require('http').get('http://localhost:4000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
-# Start the server
 CMD ["node", "index.js"]

@@ -1,6 +1,6 @@
 /**
- * Downloads standalone yt-dlp binary (no Python required).
- * Used on Render where system Python is 3.9 but yt-dlp needs 3.10+.
+ * Downloads/updates standalone yt-dlp binary (no Python required).
+ * Always refreshes so Render/Docker builds pick up YouTube extractor fixes.
  */
 const fs = require('fs');
 const path = require('path');
@@ -45,6 +45,7 @@ const downloadFile = (url, dest) =>
     });
 
 async function main() {
+    const force = process.argv.includes('--force') || process.env.YT_DLP_FORCE_UPDATE === 'true';
     const spec = RELEASES[process.platform];
     if (!spec) {
         console.log(`[install-yt-dlp] Skip: unsupported platform ${process.platform}`);
@@ -53,20 +54,39 @@ async function main() {
 
     fs.mkdirSync(BIN_DIR, { recursive: true });
     const dest = path.join(BIN_DIR, spec.filename);
+    const tmp = `${dest}.tmp`;
 
-    if (fs.existsSync(dest)) {
+    // Always refresh on CI/Render/Docker builds so YouTube fixes ship.
+    const shouldRefresh =
+        force ||
+        !fs.existsSync(dest) ||
+        process.env.RENDER === 'true' ||
+        process.env.YT_DLP_FORCE_UPDATE === 'true' ||
+        fs.existsSync('/.dockerenv');
+
+    if (!shouldRefresh) {
         console.log(`[install-yt-dlp] Already installed: ${dest}`);
         return;
     }
 
     console.log(`[install-yt-dlp] Downloading ${spec.url}`);
-    await downloadFile(spec.url, dest);
-
-    if (process.platform !== 'win32') {
-        fs.chmodSync(dest, 0o755);
+    try {
+        if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
+        await downloadFile(spec.url, tmp);
+        if (fs.existsSync(dest)) fs.unlinkSync(dest);
+        fs.renameSync(tmp, dest);
+        if (process.platform !== 'win32') {
+            fs.chmodSync(dest, 0o755);
+        }
+        console.log(`[install-yt-dlp] Installed/updated: ${dest}`);
+    } catch (err) {
+        try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch (_) {}
+        if (fs.existsSync(dest)) {
+            console.warn(`[install-yt-dlp] Update failed, keeping existing binary: ${err.message}`);
+            return;
+        }
+        throw err;
     }
-
-    console.log(`[install-yt-dlp] Installed: ${dest}`);
 }
 
 main().catch((err) => {
