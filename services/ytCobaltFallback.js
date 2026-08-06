@@ -150,18 +150,27 @@ const downloadFileFromUrl = async (mediaUrl, destPath, onProgress) => {
 
     await pipeline(res.data, fs.createWriteStream(destPath));
 
-    if (downloaded < 1000 && fs.existsSync(destPath) && fs.statSync(destPath).size < 1000) {
-        throw new Error(`Cobalt download too small (${fs.statSync(destPath).size} bytes)`);
+    const fileSize = fs.existsSync(destPath) ? fs.statSync(destPath).size : downloaded;
+    const estimated = Number(res.headers['estimated-content-length'] || 0);
+
+    if (fileSize < 1000) {
+        throw new Error(`Cobalt download too small (${fileSize} bytes)`);
+    }
+
+    // Cobalt IOS merge often truncates around ~1 MB per stream; reject obvious partials
+    if (estimated > 0 && fileSize < estimated * 0.5) {
+        throw new Error(
+            `Cobalt download looks truncated (${fileSize} of ~${estimated} bytes). Try again or use yt-dlp fallback.`
+        );
     }
 };
 
-/** Few quality attempts — empty tunnels are usually bot/IP blocks, not quality. */
+/** Quality attempts — skip HLS on home Cobalt (IOS has no HLS manifest); yt-dlp handles full files. */
 const buildAttemptExtras = (height) => {
     const q = Math.min(Number(heightToQuality(height)) || 720, 720);
     const base = [
         { videoQuality: String(q) },
         { videoQuality: '360' },
-        { videoQuality: '360', youtubeHLS: true },
     ];
     return base.filter((a, i, arr) =>
         arr.findIndex((b) => b.videoQuality === a.videoQuality && Boolean(b.youtubeHLS) === Boolean(a.youtubeHLS)) === i
