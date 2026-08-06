@@ -24,8 +24,8 @@ RUN apt-get update && apt-get install -y \
 RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh \
     && deno --version
 
-# System yt-dlp (fallback); standalone binary preferred at runtime
-RUN pip3 install --no-cache-dir -U yt-dlp
+# Standalone yt-dlp binary is installed later via scripts/install-yt-dlp.js
+# (pip install is blocked on Debian bookworm / PEP 668)
 
 COPY package*.json ./
 COPY scripts/install-yt-dlp.js scripts/postinstall.js ./scripts/
