@@ -246,11 +246,11 @@ const downloadWithYtDlpBackend = async ({ progressId, url, height }) => {
 
 const downloadViaCobaltBackend = async ({ progressId, url, height }) => {
     let lastPct = 5;
-    const report = (pct) => {
+    const report = (pct, stage = 'downloading') => {
         if (pct >= lastPct) lastPct = pct;
         updateProgress(progressId, {
             status: 'running',
-            stage: 'downloading',
+            stage,
             pct: lastPct,
             source: 'cobalt',
             title: 'video',
@@ -259,14 +259,23 @@ const downloadViaCobaltBackend = async ({ progressId, url, height }) => {
     };
 
     console.log('[yt-download] Downloading via Cobalt API');
-    report(5);
-    return downloadViaCobalt({
-        url,
-        height,
-        outputDir: DOWNLOAD_DIR,
-        outputPrefix: progressId,
-        onProgress: report,
-    });
+    report(5, 'starting');
+
+    let heartbeat = setInterval(() => {
+        if (lastPct < 14) report(lastPct + 1, 'preparing');
+    }, 1500);
+
+    try {
+        return await downloadViaCobalt({
+            url,
+            height,
+            outputDir: DOWNLOAD_DIR,
+            outputPrefix: progressId,
+            onProgress: (pct) => report(pct, pct < 20 ? 'preparing' : 'downloading'),
+        });
+    } finally {
+        clearInterval(heartbeat);
+    }
 };
 
 const downloadVideo = async ({ progressId, url, height }) => {

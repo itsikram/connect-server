@@ -99,69 +99,91 @@ const requestCobalt = async (baseUrl, youtubeUrl, height, extras = {}) => {
 };
 
 const downloadFileFromUrl = async (mediaUrl, destPath, onProgress) => {
-    // Tunnel/redirect URLs must not get API JSON headers
-    const res = await axios.get(mediaUrl, {
-        responseType: 'stream',
-        timeout: cobaltMediaTimeoutMs(),
-        headers: {
-            Accept: '*/*',
-            'User-Agent': 'Connect-Server/1.0',
-        },
-        maxRedirects: 5,
-        validateStatus: () => true,
-    });
-
-    if (res.status >= 400) {
-        // Drain and throw
-        const chunks = [];
-        for await (const chunk of res.data) chunks.push(chunk);
-        const body = Buffer.concat(chunks).toString('utf8').slice(0, 300);
-        throw new Error(`Cobalt media download HTTP ${res.status}: ${body}`);
-    }
-
-    const contentType = String(res.headers['content-type'] || '');
-    if (contentType.includes('application/json')) {
-        const chunks = [];
-        for await (const chunk of res.data) chunks.push(chunk);
-        throw new Error(`Cobalt returned JSON instead of video: ${Buffer.concat(chunks).toString('utf8').slice(0, 300)}`);
-    }
-
-    const total = Number(res.headers['content-length'] || res.headers['estimated-content-length'] || 0);
-    // Cobalt closes the tunnel empty when YouTube HEAD/range probe fails (bot/cookies/poToken)
-    if (total === 0 && String(res.headers['content-length']) === '0') {
-        res.data.destroy?.();
-        throw new Error(
-            'Cobalt download too small (0 bytes). Refresh home Cobalt cookies or set YOUTUBE_PO_TOKEN + YOUTUBE_VISITOR_DATA in live.env.'
-        );
-    }
-
+    let heartbeat;
+    let heartbeatPct = 15;
     let downloaded = 0;
+    let estimated = 0;
+    let lastReported = 0;
 
-    res.data.on('data', (chunk) => {
-        downloaded += chunk.length;
-        if (typeof onProgress === 'function') {
-            if (total > 0) {
-                onProgress(Math.min(95, Math.round((downloaded / total) * 100)));
-            } else {
-                onProgress(Math.min(95, 10 + Math.floor(downloaded / (1024 * 1024))));
-            }
+    const reportPct = (pct) => {
+        if (typeof onProgress !== 'function') return;
+        const next = Math.min(95, Math.max(lastReported, Math.round(pct)));
+        if (next > lastReported) {
+            lastReported = next;
+            onProgress(lastReported);
         }
-    });
+    };
 
-    await pipeline(res.data, fs.createWriteStream(destPath));
+    const bumpWaitProgress = () => {
+        if (downloaded > 0) return;
+        if (heartbeatPct < 88) {
+            heartbeatPct += 2;
+            reportPct(heartbeatPct);
+        }
+    };
 
-    const fileSize = fs.existsSync(destPath) ? fs.statSync(destPath).size : downloaded;
-    const estimated = Number(res.headers['estimated-content-length'] || 0);
+    heartbeat = setInterval(bumpWaitProgress, 2000);
+    bumpWaitProgress();
 
-    if (fileSize < 1000) {
-        throw new Error(`Cobalt download too small (${fileSize} bytes)`);
-    }
+    try {
+        const res = await axios.get(mediaUrl, {
+            responseType: 'stream',
+            timeout: cobaltMediaTimeoutMs(),
+            headers: {
+                Accept: '*/*',
+                'User-Agent': 'Connect-Server/1.0',
+            },
+            maxRedirects: 5,
+            validateStatus: () => true,
+        });
 
-    // Cobalt IOS merge often truncates around ~1 MB per stream; reject obvious partials
-    if (estimated > 0 && fileSize < estimated * 0.5) {
-        throw new Error(
-            `Cobalt download looks truncated (${fileSize} of ~${estimated} bytes). Try again or use yt-dlp fallback.`
-        );
+        if (res.status >= 400) {
+            const chunks = [];
+            for await (const chunk of res.data) chunks.push(chunk);
+            const body = Buffer.concat(chunks).toString('utf8').slice(0, 300);
+            throw new Error(`Cobalt media download HTTP ${res.status}: ${body}`);
+        }
+
+        const contentType = String(res.headers['content-type'] || '');
+        if (contentType.includes('application/json')) {
+            const chunks = [];
+            for await (const chunk of res.data) chunks.push(chunk);
+            throw new Error(`Cobalt returned JSON instead of video: ${Buffer.concat(chunks).toString('utf8').slice(0, 300)}`);
+        }
+
+        const total = Number(res.headers['content-length'] || res.headers['estimated-content-length'] || 0);
+        estimated = Number(res.headers['estimated-content-length'] || 0);
+        if (total === 0 && String(res.headers['content-length']) === '0') {
+            res.data.destroy?.();
+            throw new Error(
+                'Cobalt download too small (0 bytes). Refresh home Cobalt cookies or set YOUTUBE_PO_TOKEN + YOUTUBE_VISITOR_DATA in live.env.'
+            );
+        }
+
+        res.data.on('data', (chunk) => {
+            downloaded += chunk.length;
+            if (total > 0) {
+                reportPct(15 + (downloaded / total) * 80);
+            } else {
+                reportPct(15 + downloaded / (512 * 1024));
+            }
+        });
+
+        await pipeline(res.data, fs.createWriteStream(destPath));
+
+        const fileSize = fs.existsSync(destPath) ? fs.statSync(destPath).size : downloaded;
+
+        if (fileSize < 1000) {
+            throw new Error(`Cobalt download too small (${fileSize} bytes)`);
+        }
+
+        if (estimated > 0 && fileSize < estimated * 0.5) {
+            throw new Error(
+                `Cobalt download looks truncated (${fileSize} of ~${estimated} bytes). Try again or use yt-dlp fallback.`
+            );
+        }
+    } finally {
+        clearInterval(heartbeat);
     }
 };
 
