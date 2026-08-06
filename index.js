@@ -527,14 +527,15 @@ app.get('/fcm', async (req, res) => {
 
 // Root route should serve index.html
 
-mongoose.connect(process.env.PROD_MONGODB_URI, {}).then(async(e) => {
+mongoose.connect(process.env.PROD_MONGODB_URI, {}).then(() => {
+  console.log('MongoDB connected');
+}).catch((e) => {
+  console.error('MongoDB connection failed — server will still start, but DB features may not work:', e.message || e);
+});
 
-  httpServer.listen(PORT,'0.0.0.0', (e) => {
-    console.log(`Server is running on port ${PORT}`)
-  })
-}).catch(e => {
-  console.log(e)
-})
+httpServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server is running on port ${PORT}`);
+});
 
 
 

@@ -15,8 +15,8 @@ const FFMPEG_DIR = path.dirname(ffmpegInstaller.path);
 
 const buildFormat = (height) =>
     height
-        ? `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]/best`
-        : 'bestvideo+bestaudio/best';
+        ? `best[height<=${height}][ext=mp4]/best[height<=${height}]/best[ext=mp4]/best`
+        : 'best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best';
 
 const buildCommonFlags = () => {
     const flags = {

@@ -1,0 +1,3 @@
+{
+  "ignore": ["downloads/*", "*player-script.js", "node_modules"]
+}
