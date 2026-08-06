@@ -512,6 +512,7 @@ const runDownloadJob = async ({
 
         const fileUrl = uploadResult.secure_url;
         let watchPosted = false;
+        let watchId = null;
 
         if (shouldPostWatch) {
             updateProgress(progressId, {
@@ -522,8 +523,9 @@ const runDownloadJob = async ({
                 download_title: finalTitle,
             });
             // Caption = YouTube video title
-            await createWatchFromVideo(fileUrl, finalTitle, profileId);
+            const watch = await createWatchFromVideo(fileUrl, finalTitle, profileId);
             watchPosted = true;
+            watchId = String(watch._id);
             console.log(`[yt-download] Posted Watch with caption: ${finalTitle.slice(0, 80)}`);
         }
 
@@ -539,6 +541,7 @@ const runDownloadJob = async ({
             title: finalTitle,
             download_title: finalTitle,
             watch_posted: watchPosted,
+            watch_id: watchId,
             watch_caption: watchPosted ? finalTitle : undefined,
             source: result.source,
             storage: 'cloudinary',
