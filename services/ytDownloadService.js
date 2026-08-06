@@ -10,6 +10,8 @@ const {
     getVideoTitle,
     downloadWithYtDlp,
     getBundledYtDlpPath,
+    isBotBlockError,
+    formatBotBlockError,
 } = require('./ytDlpRunner');
 
 const DOWNLOAD_DIR = path.join(__dirname, '..', 'downloads');
@@ -255,7 +257,9 @@ const downloadVideo = async ({ progressId, url, height, filePath }) => {
         }
 
         throw new Error(
-            err.message || 'YouTube download failed. Try again or add YOUTUBE_COOKIES_B64 in Render env vars.'
+            isBotBlockError(err.message)
+                ? formatBotBlockError()
+                : (err.message || 'YouTube download failed.')
         );
     }
 };
