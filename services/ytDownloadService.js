@@ -317,18 +317,27 @@ const downloadVideo = async ({ progressId, url, height }) => {
     let lastError = null;
     const cobaltEnabled = process.env.YT_DL_DISABLE_COBALT !== 'true';
     const hasCobaltUrl = Boolean(process.env.COBALT_API_URL);
-    const cobaltOnly = process.env.YT_DL_COBALT_ONLY === 'true';
+    const onRender = isRenderHost();
+    const cobaltOnly = process.env.YT_DL_COBALT_ONLY === 'true' || onRender;
+
+    if (onRender && !hasCobaltUrl) {
+        throw new Error(
+            'COBALT_API_URL is not set on Render. YouTube blocks Render IPs — ' +
+            'set COBALT_API_URL to your home Cobalt tunnel URL and redeploy.'
+        );
+    }
+
     // Prefer Cobalt on Render, or when YT_DL_PREFER_COBALT / YT_DL_COBALT_ONLY (local test)
     const preferCobalt =
         cobaltEnabled &&
         hasCobaltUrl &&
-        (isRenderHost() ||
+        (onRender ||
             process.env.YT_DL_PREFER_COBALT === 'true' ||
             cobaltOnly);
 
     const tryYtDlp = async () => {
         if (cobaltOnly) {
-            console.log('[yt-download] Skipping yt-dlp (YT_DL_COBALT_ONLY=true)');
+            console.log('[yt-download] Skipping yt-dlp (Cobalt-only mode on Render)');
             return null;
         }
         try {
@@ -354,11 +363,21 @@ const downloadVideo = async ({ progressId, url, height }) => {
     if (preferCobalt) {
         console.log(
             cobaltOnly
-                ? '[yt-download] Cobalt-only mode (local test)'
+                ? '[yt-download] Cobalt-only mode (Render / YT_DL_COBALT_ONLY)'
                 : '[yt-download] Prefer Cobalt first'
         );
+        console.log(`[yt-download] Cobalt URL: ${process.env.COBALT_API_URL}`);
         const cobaltResult = await tryCobalt();
         if (cobaltResult) return cobaltResult;
+
+        if (onRender) {
+            const detail = lastError?.message || 'Unknown Cobalt error';
+            throw new Error(
+                `Home Cobalt download failed: ${detail}. ` +
+                'YouTube blocks Render directly — keep home Cobalt running and refresh the tunnel URL.'
+            );
+        }
+
         console.warn('[yt-download] Cobalt unavailable — falling back to yt-dlp');
         const ytResult = await tryYtDlp();
         if (ytResult) return ytResult;
@@ -416,11 +435,9 @@ const downloadVideo = async ({ progressId, url, height }) => {
         }
     }
 
-    if (isRenderHost() && !hasCobaltUrl) {
+    if (onRender && !hasCobaltUrl) {
         throw new Error(
-            'YouTube blocks Render IPs. Localhost works because your home IP is allowed. ' +
-            'For the live site, set COBALT_API_URL to your own Cobalt instance on Render, then redeploy. ' +
-            'Also copy the same YOUTUBE_COOKIES_B64 that works locally.'
+            'YouTube blocks Render IPs. Set COBALT_API_URL to your home Cobalt tunnel and redeploy.'
         );
     }
 
