@@ -8,6 +8,33 @@ const { sendPushToProfile } = require('../utils/pushNotifications')
 const { getPostId, postLink } = require('../utils/getPostId')
 const Story = require('../models/Story')
 const mongoose = require('mongoose')
+
+async function resolveCommentParent(parentId) {
+    const id = getPostId(parentId)
+    if (!id || !mongoose.isValidObjectId(id)) return null
+
+    const story = await Story.findById(id).populate('author')
+    if (story) {
+        return {
+            type: 'story',
+            doc: story,
+            link: `/story/${id}`,
+            id,
+        }
+    }
+
+    const post = await Post.findById(id).populate('author')
+    if (post) {
+        return {
+            type: 'post',
+            doc: post,
+            link: postLink(post),
+            id,
+        }
+    }
+
+    return null
+}
 exports.postAddComment = async (req, res, next) => {
     try {
         let attachment = req.body.attachment ? req.body.attachment : ''
@@ -220,10 +247,11 @@ exports.addCommentReact = async (req, res, next) => {
                 const myProfile = req.profile;
                 if (comment && comment.author && String(comment.author._id) !== String(myProfile._id)) {
                     const io = req.app.get('io');
+                    const parent = await resolveCommentParent(comment.post);
                     const notification = {
                         receiverId: comment.author._id,
                         text: `${myProfile.fullName} liked your comment`,
-                        link: postLink(comment.post),
+                        link: parent?.link || postLink(comment.post),
                         type: 'commentReact',
                         icon: myProfile.profilePic
                     };
@@ -234,7 +262,12 @@ exports.addCommentReact = async (req, res, next) => {
                             await sendPushToProfile(comment.author._id, {
                                 title: 'Comment liked',
                                 body: `${myProfile.fullName} liked your comment`,
-                                data: { type: 'comment_like', postId: getPostId(comment.post), commentId: String(comment._id) }
+                                data: {
+                                    type: 'comment_like',
+                                    postId: parent?.id || getPostId(comment.post),
+                                    commentId: String(comment._id),
+                                    ...(parent?.type === 'story' ? { storyId: parent.id } : {}),
+                                }
                             });
                         }
                     } catch (e) {}
@@ -296,16 +329,10 @@ exports.postCommentReply = async (req, res, next) => {
                 $push: {
                     replies: newReply._id
                 }
-            },{new: true}).populate([{
-                path: 'post',
-                model: Post,
-                populate: {
-                    path: 'author',
-                    model: Profile
-                }
+            }, { new: true })
 
-            }])
             if (updateComment) {
+                const parent = await resolveCommentParent(updateComment.post);
                 let newReplyWithAuthor = await CmntReply.findOne({ _id: newReply._id }).populate({
                     path: 'author',
                     select: ['profilePic', 'user', 'fullName', 'displayName'],
@@ -315,32 +342,39 @@ exports.postCommentReply = async (req, res, next) => {
                     }
                 })
 
-                if (newReplyWithAuthor) {
+                if (newReplyWithAuthor && parent?.doc?.author) {
 
-                    if(String(updateComment.post.author._id) !== String(myProfileId)) {
+                    if (String(parent.doc.author._id) !== String(myProfileId)) {
                         let notification = {
-                            receiverId: updateComment.post.author._id,
+                            receiverId: parent.doc.author._id,
                             text: `${myProfile.fullName} Replied to your comment`,
-                            link: postLink(updateComment.post),
-                            type: 'postCommentReply',
+                            link: parent.link,
+                            type: parent.type === 'story' ? 'storyCommentReply' : 'postCommentReply',
                             icon: myProfile.profilePic,
                             data: {
                                 replyMsg,
                                 commentId,
-                                postId: getPostId(updateComment.post),
                                 senderId: myProfileId,
                                 senderName: myProfile.fullName,
+                                ...(parent.type === 'story'
+                                    ? { storyId: parent.id }
+                                    : { postId: parent.id }),
                             }
                         }
-                
+
                         saveNotification(io, notification)
                         try {
-                            const { isActive } = await checkIsActive(updateComment.post.author._id)
+                            const { isActive } = await checkIsActive(parent.doc.author._id)
                             if (!isActive) {
-                                await sendPushToProfile(updateComment.post.author._id, {
+                                await sendPushToProfile(parent.doc.author._id, {
                                     title: 'New reply',
                                     body: `${myProfile.fullName} replied to your comment`,
-                                    data: { type: 'comment_reply', postId: getPostId(updateComment.post) }
+                                    data: {
+                                        type: 'comment_reply',
+                                        ...(parent.type === 'story'
+                                            ? { storyId: parent.id }
+                                            : { postId: parent.id }),
+                                    }
                                 });
                             }
                         } catch (e) {}
@@ -353,15 +387,17 @@ exports.postCommentReply = async (req, res, next) => {
                             const notifForCommentAuthor = {
                                 receiverId: parentComment.author._id,
                                 text: `${myProfile.fullName} replied to your comment`,
-                                link: postLink(updateComment.post),
+                                link: parent.link,
                                 type: 'commentReply',
                                 icon: myProfile.profilePic,
                                 data: {
                                     replyMsg,
                                     commentId,
-                                    postId: getPostId(updateComment.post),
                                     senderId: myProfileId,
                                     senderName: myProfile.fullName,
+                                    ...(parent.type === 'story'
+                                        ? { storyId: parent.id }
+                                        : { postId: parent.id }),
                                 }
                             };
                             saveNotification(io, notifForCommentAuthor)
@@ -371,7 +407,13 @@ exports.postCommentReply = async (req, res, next) => {
                                     await sendPushToProfile(parentComment.author._id, {
                                         title: 'New reply',
                                         body: `${myProfile.fullName} replied to your comment`,
-                                        data: { type: 'comment_reply', postId: getPostId(updateComment.post), commentId: String(parentComment._id) }
+                                        data: {
+                                            type: 'comment_reply',
+                                            commentId: String(parentComment._id),
+                                            ...(parent.type === 'story'
+                                                ? { storyId: parent.id }
+                                                : { postId: parent.id }),
+                                        }
                                     });
                                 }
                             } catch (e) {}
@@ -462,23 +504,33 @@ exports.removeReplyReact = async (req, res, next) => {
 exports.postDeleteComment = async (req, res, next) => {
     try {
         let commentId = req.body.commentId
+        let parentId = req.body.postId || req.body.storyId
+        let parentType = req.body.parentType
+
         let deleteComment = await Comment.findOneAndDelete({ _id: commentId })
         if (deleteComment) {
-            await Post.findByIdAndUpdate({
-                _id: commentId
-            }, {
-                $pull: {
-                    comments: commentId
+            const idToPull = parentId || deleteComment.post
+
+            if (parentType === 'story') {
+                await Story.findByIdAndUpdate(idToPull, {
+                    $pull: { comments: commentId }
+                }, { new: true })
+            } else {
+                const updatedPost = await Post.findByIdAndUpdate(idToPull, {
+                    $pull: { comments: commentId }
+                }, { new: true })
+
+                if (!updatedPost) {
+                    await Story.findByIdAndUpdate(idToPull, {
+                        $pull: { comments: commentId }
+                    }, { new: true })
                 }
-            }, { new: true })
+            }
 
-            return res.json({ message: 'Comment Deleted Successfully' }).status(200)
-        } else {
-            return res.json({ message: 'Comment Deletion Failed' }).status(500)
-
+            return res.status(200).json({ message: 'Comment Deleted Successfully' })
         }
 
-
+        return res.status(500).json({ message: 'Comment Deletion Failed' })
     } catch (error) {
         next(error)
     }

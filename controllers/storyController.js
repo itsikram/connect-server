@@ -1,6 +1,7 @@
 const Story = require('../models/Story')
 const Profile = require('../models/Profile')
 const Comment = require('../models/Comment')
+const CmntReply = require('../models/CmntReply')
 const mongoose = require('mongoose')
 
 exports.postStory = async(req,res,next) => {
@@ -110,18 +111,30 @@ exports.getSingleStory = async(req,res,next) => {
                 {
                     path: 'comments',
                     model: Comment,
-                    populate: {
+                    populate: [{
                         path: 'author',
-                        select: ['profilePic','user'],
+                        select: ['profilePic', 'user', 'fullName', 'displayName'],
                         populate: {
                             path: 'user',
-                            select: ['firstName','surname']
+                            select: ['firstName', 'surname']
                         }
-                    }
+                    }, {
+                        path: 'replies',
+                        model: CmntReply,
+                        populate: {
+                            path: 'author',
+                            model: Profile,
+                            select: ['profilePic', 'user', 'fullName', 'displayName'],
+                            populate: {
+                                path: 'user',
+                                select: ['firstName', 'surname']
+                            }
+                        }
+                    }]
                 }
-            ]).limit(10).sort({'createdAt': -1})
+            ])
     
-            return res.json(story).status(200)
+            return res.status(200).json(story)
         }
 
         return res.json({message: 'Invalid story id passed'}).status(404)
