@@ -291,7 +291,7 @@ exports.changePass = async (req, res, next) => {
                 accessToken
             }
 
-            return res.json(resData).status(202)
+            return res.status(200).json(resData)
         }
     } catch (e) {
         next(e)
@@ -485,11 +485,14 @@ exports.googleSignIn = async (req, res, next) => {
 }
 
 exports.deleteAccount = async (req, res, next) => {
-    let userData = req.body.userData
-    let userId = userData.user_id
+    const authUserId = req.profile?.user?._id?.toString()
+    if (!authUserId) {
+        return res.status(401).json({ message: 'Unauthorized' })
+    }
+
+    const userId = authUserId
 
     try {
-
         let getUser = await User.findById(userId)
 
         if (getUser) {
@@ -499,18 +502,13 @@ exports.deleteAccount = async (req, res, next) => {
             if (profileId) {
                 await Profile.findByIdAndDelete(profileId)
                 await deleteUserData(profileId)
-                return res.json({ message: 'Account Deleted Successfully' })
+                return res.status(200).json({ message: 'Account Deleted Successfully' })
             }
         }
 
+        return res.status(404).json({ message: 'Account not found' })
     } catch (error) {
         console.log(error)
-        return res.json({ message: 'Account Deletion Failed' })
-
+        return res.status(500).json({ message: 'Account Deletion Failed' })
     }
-
-
-
-
-
 }

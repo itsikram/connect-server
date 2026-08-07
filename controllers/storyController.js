@@ -8,9 +8,11 @@ exports.postStory = async(req,res,next) => {
         let profileId = req.profile._id
         let image = req.body.image || ''
         let storyBg = req.body.storyBg || ''
+        let audience = parseInt(req.body.audience, 10) || 1
         let story = new Story({
             image,
             bgColor: storyBg,
+            audience,
             author: profileId
         })
 

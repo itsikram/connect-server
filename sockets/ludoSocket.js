@@ -4,6 +4,18 @@ const games = new Map(); // gameId -> { createdAt: number, lastPlayers: object, 
 const userInvites = new Map(); // profileId -> [{ gameId, by, name, avatar, slotIndex, playerCount, ts }]
 const playerSockets = new Map(); // profileId -> Set<socketId> (track all sockets for a profile)
 
+const clearInvitesForGame = (io, profileId, gameId) => {
+    const pid = String(profileId || '');
+    if (!pid || !gameId) return;
+    const list = userInvites.get(pid) || [];
+    const filtered = list.filter(i => String(i.gameId) !== String(gameId));
+    if (filtered.length === list.length) return;
+    userInvites.set(pid, filtered);
+    try {
+        io.to(`user_${pid}`).emit('ludo:invites', { invites: filtered });
+    } catch (_e) {}
+};
+
 // Helper function to get next active player (skip inactive players)
 function getNextActivePlayer(currentPlayerIndex) {
     // Simple implementation: go to next player, wrap around, skip inactive
@@ -119,10 +131,13 @@ function ludoSocket(io, socket, profileId) {
             console.log('[LUDO][server] ludo:join', { socketId: socket?.id, gameId, effectiveProfileId, beforeRoomSize: preSize });
         } catch (_e) {}
         const room = joinRoom(gameId);
+        if (effectiveProfileId) {
+            clearInvitesForGame(io, effectiveProfileId, gameId);
+        }
         try {
             const size = io?.sockets?.adapter?.rooms?.get?.(room)?.size || 0;
-            io.to(room).emit('ludo:joined', { gameId, profileId, roomSize: size });
-            console.log('[LUDO][server] ludo:joined emitted', { room, roomSize: size, forProfile: profileId });
+            io.to(room).emit('ludo:joined', { gameId, profileId: effectiveProfileId, roomSize: size });
+            console.log('[LUDO][server] ludo:joined emitted', { room, roomSize: size, forProfile: effectiveProfileId });
         } catch (e) { console.error('[LUDO][server] ludo:joined emit error', e?.message); }
         // Send latest players snapshot (if any) only to the newly joined socket
         try {
@@ -303,11 +318,11 @@ function ludoSocket(io, socket, profileId) {
         // Remove this invite from the user's pending list
         const pid = String(effectiveProfileId || '');
         if (pid) {
-            const list = userInvites.get(pid) || [];
-            const filtered = list.filter(i => !(String(i.gameId) === String(payload.gameId) && (payload.from ? String(i.by) === String(payload.from) : true)));
-            userInvites.set(pid, filtered);
-            try { console.log('[LUDO][server] invites updated after accept', { pid, before: list.length, after: filtered.length }); } catch (_e) {}
-            io.to(`user_${pid}`).emit('ludo:invites', { invites: filtered });
+            clearInvitesForGame(io, pid, payload.gameId);
+            try {
+                const list = userInvites.get(pid) || [];
+                console.log('[LUDO][server] invites cleared after accept', { pid, remaining: list.length });
+            } catch (_e) {}
         }
     });
 

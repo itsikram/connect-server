@@ -7,7 +7,7 @@ Router.post('/login',login)
 Router.post('/google-signin',googleSignIn)
 Router.post('/forgot-password', forgotPassword)
 Router.post('/reset-password/:token', resetPassword)
-Router.post('/delete',deleteAccount)
+Router.post('/delete', isAuth, deleteAccount)
 Router.post('/changePass',isAuth,changePass)
 Router.post('/changeEmail',isAuth,changeEmail)
 
