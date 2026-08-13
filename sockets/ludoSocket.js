@@ -4,6 +4,35 @@ const games = new Map(); // gameId -> { createdAt: number, lastPlayers: object, 
 const userInvites = new Map(); // profileId -> [{ gameId, by, name, avatar, slotIndex, playerCount, ts }]
 const playerSockets = new Map(); // profileId -> Set<socketId> (track all sockets for a profile)
 
+const pruneGameIfEmpty = (io, gameId) => {
+  if (!gameId) return false;
+  const game = games.get(gameId);
+  if (!game) return false;
+
+  const onlineCount = game.onlinePlayers instanceof Set ? game.onlinePlayers.size : 0;
+  const offlineCount = game.offlinePlayers instanceof Map ? game.offlinePlayers.size : 0;
+
+  if (onlineCount > 0 || offlineCount > 0) {
+    return false;
+  }
+
+  games.delete(gameId);
+
+  try {
+    io.to(`ludo_${gameId}`).emit("ludo:game:removed", {
+      gameId,
+      reason: "empty",
+      serverTs: Date.now(),
+    });
+  } catch (_e) {}
+
+  try {
+    console.log("[LUDO][server] pruned empty game", { gameId });
+  } catch (_e) {}
+
+  return true;
+};
+
 const clearInvitesForGame = (io, profileId, gameId) => {
   const pid = String(profileId || "");
   if (!pid || !gameId) return;
@@ -71,10 +100,12 @@ function ludoSocket(io, socket, profileId) {
           if (sockets.size === 0) {
             playerSockets.delete(pid);
             // Find all games this player is in and mark them offline
+            const touchedGameIds = [];
             games.forEach((game, gameId) => {
               if (game.onlinePlayers.has(pid)) {
                 game.onlinePlayers.delete(pid);
                 game.offlinePlayers.set(pid, Date.now());
+                touchedGameIds.push(gameId);
                 // Notify other players in the game
                 io.to(`ludo_${gameId}`).emit("ludo:player:offline", {
                   profileId: pid,
@@ -82,6 +113,10 @@ function ludoSocket(io, socket, profileId) {
                   timestamp: Date.now(),
                 });
               }
+            });
+
+            touchedGameIds.forEach((gameId) => {
+              pruneGameIfEmpty(io, gameId);
             });
           }
         }
@@ -301,6 +336,86 @@ function ludoSocket(io, socket, profileId) {
       ...payload,
       serverTs: Date.now(),
     });
+  });
+
+  socket.on("ludo:leave", (payload = {}) => {
+    const { gameId, profileId: payloadProfileId } = payload || {};
+    if (!gameId) return;
+
+    const pid = String(payloadProfileId || effectiveProfileId || "");
+    const game = games.get(gameId);
+    if (!game) return;
+
+    if (pid) {
+      game.onlinePlayers.delete(pid);
+      game.offlinePlayers.delete(pid);
+    }
+
+    if (game?.lastPlayers?.players && Array.isArray(game.lastPlayers.players) && pid) {
+      game.lastPlayers.players = game.lastPlayers.players.map((player, index) => {
+        if (!player?.profileId || String(player.profileId) !== pid) {
+          return player;
+        }
+
+        return {
+          ...player,
+          profileId: null,
+          isActive: false,
+          isOffline: false,
+          offlineSince: undefined,
+          name:
+            player?.isBot || index === 0
+              ? player.name
+              : `Player ${index + 1}`,
+        };
+      });
+    }
+
+    try {
+      socket.leave(`ludo_${gameId}`);
+    } catch (_e) {}
+
+    try {
+      io.to(`ludo_${gameId}`).emit("ludo:player:left", {
+        gameId,
+        profileId: pid || undefined,
+        serverTs: Date.now(),
+      });
+    } catch (_e) {}
+
+    if (game.lastPlayers && games.has(gameId)) {
+      try {
+        const enhanced = { ...game.lastPlayers };
+        if (Array.isArray(enhanced.players)) {
+          enhanced.players = enhanced.players.map((p) => {
+            const playerId = String(p?.profileId || "");
+            const isOnline = playerId && game.onlinePlayers.has(playerId);
+            const isOffline = playerId && game.offlinePlayers.has(playerId);
+            return {
+              ...p,
+              isActive: isOnline || !playerId,
+              isOffline,
+              offlineSince: isOffline ? game.offlinePlayers.get(playerId) : undefined,
+            };
+          });
+        }
+        game.lastPlayers = enhanced;
+        io.to(`ludo_${gameId}`).emit("ludo:players", {
+          ...enhanced,
+          serverTs: Date.now(),
+        });
+      } catch (_e) {}
+    }
+
+    pruneGameIfEmpty(io, gameId);
+
+    try {
+      console.log("[LUDO][server] ludo:leave", {
+        gameId,
+        profileId: pid || null,
+        removed: !games.has(gameId),
+      });
+    } catch (_e) {}
   });
 
   // Host sends an invite specifying target friend profile id
