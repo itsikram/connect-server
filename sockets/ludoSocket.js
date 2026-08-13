@@ -496,6 +496,9 @@ function ludoSocket(io, socket, profileId) {
   socket.on("ludo:accept", (payload = {}) => {
     const { gameId } = payload;
     if (!gameId) return;
+    const pid = String(effectiveProfileId || "");
+    if (!pid) return;
+
     try {
       const room = `ludo_${gameId}`;
       const size = io?.sockets?.adapter?.rooms?.get?.(room)?.size || 0;
@@ -507,9 +510,73 @@ function ludoSocket(io, socket, profileId) {
         roomSize: size,
       });
     } catch (_e) {}
+
     const room = joinRoom(gameId);
+    const game = games.get(gameId);
+    const requestedSlot = Number(payload?.slotIndex);
+    let acceptedSlot = Number.isInteger(requestedSlot) ? requestedSlot : -1;
+
+    if (game?.lastPlayers?.players && Array.isArray(game.lastPlayers.players)) {
+      const players = game.lastPlayers.players;
+      const alreadyInGameIndex = players.findIndex(
+        (player) => player?.profileId && String(player.profileId) === pid,
+      );
+
+      if (alreadyInGameIndex >= 0) {
+        acceptedSlot = alreadyInGameIndex;
+      } else if (
+        acceptedSlot >= 0 &&
+        players[acceptedSlot] &&
+        !players[acceptedSlot].profileId
+      ) {
+        game.lastPlayers.players[acceptedSlot] = {
+          ...players[acceptedSlot],
+          name: payload?.friend?.fullName || players[acceptedSlot].name,
+          avatar: payload?.friend?.profilePic || players[acceptedSlot].avatar,
+          cover:
+            payload?.friend?.coverPic ||
+            payload?.friend?.cover ||
+            players[acceptedSlot].cover,
+          profileId: pid,
+          isActive: true,
+          isOffline: false,
+          offlineSince: undefined,
+        };
+      } else {
+        const fallbackSlot = players.findIndex((player, index) => {
+          if (index === 0) return false;
+          return player && !player.profileId;
+        });
+
+        if (fallbackSlot >= 0) {
+          acceptedSlot = fallbackSlot;
+          game.lastPlayers.players[acceptedSlot] = {
+            ...players[acceptedSlot],
+            name: payload?.friend?.fullName || players[acceptedSlot].name,
+            avatar: payload?.friend?.profilePic || players[acceptedSlot].avatar,
+            cover:
+              payload?.friend?.coverPic ||
+              payload?.friend?.cover ||
+              players[acceptedSlot].cover,
+            profileId: pid,
+            isActive: true,
+            isOffline: false,
+            offlineSince: undefined,
+          };
+        }
+      }
+    }
+
     try {
-      const emitted = { ...payload, serverTs: Date.now() };
+      const emitted = {
+        ...payload,
+        slotIndex: acceptedSlot >= 0 ? acceptedSlot : payload?.slotIndex,
+        friend: {
+          ...payload?.friend,
+          _id: pid,
+        },
+        serverTs: Date.now(),
+      };
       io.to(room).emit("ludo:accepted", emitted);
       const size = io?.sockets?.adapter?.rooms?.get?.(room)?.size || 0;
       console.log("[LUDO][server] ludo:accepted emitted", {
@@ -517,11 +584,17 @@ function ludoSocket(io, socket, profileId) {
         roomSize: size,
         payload: emitted,
       });
+
+      if (game?.lastPlayers) {
+        io.to(room).emit("ludo:players", {
+          ...game.lastPlayers,
+          serverTs: Date.now(),
+        });
+      }
     } catch (e) {
       console.error("[LUDO][server] ludo:accepted emit error", e?.message);
     }
     // Remove this invite from the user's pending list
-    const pid = String(effectiveProfileId || "");
     if (pid) {
       clearInvitesForGame(io, pid, payload.gameId);
       try {
