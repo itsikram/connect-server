@@ -1,71 +1,80 @@
-
-const Profile = require('../models/Profile')
-const Post = require('../models/Post')
-const Watch = require('../models/Watch')
+const Profile = require("../models/Profile");
+const Post = require("../models/Post");
+const Watch = require("../models/Watch");
 
 exports.getSearchResult = async (req, res, next) => {
-    console.log('req.query.input')
-    try {
+  console.log("req.query.input");
+  try {
+    let queryString = req.query.input || "";
 
-        let queryString = req.query.input || ''
+    let searchResponse = {
+      posts: null,
+      users: null,
+      videos: null,
+    };
 
-        let searchResponse = {
-            posts: null,
-            users: null,
-            videos: null
-        }
+    let usersFound = await Profile.find({
+      $or: [
+        {
+          fullName: {
+            $regex: queryString,
+            $options: "i",
+          },
+        },
+        {
+          banglaName: {
+            $regex: queryString,
+            $options: "i",
+          },
+        },
+        {
+          displayName: {
+            $regex: queryString,
+            $options: "i",
+          },
+        },
+        {
+          nickname: {
+            $regex: queryString,
+            $options: "i",
+          },
+        },
+      ],
+    });
 
-        let usersFound = await Profile.find({
-            fullName: {
-                $regex: queryString,
-                $options: 'i'
-            }
-        })
+    console.log("usersFound", usersFound);
 
-        console.log('usersFound',usersFound)
+    if (usersFound) {
+      searchResponse.users = usersFound;
+    }
 
-        if (usersFound) {
-            searchResponse.users = usersFound
-        }
+    let postsFound = await Post.find({
+      caption: {
+        $regex: queryString,
+        $options: "i",
+      },
+    }).populate("author");
 
-        let postsFound = await Post.find({
-            caption: {
-                $regex: queryString,
-                $options: 'i'
-            }
-        }).populate('author')
+    if (postsFound) {
+      searchResponse.posts = postsFound;
+    }
+    let videosFound = await Watch.find({
+      caption: {
+        $regex: queryString,
+        $options: "i",
+      },
+    }).populate("author");
 
-        if (postsFound) {
-            searchResponse.posts = postsFound
-        }
-        let videosFound = await Watch.find({
-            caption: {
-                $regex: queryString,
-                $options: 'i'
-            }
-        }).populate('author')
+    if (videosFound) {
+      searchResponse.videos = videosFound;
+    }
 
-        if (videosFound) {
-            searchResponse.videos = videosFound
-        }
+    if (usersFound || postsFound || videosFound) {
+      return res.json(searchResponse).status(200);
+    }
 
-        if (usersFound || postsFound || videosFound) {
-            return res.json(searchResponse).status(200)
-
-        }
-
-
-
-
-
-
-
-
-
-
-
-        return res.json({ message: 'Not Profile Found' }).status(400)
-
-
-    } catch (e) { next(e) }
-}
+    return res.json({ message: "Not Profile Found" }).status(400);
+  } catch (e) {
+    next(e);
+  }
+};

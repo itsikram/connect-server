@@ -235,6 +235,40 @@ exports.updateProfile = async (req, res, next) => {
   }
 };
 
+// Update Bengali name
+exports.updateBanglaName = async (req, res, next) => {
+  try {
+    const profileId = req.profile._id;
+    const { banglaName } = req.body;
+
+    if (!banglaName || banglaName.trim().length === 0) {
+      return res.status(400).json({ message: "Bengali name cannot be empty" });
+    }
+
+    const updatedProfile = await Profile.findByIdAndUpdate(
+      { _id: profileId },
+      { banglaName: banglaName.trim() },
+      { new: true },
+    ).populate("user");
+
+    if (updatedProfile) {
+      return res.status(200).json({
+        success: true,
+        message: "Bengali name updated successfully",
+        profile: updatedProfile,
+      });
+    }
+
+    return res.status(404).json({ message: "Profile not found" });
+  } catch (error) {
+    console.error("Error updating Bengali name:", error);
+    return res.status(500).json({
+      message: "Failed to update Bengali name",
+      error: error.message,
+    });
+  }
+};
+
 // Get nearby profiles based on location
 exports.getNearbyProfiles = async (req, res, next) => {
   try {
