@@ -91,6 +91,10 @@ let settingSchema = new Schema({
         type: Boolean,
         default: false,
     },
+    chatBackground: {
+        type: String,
+        default: null,
+    },
     profile: {
         ref: Profile,
         type: Schema.Types.ObjectId,

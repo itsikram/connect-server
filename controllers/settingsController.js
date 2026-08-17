@@ -1,4 +1,12 @@
 const Setting = require('../models/Setting')
+const { v2: cloudinary } = require('cloudinary')
+const streamifier = require('streamifier')
+
+cloudinary.config({ 
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME || '', 
+    api_key: process.env.CLOUDINARY_API_KEY || '', 
+    api_secret: process.env.CLOUDINARY_API_SECRET 
+})
 
 const defaultSettings = () => ({
     isShareEmotion: false,
@@ -69,6 +77,29 @@ exports.updateSetting = async (req, res, next) => {
 
         if (settingObject.ringtone !== undefined) {
             settingObject.ringtone = Number(settingObject.ringtone) || 1
+        }
+
+        // Handle chatBackground file upload if present
+        if (req.file) {
+            try {
+                const uploadResult = await new Promise((resolve, reject) => {
+                    const uploadStream = cloudinary.uploader.upload_stream(
+                        {
+                            resource_type: 'auto',
+                            folder: 'chat-backgrounds',
+                        },
+                        (error, result) => {
+                            if (error) reject(error)
+                            else resolve(result)
+                        }
+                    )
+                    streamifier.createReadStream(req.file.buffer).pipe(uploadStream)
+                })
+                settingObject.chatBackground = uploadResult.secure_url
+            } catch (uploadError) {
+                console.error('Cloudinary upload error:', uploadError)
+                return res.status(500).json({ message: 'Failed to upload chat background' })
+            }
         }
 
         const existing = await Setting.findOne({ profile: profileId })

@@ -325,8 +325,8 @@ exports.updatePost = async (req, res, next) => {
 
 exports.getNewsFeed = async (req, res, next) => {
     let profile = req.profile
-    let pageNumber = req.query.pageNumber
-    let limit = 3
+    let pageNumber = Number(req.query.pageNumber) || 1
+    let limit = 10
     try {
         if (!profile || !profile._id) {
             return res.status(401).json({ message: 'Unauthorized' })
