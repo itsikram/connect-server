@@ -1,5 +1,5 @@
 const Router = require('express').Router()
-const {prefileHasStory,getProfileImages,profileGet,profilePost,updateBioPost,updateCoverPost,updateProfilePic,updateProfile,getNearbyProfiles,getOnlineStatus} = require('../controllers/profileController')
+const {prefileHasStory,getProfileImages,profileGet,profilePost,updateBioPost,updateCoverPost,updateProfilePic,updateProfile,getNearbyProfiles,getOnlineStatus,getNearbyPlaces} = require('../controllers/profileController')
 const coverPicUpload = require('../middlewares/UploadCover')
 const photosUpload = require('../middlewares/photosUpload')
 const isAuth = require('../middlewares/isAuth')
@@ -12,6 +12,7 @@ Router.get('/', isAuth, profileGet)
 Router.get('/hasStory', prefileHasStory)
 Router.get('/getImages', getProfileImages)
 Router.get('/nearby', isAuth, getNearbyProfiles) // Get nearby profiles endpoint
+Router.get('/nearby-places', isAuth, getNearbyPlaces) // Get nearby places from OpenStreetMap endpoint
 Router.get('/online-status', isAuth, getOnlineStatus) // Check online status endpoint
 Router.post('/',profilePost)
 Router.post('/update/coverPic',upload.single('image'),isAuth,updateCoverPost)

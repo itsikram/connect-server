@@ -361,6 +361,119 @@ exports.getOnlineStatus = async (req, res, next) => {
     }
 };
 
+exports.getNearbyPlaces = async (req, res, next) => {
+    try {
+        const { latitude, longitude, radius = 2000 } = req.query;
+
+        // Validate required parameters
+        if (!latitude || !longitude) {
+            return res.status(400).json({ 
+                message: 'Latitude and longitude are required' 
+            });
+        }
+
+        const lat = parseFloat(latitude);
+        const lng = parseFloat(longitude);
+        const rad = parseInt(radius);
+
+        // Validate coordinates
+        if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+            return res.status(400).json({ 
+                message: 'Invalid latitude or longitude values' 
+            });
+        }
+
+        const PLACE_TYPES = ['restaurant', 'cafe', 'park'];
+        const mapPlaceTypeToOverpassTag = (type) => {
+            switch (type) {
+                case 'restaurant':
+                    return '["amenity"="restaurant"]';
+                case 'cafe':
+                    return '["amenity"="cafe"]';
+                case 'park':
+                    return '["leisure"="park"]';
+                default:
+                    return '';
+            }
+        };
+
+        const aroundClauses = PLACE_TYPES.map((type) => {
+            const tag = mapPlaceTypeToOverpassTag(type);
+            return `
+                node${tag}(around:${rad},${lat},${lng});
+                way${tag}(around:${rad},${lat},${lng});
+                relation${tag}(around:${rad},${lat},${lng});
+            `;
+        }).join('\n');
+
+        const query = `
+            [out:json][timeout:15];
+            (
+                ${aroundClauses}
+            );
+            out center tags;
+        `;
+
+        const response = await fetch('https://overpass-api.de/api/interpreter', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'text/plain;charset=UTF-8',
+            },
+            body: query,
+            timeout: 20000,
+        });
+
+        if (!response.ok) {
+            throw new Error(`Overpass API request failed with status ${response.status}`);
+        }
+
+        const data = await response.json();
+        const seenPlaceIds = new Set();
+        const places = [];
+
+        (data.elements || []).forEach((place) => {
+            const placeLat = place.lat ?? place.center?.lat;
+            const placeLng = place.lon ?? place.center?.lon;
+            if (typeof placeLat !== 'number' || typeof placeLng !== 'number') return;
+
+            const placeKey = `${place.type}-${place.id}`;
+            if (seenPlaceIds.has(placeKey)) return;
+            seenPlaceIds.add(placeKey);
+
+            const name = place.tags?.name || place.tags?.brand || 'Place';
+            const address = [
+                place.tags?.['addr:housenumber'],
+                place.tags?.['addr:street'],
+            ]
+                .filter(Boolean)
+                .join(' ');
+            const category = place.tags?.amenity || place.tags?.leisure || place.tags?.tourism || '';
+
+            places.push({
+                id: place.id,
+                type: place.type,
+                lat: placeLat,
+                lng: placeLng,
+                name,
+                address,
+                category,
+            });
+        });
+
+        return res.status(200).json({
+            success: true,
+            places,
+            count: places.length,
+        });
+    } catch (error) {
+        console.error('Error fetching nearby places:', error);
+        return res.status(500).json({ 
+            message: 'Failed to fetch nearby places',
+            error: error.message 
+        });
+    }
+};
+
 
 
 
