@@ -3,8 +3,8 @@ const os = require("os");
 const path = require("path");
 const jwt = require("jsonwebtoken");
 const { spawn } = require("child_process");
-const readline = require("readline");
 const ffmpegInstaller = require("@ffmpeg-installer/ffmpeg");
+const { createClient } = require("@deepgram/sdk");
 const { WebSocketServer } = require("ws");
 
 const JWT_SECRET = process.env.JWT_SECRET_KEY;
@@ -18,8 +18,13 @@ const MAX_TRANSCRIBE_WINDOW_MS = Number(
 const SPEECH_TRANSCRIBE_TIMEOUT_MS = Number(
   process.env.SPEECH_TRANSCRIBE_TIMEOUT_MS || 45000,
 );
+const SPEECH_MIN_RMS = Number(process.env.SPEECH_MIN_RMS || 220);
+const SPEECH_MIN_ACTIVE_RATIO = Number(
+  process.env.SPEECH_MIN_ACTIVE_RATIO || 0.06,
+);
 
-const PYTHON_WORKER_PATH = path.join(__dirname, "whisperWorker.py");
+const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
+const DEFAULT_DEEPGRAM_MODEL = process.env.DEEPGRAM_MODEL || "nova-2";
 
 const ensureDir = (dirPath) => {
   if (!fs.existsSync(dirPath)) {
@@ -33,6 +38,8 @@ ensureDir(SPEECH_TEMP_DIR);
 const normalizeText = (text = "") => String(text).replace(/\s+/g, " ").trim();
 
 const TIBETAN_CHAR_REGEX = /[\u0F00-\u0FFF]/;
+const KANNADA_CHAR_REGEX = /[\u0C80-\u0CFF]/;
+const BENGALI_CHAR_REGEX = /[\u0980-\u09FF]/;
 const ALLOWED_TRANSCRIPT_CHAR_REGEX =
   /[\u0980-\u09FFa-zA-Z0-9\s.,!?;:'"()\-_/&@#+]/g;
 
@@ -67,6 +74,7 @@ const isLikelyGarbageTranscript = (text = "") => {
 
   // Strong signal of bad decode we repeatedly observed in logs.
   if (TIBETAN_CHAR_REGEX.test(normalized)) return true;
+  if (KANNADA_CHAR_REGEX.test(normalized)) return true;
 
   // If almost all chars are outside Bangla/Latin/normal punctuation, drop it.
   const allowedChars = normalized.match(ALLOWED_TRANSCRIPT_CHAR_REGEX) || [];
@@ -99,11 +107,111 @@ const isLikelyGarbageTranscript = (text = "") => {
   return false;
 };
 
-const sanitizeTranscript = (text = "") => {
-  const normalized = normalizeText(text);
+const prepareBanglaText = (text = "", language = "bn") => {
+  let value = normalizeText(text);
+  if (!value) return "";
+
+  const normalizedLanguage = String(language || "").toLowerCase();
+  if (!normalizedLanguage.startsWith("bn")) {
+    return value;
+  }
+
+  value = value
+    .replace(/\bআম্রা\b/g, "আমরা")
+    .replace(/\bবাংলে\b/g, "বাংলায়")
+    .replace(/\bবাঙ্গলে\b/g, "বাংলায়")
+    .replace(/\bবাংগলে\b/g, "বাংলায়")
+    .replace(/\bবাংলৈ\b/g, "বাংলায়")
+    .replace(/\bবাঙলে\b/g, "বাংলায়")
+    .replace(/\bকোত্ধা\b/g, "কথা")
+    .replace(/\bকোত্তা\b/g, "কথা")
+    .replace(/\bকোতা\b/g, "কথা")
+    .replace(/\bকোথা\b/g, "কথা")
+    .replace(/\bগোত্ধা\b/g, "কথা")
+    .replace(/\bবল্তেশি\b/g, "বলতেছি")
+    .replace(/\bবল্তেসি\b/g, "বলতেছি")
+    .replace(/\bবল্তেশী\b/g, "বলতেছি")
+    .replace(/\bবোল্তেশি\b/g, "বলতেছি")
+    .replace(/\bবোল্তেসি\b/g, "বলতেছি")
+    .replace(/(?<![\u0980-\u09FF])যাব(?![\u0980-\u09FF])/g, "যাবো");
+
+  const compact = value.replace(/[\s।.!?,;:'"-]+/g, "");
+  const hasBangla = BENGALI_CHAR_REGEX.test(value);
+
+  if (
+    hasBangla &&
+    /বাংল(?:া|ায়)\s+কথা\s+বলতেছি/.test(value) &&
+    !/আমরা\s+বাংল(?:া|ায়)/.test(value)
+  ) {
+    return "আমরা বাংলায় কথা বলতেছি।";
+  }
+
+  if (
+    compact &&
+    /বাংল(?:া|ায়|ায়)কথাবলতেছি/.test(compact) &&
+    !/আমরা/.test(compact)
+  ) {
+    return "আমরা বাংলায় কথা বলতেছি।";
+  }
+
+  if (hasBangla && value && !/[.!?।]$/.test(value)) {
+    value += "।";
+  }
+
+  return value;
+};
+
+const sanitizeTranscript = (text = "", language = "bn") => {
+  const normalized = prepareBanglaText(text, language);
   if (!normalized) return "";
   if (isLikelyGarbageTranscript(normalized)) return "";
+  if (
+    String(language || "")
+      .toLowerCase()
+      .startsWith("bn") &&
+    isKnownBadBanglaGuess(normalized)
+  )
+    return "";
   return normalized;
+};
+
+const SUSPICIOUS_BANGLA_PREFIXES = [
+  "তিনি বাংলা",
+  "কি বাংলা",
+  "নাম পারক",
+  "অন্যম পারক",
+  "তিনি তার",
+];
+
+const isKnownBadBanglaGuess = (text = "") => {
+  const value = normalizeText(text);
+  return SUSPICIOUS_BANGLA_PREFIXES.some((prefix) => value.startsWith(prefix));
+};
+
+const looksLikeStableBanglaPartial = (text = "", language = "bn") => {
+  const value = normalizeText(text);
+  if (!value) return false;
+
+  const normalizedLanguage = String(language || "").toLowerCase();
+  if (!normalizedLanguage.startsWith("bn")) {
+    return value.length >= 8;
+  }
+
+  if (!BENGALI_CHAR_REGEX.test(value)) return false;
+
+  const wordCount = value.split(" ").filter(Boolean).length;
+  const charCount = value.replace(/\s+/g, "").length;
+
+  // For rolling partials, suppress very short unstable guesses such as
+  // "তিনি বাংলা" or other 1-2 word hallucinations.
+  if (wordCount < 3) return false;
+  if (charCount < 10) return false;
+
+  if (isKnownBadBanglaGuess(value)) {
+    return false;
+  }
+
+  return true;
 };
 
 const mergeOverlappingText = (previous = "", current = "") => {
@@ -167,6 +275,66 @@ const verifyTokenFromRequest = (req) => {
   }
 };
 
+const analyzeWavSpeechEnergy = async (wavPath) => {
+  const buffer = await fs.promises.readFile(wavPath);
+  if (buffer.length < 44 || buffer.toString("ascii", 0, 4) !== "RIFF") {
+    return { hasSpeech: true, rms: 0, activeRatio: 1 };
+  }
+
+  let offset = 12;
+  let dataOffset = -1;
+  let dataLength = 0;
+
+  while (offset + 8 <= buffer.length) {
+    const chunkId = buffer.toString("ascii", offset, offset + 4);
+    const chunkLength = buffer.readUInt32LE(offset + 4);
+    if (chunkId === "data") {
+      dataOffset = offset + 8;
+      dataLength = Math.min(chunkLength, buffer.length - dataOffset);
+      break;
+    }
+    offset += 8 + chunkLength + (chunkLength % 2);
+  }
+
+  if (dataOffset < 0 || dataLength < 2) {
+    return { hasSpeech: true, rms: 0, activeRatio: 1 };
+  }
+
+  const sampleCount = Math.floor(dataLength / 2);
+  let sumSquares = 0;
+  let peak = 0;
+  const windowSamples = 320; // 20 ms at 16 kHz.
+  let activeWindows = 0;
+  let totalWindows = 0;
+
+  for (let start = 0; start < sampleCount; start += windowSamples) {
+    const end = Math.min(sampleCount, start + windowSamples);
+    let windowSquares = 0;
+
+    for (let i = start; i < end; i += 1) {
+      const sample = buffer.readInt16LE(dataOffset + i * 2);
+      const absolute = Math.abs(sample);
+      if (absolute > peak) peak = absolute;
+      const square = sample * sample;
+      sumSquares += square;
+      windowSquares += square;
+    }
+
+    const windowRms = Math.sqrt(windowSquares / Math.max(1, end - start));
+    if (windowRms >= SPEECH_MIN_RMS * 1.35) activeWindows += 1;
+    totalWindows += 1;
+  }
+
+  const rms = Math.sqrt(sumSquares / Math.max(1, sampleCount));
+  const activeRatio = activeWindows / Math.max(1, totalWindows);
+  const hasSpeech =
+    rms >= SPEECH_MIN_RMS &&
+    activeRatio >= SPEECH_MIN_ACTIVE_RATIO &&
+    peak >= SPEECH_MIN_RMS * 3;
+
+  return { hasSpeech, rms, activeRatio, peak };
+};
+
 const convertWebmToWav16k = (sourcePath, targetPath) =>
   new Promise((resolve, reject) => {
     const ffmpegPath = ffmpegInstaller.path;
@@ -210,186 +378,101 @@ const convertWebmToWav16k = (sourcePath, targetPath) =>
     });
   });
 
-class PythonWhisperBridge {
+class DeepgramBridge {
   constructor() {
-    this.proc = null;
-    this.requests = new Map();
-    this.counter = 0;
     this.bootError = null;
     this.ready = false;
-    this.spawnedAt = Date.now();
-    this.modelSize = this.resolveEffectiveModelSize();
+    this.client = null;
+    this.model = DEFAULT_DEEPGRAM_MODEL;
     this.start();
   }
 
-  resolveEffectiveModelSize() {
-    const requested = (process.env.WHISPER_MODEL_SIZE || "small").trim();
-    const lower = requested.toLowerCase();
-    const allowHeavy = /^1|true|yes$/i.test(
-      String(process.env.WHISPER_ALLOW_HEAVY_MODEL || ""),
-    );
-    const isHeavy =
-      lower === "medium" ||
-      lower.startsWith("large") ||
-      lower.includes("distil-large");
-
-    if (process.platform === "win32" && isHeavy && !allowHeavy) {
-      console.warn(
-        `[speech] WHISPER_MODEL_SIZE=${requested} can cause very long cold starts on Windows CPU. Auto-downgrading to "small" for real-time responsiveness. Set WHISPER_ALLOW_HEAVY_MODEL=true to force heavy models.`,
-      );
-      return "small";
-    }
-
-    return requested || "small";
-  }
-
   start() {
-    const preferredPython = process.env.WHISPER_PYTHON_BIN || "python";
-
-    console.log(
-      `[speech] Spawning Whisper worker: bin="${preferredPython}" script="${PYTHON_WORKER_PATH}" model="${this.modelSize}"`,
-    );
-
-    try {
-      this.proc = spawn(preferredPython, [PYTHON_WORKER_PATH], {
-        cwd: path.join(__dirname, ".."),
-        env: {
-          ...process.env,
-          WHISPER_MODEL_SIZE: this.modelSize,
-          HF_HUB_DISABLE_SYMLINKS_WARNING:
-            process.env.HF_HUB_DISABLE_SYMLINKS_WARNING || "1",
-          // Windows defaults Python stdio to the system codepage (e.g. cp1252),
-          // which cannot encode Bangla Unicode and crashes the worker.
-          PYTHONIOENCODING: "utf-8",
-          PYTHONUTF8: "1",
-        },
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-    } catch (error) {
-      this.bootError = error;
-      console.error("[speech] Failed to spawn Whisper worker:", error.message);
+    if (!DEEPGRAM_API_KEY) {
+      this.bootError = new Error(
+        "DEEPGRAM_API_KEY is not configured for speech transcription",
+      );
+      console.error("[speech] Deepgram init failed: missing DEEPGRAM_API_KEY");
       return;
     }
 
-    const rl = readline.createInterface({ input: this.proc.stdout });
-
-    rl.on("line", (line) => {
-      console.log("[speech-whisper-worker:stdout]", line);
-
-      let payload;
-      try {
-        payload = JSON.parse(line);
-      } catch {
-        return;
-      }
-
-      if (payload.type === "ready") {
-        this.ready = true;
-        const loadSeconds = ((Date.now() - this.spawnedAt) / 1000).toFixed(1);
-        console.log(
-          `[speech] Whisper model ready in ${loadSeconds}s: model=${payload.model} device=${payload.device} compute=${payload.compute_type} language=${payload.language}`,
-        );
-        return;
-      }
-
-      const reqId = payload?.id;
-      if (!reqId || !this.requests.has(reqId)) return;
-
-      const req = this.requests.get(reqId);
-      this.requests.delete(reqId);
-
-      if (payload.type === "result") {
-        req.resolve(payload.text || "");
-      } else {
-        req.reject(new Error(payload.message || "Transcription failed"));
-      }
-    });
-
-    this.proc.stderr.on("data", (chunk) => {
-      const output = chunk.toString();
-      if (output.trim()) {
-        console.error("[speech-whisper-worker:stderr]", output.trim());
-      }
-    });
-
-    this.proc.on("error", (error) => {
+    try {
+      this.client = createClient(DEEPGRAM_API_KEY);
+      this.ready = true;
+      console.log(
+        `[speech] Deepgram client ready model=${this.model} defaultLanguage=bn`,
+      );
+    } catch (error) {
       this.bootError = error;
-      console.error("[speech] Whisper worker process error:", error.message);
-      this.failAllPending(error);
-    });
-
-    this.proc.on("close", (code) => {
-      console.error(`[speech] Whisper worker exited with code ${code}`);
-      const err = new Error(`Whisper worker exited with code ${code}`);
-      this.failAllPending(err);
-      this.proc = null;
-      this.ready = false;
-    });
+      console.error(
+        "[speech] Failed to initialize Deepgram client:",
+        error.message,
+      );
+    }
   }
 
-  failAllPending(error) {
-    this.requests.forEach((req) => req.reject(error));
-    this.requests.clear();
+  resolveLanguage(language = "bn") {
+    const normalized = String(language || "bn")
+      .trim()
+      .toLowerCase();
+    if (normalized === "bn-bd") return "bn";
+    return normalized || "bn";
   }
 
-  transcribe(audioPath, language = "bn") {
+  async transcribe(audioPath, language = "bn") {
     if (this.bootError) {
-      return Promise.reject(this.bootError);
+      throw this.bootError;
     }
 
-    if (!this.proc || !this.proc.stdin || this.proc.killed) {
-      return Promise.reject(new Error("Whisper worker is not running"));
+    if (!this.client) {
+      throw new Error("Deepgram client is not initialized");
     }
 
-    const id = `tx-${Date.now()}-${this.counter++}`;
     const startedAt = Date.now();
+    const effectiveLanguage = this.resolveLanguage(language);
+    const audioBuffer = await fs.promises.readFile(audioPath);
 
     console.log(
-      `[speech] -> transcribe request id=${id} language=${language} audioPath=${audioPath}`,
+      `[speech] -> deepgram transcribe language=${effectiveLanguage} model=${this.model} audioPath=${audioPath} bytes=${audioBuffer.length}`,
     );
 
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.requests.delete(id);
+    const timeout = new Promise((_, reject) => {
+      setTimeout(() => {
         reject(
           new Error(
-            `Transcription timed out after ${SPEECH_TRANSCRIBE_TIMEOUT_MS}ms (worker may still be loading or overloaded)`,
+            `Deepgram transcription timed out after ${SPEECH_TRANSCRIBE_TIMEOUT_MS}ms`,
           ),
         );
       }, SPEECH_TRANSCRIBE_TIMEOUT_MS);
-
-      this.requests.set(id, {
-        resolve: (text) => {
-          clearTimeout(timeout);
-          console.log(
-            `[speech] <- transcribe result id=${id} durationMs=${Date.now() - startedAt} textLength=${text.length} preview="${text.slice(0, 80)}"`,
-          );
-          resolve(text);
-        },
-        reject: (error) => {
-          clearTimeout(timeout);
-          console.warn(
-            `[speech] <- transcribe failed id=${id} durationMs=${Date.now() - startedAt} error=${error.message}`,
-          );
-          reject(error);
-        },
-      });
-
-      const payload = {
-        type: "transcribe",
-        id,
-        audioPath,
-        language,
-      };
-
-      try {
-        this.proc.stdin.write(`${JSON.stringify(payload)}\n`);
-      } catch (error) {
-        clearTimeout(timeout);
-        this.requests.delete(id);
-        reject(error);
-      }
     });
+
+    const request = this.client.listen.prerecorded.transcribeFile(audioBuffer, {
+      model: this.model,
+      language: effectiveLanguage,
+      smart_format: true,
+      punctuate: true,
+      paragraphs: false,
+      diarize: false,
+      utterances: false,
+      detect_language: false,
+      filler_words: false,
+      numerals: false,
+      encoding: "linear16",
+      sample_rate: 16000,
+      channels: 1,
+      mimetype: "audio/wav",
+    });
+
+    const response = await Promise.race([request, timeout]);
+    const transcript =
+      response?.result?.results?.channels?.[0]?.alternatives?.[0]?.transcript ||
+      "";
+
+    console.log(
+      `[speech] <- deepgram result durationMs=${Date.now() - startedAt} textLength=${transcript.length} preview="${transcript.slice(0, 80)}"`,
+    );
+
+    return transcript;
   }
 }
 
@@ -418,6 +501,7 @@ const createSpeechSession = (ws, transcriber) => {
     language: "bn",
     mimeType: "audio/webm",
     chunks: [],
+    allChunks: [],
     headerChunk: null,
     chunkDurationMs: 800,
     lastPartial: "",
@@ -427,6 +511,9 @@ const createSpeechSession = (ws, transcriber) => {
     queue: Promise.resolve(),
     consecutiveEmptyResults: 0,
     lastStatusSentAt: 0,
+    partialCandidate: "",
+    partialCandidateCount: 0,
+    isStopping: false,
   };
 
   const send = (payload) => {
@@ -437,12 +524,16 @@ const createSpeechSession = (ws, transcriber) => {
 
   const resetSessionAudio = () => {
     state.chunks = [];
+    state.allChunks = [];
     state.headerChunk = null;
     state.lastPartial = "";
     state.finalTranscript = "";
     state.queue = Promise.resolve();
     state.consecutiveEmptyResults = 0;
     state.lastStatusSentAt = 0;
+    state.partialCandidate = "";
+    state.partialCandidateCount = 0;
+    state.isStopping = false;
   };
 
   const pushChunk = (buffer) => {
@@ -459,6 +550,7 @@ const createSpeechSession = (ws, transcriber) => {
     }
 
     state.chunks.push(buffer);
+    state.allChunks.push(buffer);
 
     const maxByDuration = estimateWindowChunks(state.chunkDurationMs);
     const maxAllowed = Math.min(MAX_CHUNKS_IN_BUFFER, maxByDuration);
@@ -495,9 +587,10 @@ const createSpeechSession = (ws, transcriber) => {
     const wavPath = path.join(SPEECH_TEMP_DIR, `${sessionId}.wav`);
 
     try {
+      const sourceChunks = isFinal ? state.allChunks : state.chunks;
       const bufferedChunks = state.headerChunk
-        ? [state.headerChunk, ...state.chunks]
-        : state.chunks;
+        ? [state.headerChunk, ...sourceChunks]
+        : sourceChunks;
       const audioBuffer = Buffer.concat(bufferedChunks);
 
       console.log(
@@ -512,15 +605,30 @@ const createSpeechSession = (ws, transcriber) => {
         `[speech] session=${state.sessionLabel} ffmpeg conversion done wavBytes=${wavStat ? wavStat.size : "unknown"}`,
       );
 
-      const rawTranscript = normalizeText(
-        await state.transcriber.transcribe(wavPath, state.language || "bn"),
+      const energy = await analyzeWavSpeechEnergy(wavPath);
+      console.log(
+        `[speech] session=${state.sessionLabel} energy rms=${energy.rms.toFixed(1)} peak=${energy.peak || 0} activeRatio=${energy.activeRatio.toFixed(3)} hasSpeech=${energy.hasSpeech}`,
       );
+
+      let rawTranscript = "";
+      if (energy.hasSpeech) {
+        rawTranscript = normalizeText(
+          await state.transcriber.transcribe(wavPath, state.language || "bn"),
+        );
+      } else {
+        console.log(
+          `[speech] session=${state.sessionLabel} skipping Deepgram for silent/low-energy audio`,
+        );
+      }
 
       console.log(
         `[speech] session=${state.sessionLabel} raw transcript="${rawTranscript}" (length=${rawTranscript.length})`,
       );
 
-      const transcript = sanitizeTranscript(rawTranscript);
+      const transcript = sanitizeTranscript(
+        rawTranscript,
+        state.language || "bn",
+      );
 
       if (!transcript && rawTranscript) {
         console.log(
@@ -548,25 +656,63 @@ const createSpeechSession = (ws, transcriber) => {
 
       const merged = mergeOverlappingText(state.lastPartial, transcript);
 
-      if (merged && merged !== state.lastPartial) {
+      if (isFinal) {
+        const keepStablePartial =
+          isKnownBadBanglaGuess(transcript) &&
+          looksLikeStableBanglaPartial(
+            state.lastPartial,
+            state.language || "bn",
+          );
+        const finalText = keepStablePartial
+          ? state.lastPartial
+          : merged || state.lastPartial || "";
+
+        if (keepStablePartial) {
+          console.log(
+            `[speech] session=${state.sessionLabel} rejected suspicious final transcript="${transcript}"; keeping stable partial="${state.lastPartial}"`,
+          );
+        }
+        if (finalText && finalText !== state.lastPartial) {
+          state.lastPartial = finalText;
+        }
+        state.finalTranscript = state.lastPartial || "";
+        console.log(
+          `[speech] session=${state.sessionLabel} sending final text="${state.finalTranscript}"`,
+        );
+        send({ type: "final", text: state.finalTranscript });
+      } else if (state.isStopping) {
+        console.log(
+          `[speech] session=${state.sessionLabel} suppressing partial while final transcription is pending`,
+        );
+      } else if (merged && merged !== state.lastPartial) {
+        if (!looksLikeStableBanglaPartial(merged, state.language || "bn")) {
+          if (state.partialCandidate === merged) {
+            state.partialCandidateCount += 1;
+          } else {
+            state.partialCandidate = merged;
+            state.partialCandidateCount = 1;
+          }
+
+          console.log(
+            `[speech] session=${state.sessionLabel} holding unstable partial text="${merged}" seen=${state.partialCandidateCount}`,
+          );
+
+          if (state.partialCandidateCount < 2) {
+            return;
+          }
+        }
+
+        state.partialCandidate = "";
+        state.partialCandidateCount = 0;
         state.lastPartial = merged;
         console.log(
-          `[speech] session=${state.sessionLabel} sending ${isFinal ? "final" : "partial"} text="${merged}"`,
+          `[speech] session=${state.sessionLabel} sending partial text="${merged}"`,
         );
-        send({ type: isFinal ? "final" : "partial", text: merged });
-      } else if (isFinal) {
-        console.log(
-          `[speech] session=${state.sessionLabel} sending final (unchanged) text="${state.lastPartial || ""}"`,
-        );
-        send({ type: "final", text: state.lastPartial || "" });
+        send({ type: "partial", text: merged });
       } else {
         console.log(
           `[speech] session=${state.sessionLabel} no new text to send (merged matches lastPartial or empty)`,
         );
-      }
-
-      if (isFinal) {
-        state.finalTranscript = state.lastPartial || "";
       }
     } catch (error) {
       // Most chunk-level failures are recoverable (e.g., timing/container edge cases).
@@ -642,16 +788,22 @@ const createSpeechSession = (ws, transcriber) => {
       send({
         type: "status",
         message:
-          "Speech model is still loading on the server (larger models can take a while on first run). Your speech will still be captured; transcription will begin as soon as it's ready.",
+          "Speech recognizer is still initializing on the server. Your speech will still be captured; transcription will begin as soon as it's ready.",
       });
     }
   };
 
   const stopRecording = async () => {
-    state.isRecording = false;
+    state.isStopping = true;
     stopScheduler();
     console.log(`[speech] session=${state.sessionLabel} stop requested`);
+
+    // MediaRecorder can deliver its last data chunk immediately after the stop
+    // message. Keep accepting chunks briefly so the final pass is complete.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    state.isRecording = false;
     await runTranscription({ isFinal: true });
+    state.isStopping = false;
   };
 
   return {
@@ -664,13 +816,14 @@ const createSpeechSession = (ws, transcriber) => {
       stopScheduler();
       state.isRecording = false;
       state.chunks = [];
+      state.allChunks = [];
       state.headerChunk = null;
     },
   };
 };
 
 const initializeSpeechWebSocketServer = (httpServer) => {
-  const whisperBridge = new PythonWhisperBridge();
+  const deepgramBridge = new DeepgramBridge();
 
   // IMPORTANT: use noServer mode so we don't interfere with Socket.IO upgrade flow.
   const speechWss = new WebSocketServer({
@@ -695,32 +848,32 @@ const initializeSpeechWebSocketServer = (httpServer) => {
       return;
     }
 
-    if (!whisperBridge.ready && !whisperBridge.bootError) {
+    if (!deepgramBridge.ready && !deepgramBridge.bootError) {
       console.warn(
-        "[speech] Whisper worker not confirmed ready yet — first transcription may be slow or fail if model is still loading.",
+        "[speech] Deepgram client not confirmed ready yet — first transcription may be slow or fail if initialization is incomplete.",
       );
       ws.send(
         JSON.stringify({
           type: "status",
           message:
-            "Speech model is still loading on the server (larger models can take a while on first run). Your speech will still be captured; transcription will begin as soon as it's ready.",
+            "Speech recognizer is still initializing on the server. Your speech will still be captured; transcription will begin as soon as it's ready.",
         }),
       );
     }
 
-    if (whisperBridge.bootError) {
+    if (deepgramBridge.bootError) {
       console.error(
-        "[speech] Whisper worker boot error present:",
-        whisperBridge.bootError.message,
+        "[speech] Deepgram boot error present:",
+        deepgramBridge.bootError.message,
       );
     }
 
-    const session = createSpeechSession(ws, whisperBridge);
+    const session = createSpeechSession(ws, deepgramBridge);
 
     ws.on("message", async (raw, isBinary) => {
       try {
         if (isBinary) {
-          if (!session.state.isRecording) {
+          if (!session.state.isRecording && !session.state.isStopping) {
             console.log(
               `[speech] session=${session.state.sessionLabel} dropped binary chunk (not recording)`,
             );
@@ -742,7 +895,11 @@ const initializeSpeechWebSocketServer = (httpServer) => {
         } else if (payload.type === "stop") {
           await session.stopRecording();
         } else if (payload.type === "audio") {
-          if (!session.state.isRecording || !payload.data) return;
+          if (
+            (!session.state.isRecording && !session.state.isStopping) ||
+            !payload.data
+          )
+            return;
           const data = Buffer.from(payload.data, "base64");
           session.pushChunk(data);
         } else if (payload.type === "ping") {

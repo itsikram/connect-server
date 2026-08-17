@@ -18,6 +18,7 @@
     "nodemon": "^3.1.9"
   },
   "dependencies": {
+    "@deepgram/sdk": "^4.8.0",
     "@distube/ytdl-core": "^4.16.12",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@tensorflow/tfjs": "^4.22.0",
