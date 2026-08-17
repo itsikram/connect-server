@@ -3,7 +3,7 @@ import json
 import os
 import sys
 import traceback
-from typing import Any, Dict
+from typing import Any
 
 # On Windows, stdio defaults to the system codepage (e.g. cp1252), which
 # cannot encode Bangla Unicode text and crashes the worker with
@@ -26,17 +26,14 @@ except Exception as exc:  # pragma: no cover
     raise
 
 
-MODEL_SIZE = os.environ.get("WHISPER_MODEL_SIZE", "base")
+MODEL_SIZE = os.environ.get("WHISPER_MODEL_SIZE", "small")
 COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "int8")
 DEVICE = os.environ.get("WHISPER_DEVICE", "auto")
 DEFAULT_LANGUAGE = os.environ.get("WHISPER_LANGUAGE", "bn")
-DEFAULT_INITIAL_PROMPT = os.environ.get(
-    "WHISPER_INITIAL_PROMPT",
-    "এই অডিওটি বাংলায় বলা হয়েছে। বাংলা ইউনিকোড টেক্সটে সঠিকভাবে লিখুন।",
-)
+DEFAULT_INITIAL_PROMPT = os.environ.get("WHISPER_INITIAL_PROMPT", "").strip()
 
 
-def emit(payload: Dict[str, Any]) -> None:
+def emit(payload: dict[str, Any]) -> None:
     sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
     sys.stdout.flush()
 
@@ -73,17 +70,31 @@ def transcribe_audio(
         f"size_bytes={audio_size} language={language or DEFAULT_LANGUAGE}"
     )
 
+    transcribe_kwargs: dict[str, Any] = {
+        "language": language or DEFAULT_LANGUAGE,
+        "task": "transcribe",
+        "beam_size": 1,
+        "best_of": 1,
+        "temperature": 0.0,
+        "vad_filter": True,
+        "vad_parameters": {
+            "min_silence_duration_ms": 500,
+            "speech_pad_ms": 200,
+        },
+        "condition_on_previous_text": False,
+        "word_timestamps": False,
+        "no_speech_threshold": 0.6,
+        "log_prob_threshold": -1.0,
+        "compression_ratio_threshold": 2.4,
+        "hallucination_silence_threshold": 0.35,
+    }
+
+    if DEFAULT_INITIAL_PROMPT:
+        transcribe_kwargs["initial_prompt"] = DEFAULT_INITIAL_PROMPT
+
     segments, info = model.transcribe(
         audio_path,
-        language=language or DEFAULT_LANGUAGE,
-        task="transcribe",
-        beam_size=2,
-        best_of=2,
-        temperature=0.0,
-        vad_filter=True,
-        condition_on_previous_text=False,
-        word_timestamps=False,
-        initial_prompt=DEFAULT_INITIAL_PROMPT,
+        **transcribe_kwargs,
     )
 
     text_parts = []

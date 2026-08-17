@@ -9,11 +9,14 @@ const { WebSocketServer } = require("ws");
 
 const JWT_SECRET = process.env.JWT_SECRET_KEY;
 const CHUNK_TRANSCRIBE_INTERVAL_MS = Number(
-  process.env.SPEECH_TRANSCRIBE_INTERVAL_MS || 1200,
+  process.env.SPEECH_TRANSCRIBE_INTERVAL_MS || 1000,
 );
-const MAX_CHUNKS_IN_BUFFER = Number(process.env.SPEECH_MAX_CHUNKS || 24);
+const MAX_CHUNKS_IN_BUFFER = Number(process.env.SPEECH_MAX_CHUNKS || 10);
 const MAX_TRANSCRIBE_WINDOW_MS = Number(
-  process.env.SPEECH_MAX_WINDOW_MS || 16000,
+  process.env.SPEECH_MAX_WINDOW_MS || 8000,
+);
+const SPEECH_TRANSCRIBE_TIMEOUT_MS = Number(
+  process.env.SPEECH_TRANSCRIBE_TIMEOUT_MS || 45000,
 );
 
 const PYTHON_WORKER_PATH = path.join(__dirname, "whisperWorker.py");
@@ -28,6 +31,46 @@ const SPEECH_TEMP_DIR = path.join(os.tmpdir(), "connect-speech");
 ensureDir(SPEECH_TEMP_DIR);
 
 const normalizeText = (text = "") => String(text).replace(/\s+/g, " ").trim();
+
+const TIBETAN_CHAR_REGEX = /[\u0F00-\u0FFF]/;
+const ALLOWED_TRANSCRIPT_CHAR_REGEX =
+  /[\u0980-\u09FFa-zA-Z0-9\s.,!?;:'"()\-_/&@#+]/g;
+
+const isLikelyGarbageTranscript = (text = "") => {
+  const normalized = normalizeText(text);
+  if (!normalized) return true;
+
+  // Strong signal of bad decode we repeatedly observed in logs.
+  if (TIBETAN_CHAR_REGEX.test(normalized)) return true;
+
+  // If almost all chars are outside Bangla/Latin/normal punctuation, drop it.
+  const allowedChars = normalized.match(ALLOWED_TRANSCRIPT_CHAR_REGEX) || [];
+  const allowedRatio = allowedChars.length / normalized.length;
+  if (allowedRatio < 0.65) return true;
+
+  // Repeated-token hallucination guard, e.g. "x x x x x ...".
+  const words = normalized.split(" ").filter(Boolean);
+  if (words.length >= 6) {
+    const uniqueWords = new Set(words);
+    if (uniqueWords.size <= 2) return true;
+  }
+
+  // Repeated single-char stream guard.
+  const noSpace = normalized.replace(/\s+/g, "");
+  if (noSpace.length >= 12) {
+    const uniqueChars = new Set(noSpace.split(""));
+    if (uniqueChars.size <= 2) return true;
+  }
+
+  return false;
+};
+
+const sanitizeTranscript = (text = "") => {
+  const normalized = normalizeText(text);
+  if (!normalized) return "";
+  if (isLikelyGarbageTranscript(normalized)) return "";
+  return normalized;
+};
 
 const mergeOverlappingText = (previous = "", current = "") => {
   const prev = normalizeText(previous);
@@ -141,14 +184,36 @@ class PythonWhisperBridge {
     this.bootError = null;
     this.ready = false;
     this.spawnedAt = Date.now();
+    this.modelSize = this.resolveEffectiveModelSize();
     this.start();
+  }
+
+  resolveEffectiveModelSize() {
+    const requested = (process.env.WHISPER_MODEL_SIZE || "small").trim();
+    const lower = requested.toLowerCase();
+    const allowHeavy = /^1|true|yes$/i.test(
+      String(process.env.WHISPER_ALLOW_HEAVY_MODEL || ""),
+    );
+    const isHeavy =
+      lower === "medium" ||
+      lower.startsWith("large") ||
+      lower.includes("distil-large");
+
+    if (process.platform === "win32" && isHeavy && !allowHeavy) {
+      console.warn(
+        `[speech] WHISPER_MODEL_SIZE=${requested} can cause very long cold starts on Windows CPU. Auto-downgrading to "small" for real-time responsiveness. Set WHISPER_ALLOW_HEAVY_MODEL=true to force heavy models.`,
+      );
+      return "small";
+    }
+
+    return requested || "small";
   }
 
   start() {
     const preferredPython = process.env.WHISPER_PYTHON_BIN || "python";
 
     console.log(
-      `[speech] Spawning Whisper worker: bin="${preferredPython}" script="${PYTHON_WORKER_PATH}"`,
+      `[speech] Spawning Whisper worker: bin="${preferredPython}" script="${PYTHON_WORKER_PATH}" model="${this.modelSize}"`,
     );
 
     try {
@@ -156,6 +221,7 @@ class PythonWhisperBridge {
         cwd: path.join(__dirname, ".."),
         env: {
           ...process.env,
+          WHISPER_MODEL_SIZE: this.modelSize,
           HF_HUB_DISABLE_SYMLINKS_WARNING:
             process.env.HF_HUB_DISABLE_SYMLINKS_WARNING || "1",
           // Windows defaults Python stdio to the system codepage (e.g. cp1252),
@@ -249,14 +315,25 @@ class PythonWhisperBridge {
     );
 
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.requests.delete(id);
+        reject(
+          new Error(
+            `Transcription timed out after ${SPEECH_TRANSCRIBE_TIMEOUT_MS}ms (worker may still be loading or overloaded)`,
+          ),
+        );
+      }, SPEECH_TRANSCRIBE_TIMEOUT_MS);
+
       this.requests.set(id, {
         resolve: (text) => {
+          clearTimeout(timeout);
           console.log(
             `[speech] <- transcribe result id=${id} durationMs=${Date.now() - startedAt} textLength=${text.length} preview="${text.slice(0, 80)}"`,
           );
           resolve(text);
         },
         reject: (error) => {
+          clearTimeout(timeout);
           console.warn(
             `[speech] <- transcribe failed id=${id} durationMs=${Date.now() - startedAt} error=${error.message}`,
           );
@@ -274,6 +351,7 @@ class PythonWhisperBridge {
       try {
         this.proc.stdin.write(`${JSON.stringify(payload)}\n`);
       } catch (error) {
+        clearTimeout(timeout);
         this.requests.delete(id);
         reject(error);
       }
@@ -396,13 +474,21 @@ const createSpeechSession = (ws, transcriber) => {
         `[speech] session=${state.sessionLabel} ffmpeg conversion done wavBytes=${wavStat ? wavStat.size : "unknown"}`,
       );
 
-      const transcript = normalizeText(
+      const rawTranscript = normalizeText(
         await state.transcriber.transcribe(wavPath, state.language || "bn"),
       );
 
       console.log(
-        `[speech] session=${state.sessionLabel} raw transcript="${transcript}" (length=${transcript.length})`,
+        `[speech] session=${state.sessionLabel} raw transcript="${rawTranscript}" (length=${rawTranscript.length})`,
       );
+
+      const transcript = sanitizeTranscript(rawTranscript);
+
+      if (!transcript && rawTranscript) {
+        console.log(
+          `[speech] session=${state.sessionLabel} dropped low-confidence/garbage transcript window`,
+        );
+      }
 
       const merged = mergeOverlappingText(state.lastPartial, transcript);
 
