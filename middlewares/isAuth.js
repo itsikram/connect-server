@@ -7,7 +7,6 @@ const SECRET_KEY = process.env.JWT_SECRET_KEY;
 let isAuth = async (req, res, next) => {
   try {
     let token = req.headers.authorization;
-    console.log("token", token);
 
     // Check if token exists
     if (!token) {
