@@ -9,11 +9,11 @@ const { WebSocketServer } = require("ws");
 
 const JWT_SECRET = process.env.JWT_SECRET_KEY;
 const CHUNK_TRANSCRIBE_INTERVAL_MS = Number(
-  process.env.SPEECH_TRANSCRIBE_INTERVAL_MS || 1000,
+  process.env.SPEECH_TRANSCRIBE_INTERVAL_MS || 900,
 );
-const MAX_CHUNKS_IN_BUFFER = Number(process.env.SPEECH_MAX_CHUNKS || 10);
+const MAX_CHUNKS_IN_BUFFER = Number(process.env.SPEECH_MAX_CHUNKS || 6);
 const MAX_TRANSCRIBE_WINDOW_MS = Number(
-  process.env.SPEECH_MAX_WINDOW_MS || 8000,
+  process.env.SPEECH_MAX_WINDOW_MS || 5000,
 );
 const SPEECH_TRANSCRIBE_TIMEOUT_MS = Number(
   process.env.SPEECH_TRANSCRIBE_TIMEOUT_MS || 45000,
@@ -35,6 +35,31 @@ const normalizeText = (text = "") => String(text).replace(/\s+/g, " ").trim();
 const TIBETAN_CHAR_REGEX = /[\u0F00-\u0FFF]/;
 const ALLOWED_TRANSCRIPT_CHAR_REGEX =
   /[\u0980-\u09FFa-zA-Z0-9\s.,!?;:'"()\-_/&@#+]/g;
+
+const hasRepeatingPattern = (text = "") => {
+  const compact = text.replace(/\s+/g, "");
+  if (compact.length < 12) return false;
+
+  for (let size = 1; size <= 6; size += 1) {
+    const seed = compact.slice(0, size);
+    if (!seed) continue;
+
+    let matched = 0;
+    for (let i = 0; i < compact.length; i += size) {
+      const chunk = compact.slice(i, i + size);
+      if (!chunk) continue;
+      if (seed.startsWith(chunk) || chunk === seed) {
+        matched += chunk.length;
+      }
+    }
+
+    if (matched / compact.length >= 0.82) {
+      return true;
+    }
+  }
+
+  return false;
+};
 
 const isLikelyGarbageTranscript = (text = "") => {
   const normalized = normalizeText(text);
@@ -60,6 +85,15 @@ const isLikelyGarbageTranscript = (text = "") => {
   if (noSpace.length >= 12) {
     const uniqueChars = new Set(noSpace.split(""));
     if (uniqueChars.size <= 2) return true;
+  }
+
+  // Repeated syllable/pattern hallucination guard (e.g. কাকেকে..., ༼༼༼...).
+  if (hasRepeatingPattern(normalized)) return true;
+
+  // Long single-token lines with very low unique char diversity are usually junk.
+  if (!normalized.includes(" ") && noSpace.length >= 24) {
+    const uniqueChars = new Set(noSpace.split(""));
+    if (uniqueChars.size <= 6) return true;
   }
 
   return false;
@@ -391,6 +425,8 @@ const createSpeechSession = (ws, transcriber) => {
     transcribing: false,
     intervalId: null,
     queue: Promise.resolve(),
+    consecutiveEmptyResults: 0,
+    lastStatusSentAt: 0,
   };
 
   const send = (payload) => {
@@ -405,6 +441,8 @@ const createSpeechSession = (ws, transcriber) => {
     state.lastPartial = "";
     state.finalTranscript = "";
     state.queue = Promise.resolve();
+    state.consecutiveEmptyResults = 0;
+    state.lastStatusSentAt = 0;
   };
 
   const pushChunk = (buffer) => {
@@ -488,6 +526,24 @@ const createSpeechSession = (ws, transcriber) => {
         console.log(
           `[speech] session=${state.sessionLabel} dropped low-confidence/garbage transcript window`,
         );
+      }
+
+      if (!transcript) {
+        state.consecutiveEmptyResults += 1;
+      } else {
+        state.consecutiveEmptyResults = 0;
+      }
+
+      if (
+        state.consecutiveEmptyResults >= 6 &&
+        Date.now() - state.lastStatusSentAt > 5000
+      ) {
+        state.lastStatusSentAt = Date.now();
+        send({
+          type: "status",
+          message:
+            "No clear Bangla speech detected yet. Please speak closer to the mic in a quieter environment.",
+        });
       }
 
       const merged = mergeOverlappingText(state.lastPartial, transcript);
