@@ -343,6 +343,8 @@ const convertWebmToWav16k = (sourcePath, targetPath) =>
       "-y",
       "-i",
       sourcePath,
+      "-af",
+      "afftdn",
       "-ac",
       "1",
       "-ar",
@@ -625,14 +627,23 @@ const createSpeechSession = (ws, transcriber) => {
         `[speech] session=${state.sessionLabel} raw transcript="${rawTranscript}" (length=${rawTranscript.length})`,
       );
 
-      const transcript = sanitizeTranscript(
-        rawTranscript,
-        state.language || "bn",
-      );
+      const transcript = sanitizeTranscript(rawTranscript, state.language);
+
+      // End-of-sentence detection: if transcript ends with Bangla sentence terminator or common punctuation, emit final early
+      if (transcript && /[।.!?]$/.test(transcript)) {
+        state.lastPartial = transcript;
+        state.finalTranscript = transcript;
+        console.log(
+          `[speech] session=${state.sessionLabel} sentence end detected; sending final: "${transcript}"`,
+        );
+        send({ type: "final", text: transcript });
+        // Do not proceed with partial/merged logic for this window
+        return;
+      }
 
       if (!transcript && rawTranscript) {
         console.log(
-          `[speech] session=${state.sessionLabel} dropped low-confidence/garbage transcript window`,
+          `[speech] session=${state.sessionLabel} raw transcript "${rawTranscript}"`,
         );
       }
 
@@ -657,17 +668,14 @@ const createSpeechSession = (ws, transcriber) => {
       const merged = mergeOverlappingText(state.lastPartial, transcript);
 
       if (isFinal) {
-        const keepStablePartial =
+        const keepStableFinal =
           isKnownBadBanglaGuess(transcript) &&
-          looksLikeStableBanglaPartial(
-            state.lastPartial,
-            state.language || "bn",
-          );
-        const finalText = keepStablePartial
+          looksLikeStableBanglaPartial(state.lastPartial, state.language);
+        const finalText = keepStableFinal
           ? state.lastPartial
           : merged || state.lastPartial || "";
 
-        if (keepStablePartial) {
+        if (keepStableFinal) {
           console.log(
             `[speech] session=${state.sessionLabel} rejected suspicious final transcript="${transcript}"; keeping stable partial="${state.lastPartial}"`,
           );
@@ -685,7 +693,7 @@ const createSpeechSession = (ws, transcriber) => {
           `[speech] session=${state.sessionLabel} suppressing partial while final transcription is pending`,
         );
       } else if (merged && merged !== state.lastPartial) {
-        if (!looksLikeStableBanglaPartial(merged, state.language || "bn")) {
+        if (!looksLikeStableBanglaPartial(merged, state.language)) {
           if (state.partialCandidate === merged) {
             state.partialCandidateCount += 1;
           } else {
