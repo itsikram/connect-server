@@ -5,7 +5,8 @@ const cors = require('cors')
 const path = require('path')
 
 const {createProxyMiddleware} = require("http-proxy-middleware")
-// Middleware to disable caching for localhost
+
+// Global request logging intentionally disabled to keep debug.log focused on Ludo state only.
 const noCacheForLocalhost = (req, res, next) => {
     const hostname = req.hostname || req.get('host')?.split(':')[0];
     const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';

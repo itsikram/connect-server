@@ -1,60 +1,55 @@
-# Local Bangla Whisper Speech Streaming
+# Deepgram Live Bangla Speech Streaming
 
-This folder contains a WebSocket speech pipeline for real-time Bangla ASR:
+This folder contains the WebSocket speech pipeline for real-time Bangla speech-to-text:
 
 - `speechWsServer.js` – Node.js WebSocket server (`/ws/speech`) attached to the main HTTP server.
-- `whisperWorker.py` – persistent Python worker using `faster-whisper`.
+- Browser audio is streamed as `MediaRecorder` chunks to Node.
+- Node keeps a single `ffmpeg` process alive per session to convert browser audio into 16 kHz mono PCM.
+- PCM is forwarded to a single Deepgram live transcription stream for low-latency partials and fast finalization.
 
 ## Runtime dependencies
 
-### Node.js (already in `server/package.json`)
+### Node.js
+
+Already declared in `server/package.json`:
+
+- `@deepgram/sdk`
+- `@ffmpeg-installer/ffmpeg`
+- `ws`
+
+Install server dependencies as usual:
 
 ```bash
 cd server
-npm install ws
+npm install
 ```
 
-### Python
+## Required environment variables
 
 ```bash
-python -m pip install faster-whisper
-```
-
-If your default Python binary is not `python`, set:
-
-```bash
-WHISPER_PYTHON_BIN=python3
+DEEPGRAM_API_KEY=your_key_here
 ```
 
 ## Optional environment variables
 
 ```bash
-WHISPER_MODEL_SIZE=base
-WHISPER_COMPUTE_TYPE=int8
-WHISPER_DEVICE=auto
-WHISPER_LANGUAGE=bn
-WHISPER_INITIAL_PROMPT=এই অডিওটি বাংলায় বলা হয়েছে। বাংলা ইউনিকোড টেক্সটে সঠিকভাবে লিখুন।
-SPEECH_TRANSCRIBE_INTERVAL_MS=1200
-SPEECH_MAX_WINDOW_MS=16000
-SPEECH_MAX_CHUNKS=24
+# Global default model (defaults to nova-3)
+DEEPGRAM_MODEL=nova-3
+
+# Optional explicit Bangla override if DEEPGRAM_MODEL is set to something else
+DEEPGRAM_BANGLA_MODEL=nova-3
+
+# How long the server waits after stop/finalize before flushing the best transcript
+SPEECH_FINALIZE_GRACE_MS=1200
 ```
 
-Recommended model order for Bangla quality vs memory:
+## Why `nova-3`
 
-```bash
-# lowest memory
-WHISPER_MODEL_SIZE=tiny
+Deepgram supports Bengali (`bn`) on `nova-3`.
 
-# balanced (recommended start)
-WHISPER_MODEL_SIZE=base
+If `DEEPGRAM_MODEL` is set to `nova-2`, the server automatically overrides Bangla sessions to `DEEPGRAM_BANGLA_MODEL` because `nova-2` does not support Bengali.
 
-# better Bangla quality, more RAM/CPU
-WHISPER_MODEL_SIZE=small
-# or
-WHISPER_MODEL_SIZE=medium
-```
-
-## WebSocket protocol
+## Client protocol
 
 Client → Server:
 
@@ -63,11 +58,11 @@ Client → Server:
   "type": "start",
   "language": "bn",
   "mimeType": "audio/webm;codecs=opus",
-  "chunkDurationMs": 800
+  "chunkDurationMs": 400
 }
 ```
 
-Then stream binary audio chunks (MediaRecorder chunks).
+Then stream binary audio chunks from `MediaRecorder`.
 
 To stop:
 
@@ -78,13 +73,27 @@ To stop:
 Server → Client:
 
 ```json
-{ "type": "partial", "text": "আমি আজকে" }
+{ "type": "ready", "message": "Speech stream started" }
 ```
 
 ```json
-{ "type": "final", "text": "আমি আজকে ঢাকায় যাব" }
+{ "type": "partial", "text": "আমি এখন কথা বলছি" }
+```
+
+```json
+{ "type": "final", "text": "আমি এখন কথা বলছি" }
+```
+
+```json
+{ "type": "status", "message": "..." }
 ```
 
 ```json
 { "type": "error", "message": "..." }
 ```
+
+## Notes
+
+- Partials are emitted during the session and should appear directly in the chat input.
+- Final is emitted once the user stops recording and Deepgram flushes the tail of the stream.
+- This design is much faster than repeatedly writing temp files and re-transcribing rolling windows.

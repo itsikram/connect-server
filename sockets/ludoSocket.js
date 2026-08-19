@@ -1,5 +1,7 @@
 // Minimal Ludo game socket relay for online play and device migration
 
+const { debugLogger } = require("../utils/debugLogger");
+
 const games = new Map(); // gameId -> { createdAt: number, lastPlayers: object, onlinePlayers: Set<profileId>, offlinePlayers: Map<profileId, timestamp> }
 const userInvites = new Map(); // profileId -> [{ gameId, by, name, avatar, slotIndex, playerCount, ts }]
 const playerSockets = new Map(); // profileId -> Set<socketId> (track all sockets for a profile)
@@ -27,7 +29,7 @@ const pruneGameIfEmpty = (io, gameId) => {
   } catch (_e) {}
 
   try {
-    console.log("[LUDO][server] pruned empty game", { gameId });
+    debugLogger.ludoEvent("game-pruned", { gameId, onlineCount, offlineCount });
   } catch (_e) {}
 
   return true;
@@ -128,15 +130,8 @@ function ludoSocket(io, socket, profileId) {
     try {
       socket.join(`user_${effectiveProfileId}`);
     } catch (_e) {}
-    try {
-      const room = `user_${effectiveProfileId}`;
-      const size = io?.sockets?.adapter?.rooms?.get?.(room)?.size || 0;
-      console.log("[LUDO][server] joined user room", {
-        room,
-        size,
-        socketId: socket?.id,
-      });
-    } catch (_e) {}
+    // Suppressed noisy per-user room join log to reduce debug.log volume
+    // (was previously logging user-room-joined for every socket connect)
     // Track socket for this player
     const pid = String(effectiveProfileId);
     if (!playerSockets.has(pid)) {
@@ -171,6 +166,8 @@ function ludoSocket(io, socket, profileId) {
         createdAt: Date.now(),
         onlinePlayers: new Set(),
         offlinePlayers: new Map(), // profileId -> timestamp when went offline
+        // Buffer accepts that arrive before the host has written initial lastPlayers
+        pendingAccepts: [],
       });
     }
     // Mark player as online
@@ -189,7 +186,7 @@ function ludoSocket(io, socket, profileId) {
     try {
       const preRoom = `ludo_${gameId}`;
       const preSize = io?.sockets?.adapter?.rooms?.get?.(preRoom)?.size || 0;
-      console.log("[LUDO][server] ludo:join", {
+      debugLogger.ludoEvent("join", {
         socketId: socket?.id,
         gameId,
         effectiveProfileId,
@@ -207,13 +204,15 @@ function ludoSocket(io, socket, profileId) {
         profileId: effectiveProfileId,
         roomSize: size,
       });
-      console.log("[LUDO][server] ludo:joined emitted", {
+      debugLogger.ludoEvent("joined-emitted", {
         room,
         roomSize: size,
         forProfile: effectiveProfileId,
       });
     } catch (e) {
-      console.error("[LUDO][server] ludo:joined emit error", e?.message);
+      debugLogger.error("[LUDO][server] ludo:joined emit error", {
+        message: e?.message,
+      });
     }
     // Send latest players snapshot (if any) only to the newly joined socket
     try {
@@ -266,13 +265,16 @@ function ludoSocket(io, socket, profileId) {
     }
 
     try {
-      console.log("[LUDO][server] ✅ ludo:roll validated", {
+      debugLogger.ludoEvent("roll-validated", {
         socketId: socket?.id,
         gameId,
         by: payload?.by,
         value: payload?.value,
         currentPlayer: payload?.currentPlayer,
       });
+      if (game?.lastPlayers) {
+        debugLogger.ludoState(gameId, game.lastPlayers);
+      }
     } catch (_e) {}
 
     io.to(`ludo_${gameId}`).emit("ludo:roll", {
@@ -318,7 +320,7 @@ function ludoSocket(io, socket, profileId) {
     }
 
     try {
-      console.log("[LUDO][server] ✅ ludo:move validated", {
+      debugLogger.ludoEvent("move-validated", {
         socketId: socket?.id,
         gameId,
         by: payload?.by,
@@ -327,6 +329,9 @@ function ludoSocket(io, socket, profileId) {
         toSteps: payload?.toSteps,
         rolled: payload?.rolled,
       });
+      if (game?.lastPlayers) {
+        debugLogger.ludoState(gameId, game.lastPlayers);
+      }
     } catch (_e) {}
 
     // Do not guess turn/capture results here.
@@ -410,7 +415,7 @@ function ludoSocket(io, socket, profileId) {
     pruneGameIfEmpty(io, gameId);
 
     try {
-      console.log("[LUDO][server] ludo:leave", {
+      debugLogger.ludoEvent("leave", {
         gameId,
         profileId: pid || null,
         removed: !games.has(gameId),
@@ -430,7 +435,7 @@ function ludoSocket(io, socket, profileId) {
       return;
     }
     try {
-      console.log("[LUDO][server] ludo:invite recv", {
+      debugLogger.ludoEvent("invite-received", {
         socketId: socket?.id,
         to,
         by: payload?.by,
@@ -479,7 +484,7 @@ function ludoSocket(io, socket, profileId) {
     try {
       const room = `user_${to}`;
       const size = io?.sockets?.adapter?.rooms?.get?.(room)?.size || 0;
-      console.log("[LUDO][server] ludo:invite emit", {
+      debugLogger.ludoEvent("invite-emitted", {
         room,
         invitesCount: list.length,
         targetSockets: size,
@@ -502,7 +507,7 @@ function ludoSocket(io, socket, profileId) {
     try {
       const room = `ludo_${gameId}`;
       const size = io?.sockets?.adapter?.rooms?.get?.(room)?.size || 0;
-      console.log("[LUDO][server] ludo:accept", {
+      debugLogger.ludoEvent("accept", {
         socketId: socket?.id,
         effectiveProfileId,
         payload,
@@ -513,6 +518,58 @@ function ludoSocket(io, socket, profileId) {
 
     const room = joinRoom(gameId);
     const game = games.get(gameId);
+
+    // If host hasn't published initial lastPlayers yet, buffer this accept
+    // so it can be merged into the first ludo:players snapshot received.
+    if (!game?.lastPlayers) {
+      try {
+        game.pendingAccepts = game.pendingAccepts || [];
+        game.pendingAccepts.push({ payload, pid, ts: Date.now() });
+        console.log(
+          '[LUDO][server] ludo:accept buffered - no lastPlayers yet',
+          { gameId, pid, slotIndex: payload?.slotIndex },
+        );
+      } catch (_e) {}
+
+      // Still notify the room that the accept occurred (UI may optimistically transition)
+      try {
+        const emitted = {
+          ...payload,
+          slotIndex: payload?.slotIndex,
+          friend: {
+            ...payload?.friend,
+            _id: pid,
+          },
+          serverTs: Date.now(),
+        };
+        io.to(room).emit("ludo:accepted", emitted);
+        const size = io?.sockets?.adapter?.rooms?.get?.(room)?.size || 0;
+        debugLogger.ludoEvent("accepted-emitted", {
+          room,
+          roomSize: size,
+          payload: emitted,
+        });
+      } catch (e) {
+        debugLogger.error("[LUDO][server] ludo:accepted emit error", {
+          message: e?.message,
+        });
+      }
+
+      // Remove this invite from the user's pending list and return; the actual
+      // players merge will happen when the host posts ludo:players.
+      if (pid) {
+        clearInvitesForGame(io, pid, payload.gameId);
+        try {
+          const list = userInvites.get(pid) || [];
+          console.log("[LUDO][server] invites cleared after accept (buffered)", {
+            pid,
+            remaining: list.length,
+          });
+        } catch (_e) {}
+      }
+      return;
+    }
+
     const requestedSlot = Number(payload?.slotIndex);
     let acceptedSlot = Number.isInteger(requestedSlot) ? requestedSlot : -1;
 
@@ -579,20 +636,23 @@ function ludoSocket(io, socket, profileId) {
       };
       io.to(room).emit("ludo:accepted", emitted);
       const size = io?.sockets?.adapter?.rooms?.get?.(room)?.size || 0;
-      console.log("[LUDO][server] ludo:accepted emitted", {
+      debugLogger.ludoEvent("accepted-emitted", {
         room,
         roomSize: size,
         payload: emitted,
       });
 
       if (game?.lastPlayers) {
+        debugLogger.ludoState(gameId, game.lastPlayers);
         io.to(room).emit("ludo:players", {
           ...game.lastPlayers,
           serverTs: Date.now(),
         });
       }
     } catch (e) {
-      console.error("[LUDO][server] ludo:accepted emit error", e?.message);
+      debugLogger.error("[LUDO][server] ludo:accepted emit error", {
+        message: e?.message,
+      });
     }
     // Remove this invite from the user's pending list
     if (pid) {
@@ -642,10 +702,63 @@ function ludoSocket(io, socket, profileId) {
             : undefined,
         };
       });
+
+      // If any accepts were buffered because host had not yet published
+      // lastPlayers, merge them into this incoming payload so late-joiners
+      // and slot assignments are applied deterministically.
+      if (existing?.pendingAccepts && Array.isArray(existing.pendingAccepts) && existing.pendingAccepts.length > 0) {
+        try {
+          enhancedPayload.players = enhancedPayload.players || [];
+          existing.pendingAccepts.forEach((pa) => {
+            const pending = pa?.payload || {};
+            const pPid = pa?.pid || (pending?.by && String(pending.by));
+            if (!pPid) return;
+
+            const playersArr = enhancedPayload.players;
+            const requestedSlot = Number(pending?.slotIndex);
+            let assignedSlot = Number.isInteger(requestedSlot) ? requestedSlot : -1;
+
+            const alreadyInGameIndex = playersArr.findIndex((pl) => pl?.profileId && String(pl.profileId) === String(pPid));
+            if (alreadyInGameIndex >= 0) {
+              assignedSlot = alreadyInGameIndex;
+            } else if (assignedSlot >= 0 && playersArr[assignedSlot] && !playersArr[assignedSlot].profileId) {
+              playersArr[assignedSlot] = {
+                ...playersArr[assignedSlot],
+                name: pending?.friend?.fullName || playersArr[assignedSlot].name,
+                avatar: pending?.friend?.profilePic || playersArr[assignedSlot].avatar,
+                cover: pending?.friend?.coverPic || pending?.friend?.cover || playersArr[assignedSlot].cover,
+                profileId: pPid,
+                isActive: true,
+                isOffline: false,
+                offlineSince: undefined,
+              };
+            } else {
+              const fallback = playersArr.findIndex((player, idx) => idx === 0 ? false : player && !player.profileId);
+              if (fallback >= 0) {
+                assignedSlot = fallback;
+                playersArr[assignedSlot] = {
+                  ...playersArr[assignedSlot],
+                  name: pending?.friend?.fullName || playersArr[assignedSlot].name,
+                  avatar: pending?.friend?.profilePic || playersArr[assignedSlot].avatar,
+                  cover: pending?.friend?.coverPic || pending?.friend?.cover || playersArr[assignedSlot].cover,
+                  profileId: pPid,
+                  isActive: true,
+                  isOffline: false,
+                  offlineSince: undefined,
+                };
+              }
+            }
+          });
+
+          // Drain buffer after merging
+          existing.pendingAccepts = [];
+          console.log("[LUDO][server] drained pendingAccepts into players snapshot", { gameId });
+        } catch (_e) {}
+      }
     }
     games.set(gameId, { ...existing, lastPlayers: enhancedPayload });
     try {
-      console.log("[LUDO][server] ludo:players snapshot", {
+      debugLogger.ludoEvent("players-snapshot", {
         gameId,
         players: Array.isArray(payload?.players)
           ? payload.players.length
@@ -653,6 +766,7 @@ function ludoSocket(io, socket, profileId) {
         selectedPlayerCount: payload?.selectedPlayerCount,
         currentPlayer: payload?.currentPlayer,
       });
+      debugLogger.ludoState(gameId, enhancedPayload);
     } catch (_e) {}
     io.to(`ludo_${gameId}`).emit("ludo:players", {
       ...enhancedPayload,
@@ -682,7 +796,7 @@ function ludoSocket(io, socket, profileId) {
     });
 
     try {
-      console.log("[LUDO][server] ludo:games:get", {
+      debugLogger.ludoEvent("games-get", {
         pid,
         gamesCount: userGames.length,
       });
@@ -696,12 +810,7 @@ function ludoSocket(io, socket, profileId) {
     const pid = String(effectiveProfileId || "");
     if (!pid) return;
     const invites = userInvites.get(pid) || [];
-    try {
-      console.log("[LUDO][server] ludo:invites:get", {
-        pid,
-        invitesCount: invites.length,
-      });
-    } catch (_e) {}
+    // Suppressed noisy invites-get debug event; emit invites only
     socket.emit("ludo:invites", { invites });
   });
 
@@ -727,9 +836,8 @@ function ludoSocket(io, socket, profileId) {
             };
           });
         }
-        console.log("[LUDO][server] ludo:players:get -> emit snapshot", {
-          gameId,
-        });
+        debugLogger.ludoEvent("players-get-response", { gameId });
+        debugLogger.ludoState(gameId, enhanced);
         socket.emit("ludo:players", { ...enhanced, serverTs: Date.now() });
       }
     } catch (_e) {}
@@ -761,10 +869,11 @@ function ludoSocket(io, socket, profileId) {
             ...g.lastPlayers,
             serverTs: Date.now(),
           });
-          console.log("[LUDO][server] ludo:replace:bot", {
+          debugLogger.ludoEvent("replace-bot", {
             gameId,
             playerIndex,
           });
+          debugLogger.ludoState(gameId, g.lastPlayers);
         }
       }
     } catch (_e) {}
@@ -795,10 +904,11 @@ function ludoSocket(io, socket, profileId) {
             ...g.lastPlayers,
             serverTs: Date.now(),
           });
-          console.log("[LUDO][server] ludo:remove:player", {
+          debugLogger.ludoEvent("remove-player", {
             gameId,
             playerIndex,
           });
+          debugLogger.ludoState(gameId, g.lastPlayers);
         }
       }
     } catch (_e) {}
@@ -820,7 +930,7 @@ function ludoSocket(io, socket, profileId) {
     );
     userInvites.set(pid, filtered);
     try {
-      console.log("[LUDO][server] ludo:invites:dismiss", {
+      debugLogger.ludoEvent("invites-dismissed", {
         pid,
         gameId,
         by,
