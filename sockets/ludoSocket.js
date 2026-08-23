@@ -442,6 +442,7 @@ function ludoSocket(io, socket, profileId) {
 
     const targetId = String(to);
     const existingGame = gameId ? games.get(gameId) : null;
+    const isReinvite = payload.reinvite === true;
     const alreadyJoined = Boolean(
       gameId &&
       (existingGame?.onlinePlayers?.has(targetId) ||
@@ -451,20 +452,31 @@ function ludoSocket(io, socket, profileId) {
         )),
     );
 
-    if (alreadyJoined) {
+    if (alreadyJoined && !isReinvite) {
       clearInvitesForGame(io, targetId, gameId);
       return;
     }
 
-    const invite = { ...payload, ts: Date.now() };
+    const invite = {
+      ...payload,
+      reinvite: isReinvite,
+      inviteId:
+        payload.inviteId ||
+        `${String(gameId || "game")}:${targetId}:${Date.now()}`,
+      ts: Date.now(),
+    };
     const list = userInvites.get(targetId) || [];
     // Deduplicate by gameId+by
-    const exists = list.find(
+    const existingIndex = list.findIndex(
       (i) =>
         String(i.gameId) === String(invite.gameId) &&
         String(i.by) === String(invite.by),
     );
-    if (!exists) list.push(invite);
+    if (existingIndex >= 0) {
+      list[existingIndex] = invite;
+    } else {
+      list.push(invite);
+    }
     userInvites.set(targetId, list);
     // Notify target user: single invite + full list snapshot
     try {
@@ -556,6 +568,18 @@ function ludoSocket(io, socket, profileId) {
 
       if (alreadyInGameIndex >= 0) {
         acceptedSlot = alreadyInGameIndex;
+        game.lastPlayers.players[acceptedSlot] = {
+          ...players[acceptedSlot],
+          name: payload?.friend?.fullName || players[acceptedSlot].name,
+          avatar: payload?.friend?.profilePic || players[acceptedSlot].avatar,
+          cover:
+            payload?.friend?.coverPic ||
+            payload?.friend?.cover ||
+            players[acceptedSlot].cover,
+          isActive: true,
+          isOffline: false,
+          offlineSince: undefined,
+        };
       } else if (
         acceptedSlot >= 0 &&
         players[acceptedSlot] &&
@@ -812,39 +836,52 @@ function ludoSocket(io, socket, profileId) {
     } catch (_e) {}
   });
 
-  // Host requests to replace offline player with bot
+  // Only the host may replace a non-host seat with a computer player.
   socket.on("ludo:replace:bot", (payload = {}) => {
     const { gameId, playerIndex } = payload || {};
-    if (!gameId || typeof playerIndex !== "number") return;
+    if (!gameId || typeof playerIndex !== "number" || playerIndex <= 0) return;
     try {
       const g = games.get(gameId);
-      if (g && g.lastPlayers && Array.isArray(g.lastPlayers.players)) {
-        const player = g.lastPlayers.players[playerIndex];
-        if (player && player.profileId) {
-          // Remove from offline tracking
-          const pid = String(player.profileId);
-          g.offlinePlayers.delete(pid);
-          g.onlinePlayers.delete(pid);
-          // Update player to bot (remove profileId)
-          g.lastPlayers.players[playerIndex] = {
-            ...player,
-            profileId: null,
-            isActive: true,
-            isOffline: false,
-            isBot: true,
-          };
-          // Broadcast update
-          io.to(`ludo_${gameId}`).emit("ludo:players", {
-            ...g.lastPlayers,
-            serverTs: Date.now(),
-          });
-          debugLogger.ludoEvent("replace-bot", {
-            gameId,
-            playerIndex,
-          });
-          debugLogger.ludoState(gameId, g.lastPlayers);
-        }
+      if (!g?.lastPlayers || !Array.isArray(g.lastPlayers.players)) return;
+
+      const requesterId = String(effectiveProfileId || "");
+      const hostId = String(g.lastPlayers.players[0]?.profileId || "");
+      if (!requesterId || !hostId || requesterId !== hostId) return;
+
+      const player = g.lastPlayers.players[playerIndex];
+      if (!player || player.isBot) return;
+
+      const replacedProfileId = String(player.profileId || "");
+      if (replacedProfileId) {
+        g.offlinePlayers.delete(replacedProfileId);
+        g.onlinePlayers.delete(replacedProfileId);
+        clearInvitesForGame(io, replacedProfileId, gameId);
       }
+
+      g.lastPlayers.players[playerIndex] = {
+        ...player,
+        name: `Computer ${playerIndex}`,
+        avatar: null,
+        cover: null,
+        profileId: null,
+        isActive: true,
+        isOffline: false,
+        offlineSince: undefined,
+        isBot: true,
+      };
+      g.lastPlayers.lastActionType = "player_replace_bot";
+      g.lastPlayers.timestamp = Date.now();
+
+      io.to(`ludo_${gameId}`).emit("ludo:players", {
+        ...g.lastPlayers,
+        serverTs: Date.now(),
+      });
+      debugLogger.ludoEvent("replace-bot", {
+        gameId,
+        playerIndex,
+        replacedProfileId,
+      });
+      debugLogger.ludoState(gameId, g.lastPlayers);
     } catch (_e) {}
   });
 
