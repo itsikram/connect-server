@@ -427,11 +427,6 @@ function ludoSocket(io, socket, profileId) {
   socket.on("ludo:invite", (payload = {}) => {
     const { to, gameId } = payload;
     if (!to) {
-      try {
-        console.log('[LUDO][server] ludo:invite missing "to" field', {
-          payload,
-        });
-      } catch (_e) {}
       return;
     }
     try {
@@ -458,15 +453,6 @@ function ludoSocket(io, socket, profileId) {
 
     if (alreadyJoined) {
       clearInvitesForGame(io, targetId, gameId);
-      try {
-        console.log(
-          "[LUDO][server] ludo:invite skipped - target already in game",
-          {
-            gameId,
-            targetId,
-          },
-        );
-      } catch (_e) {}
       return;
     }
 
@@ -525,10 +511,6 @@ function ludoSocket(io, socket, profileId) {
       try {
         game.pendingAccepts = game.pendingAccepts || [];
         game.pendingAccepts.push({ payload, pid, ts: Date.now() });
-        console.log(
-          '[LUDO][server] ludo:accept buffered - no lastPlayers yet',
-          { gameId, pid, slotIndex: payload?.slotIndex },
-        );
       } catch (_e) {}
 
       // Still notify the room that the accept occurred (UI may optimistically transition)
@@ -559,13 +541,6 @@ function ludoSocket(io, socket, profileId) {
       // players merge will happen when the host posts ludo:players.
       if (pid) {
         clearInvitesForGame(io, pid, payload.gameId);
-        try {
-          const list = userInvites.get(pid) || [];
-          console.log("[LUDO][server] invites cleared after accept (buffered)", {
-            pid,
-            remaining: list.length,
-          });
-        } catch (_e) {}
       }
       return;
     }
@@ -667,11 +642,6 @@ function ludoSocket(io, socket, profileId) {
             }
           });
         }
-        const list = userInvites.get(pid) || [];
-        console.log("[LUDO][server] invites cleared after accept", {
-          pid,
-          remaining: list.length,
-        });
       } catch (_e) {}
     }
   });
@@ -752,7 +722,6 @@ function ludoSocket(io, socket, profileId) {
 
           // Drain buffer after merging
           existing.pendingAccepts = [];
-          console.log("[LUDO][server] drained pendingAccepts into players snapshot", { gameId });
         } catch (_e) {}
       }
     }

@@ -102,7 +102,6 @@ exports.getGameState = async (req, res, next) => {
             .populate('host', 'fullName profilePic coverPic')
             .populate('players.profileId', 'fullName profilePic coverPic')
 
-            console.log('gameId getGameState',gameId, game)
         if (!game) {
             return res.status(404).json({
                 success: false,

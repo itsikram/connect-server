@@ -7,9 +7,6 @@ const playerSockets = new Map(); // profileId -> Set<socketId>
 function chessSocket(io, socket, profileId) {
     const effectiveProfileId = profileId || socket?.handshake?.query?.profile || socket?.handshake?.query?.profileId;
     
-    try {
-        console.log('[CHESS][server] connected', { socketId: socket?.id, effectiveProfileId });
-    } catch (_e) {}
 
     try {
         socket.on('error', (err) => {
@@ -107,10 +104,7 @@ function chessSocket(io, socket, profileId) {
     // Join a game room
     socket.on('chess:join', ({ gameId }) => {
         if (!gameId) return;
-        try {
-            console.log('[CHESS][server] chess:join', { socketId: socket?.id, gameId, effectiveProfileId });
-        } catch (_e) {}
-        
+
         const room = joinRoom(gameId);
         const game = games.get(gameId);
         const roomSize = io?.sockets?.adapter?.rooms?.get(room)?.size || 0;
@@ -147,10 +141,7 @@ function chessSocket(io, socket, profileId) {
     // Create a new game
     socket.on('chess:create', ({ gameId }) => {
         if (!gameId) return;
-        try {
-            console.log('[CHESS][server] chess:create', { socketId: socket?.id, gameId, effectiveProfileId });
-        } catch (_e) {}
-        
+
         const room = joinRoom(gameId);
         const game = games.get(gameId);
         if (game && !game.whitePlayer) {
@@ -170,10 +161,7 @@ function chessSocket(io, socket, profileId) {
         const { gameId, move } = payload || {};
         if (!gameId || !move) return;
         
-        try {
-            console.log('[CHESS][server] chess:move', { socketId: socket?.id, gameId, move, by: effectiveProfileId });
-        } catch (_e) {}
-        
+
         const game = games.get(gameId);
         if (!game) return;
         
@@ -244,13 +232,8 @@ function chessSocket(io, socket, profileId) {
     socket.on('chess:invite', (payload = {}) => {
         const { to, gameId } = payload;
         if (!to || !gameId) {
-            try { console.log('[CHESS][server] chess:invite missing required fields', { payload }); } catch (_e) {}
             return;
         }
-        
-        try {
-            console.log('[CHESS][server] chess:invite recv', { socketId: socket?.id, to, by: payload?.by, gameId });
-        } catch (_e) {}
         
         const invite = { ...payload, ts: Date.now() };
         const key = String(to);
@@ -268,10 +251,7 @@ function chessSocket(io, socket, profileId) {
         const { gameId, from } = payload;
         if (!gameId) return;
         
-        try {
-            console.log('[CHESS][server] chess:accept', { socketId: socket?.id, effectiveProfileId, payload });
-        } catch (_e) {}
-        
+
         const room = joinRoom(gameId);
         const game = games.get(gameId);
         
@@ -304,7 +284,6 @@ function chessSocket(io, socket, profileId) {
         const pid = String(effectiveProfileId || '');
         if (!pid) return;
         const invites = userInvites.get(pid) || [];
-        try { console.log('[CHESS][server] chess:invites:get', { pid, invitesCount: invites.length }); } catch (_e) {}
         socket.emit('chess:invites', { invites });
     });
 
@@ -318,7 +297,6 @@ function chessSocket(io, socket, profileId) {
         const list = userInvites.get(pid) || [];
         const filtered = list.filter(i => !(String(i.gameId) === String(gameId) && (by ? String(i.by) === String(by) : true)));
         userInvites.set(pid, filtered);
-        try { console.log('[CHESS][server] chess:invites:dismiss', { pid, gameId, by, before: list.length, after: filtered.length }); } catch (_e) {}
         io.to(`user_${pid}`).emit('chess:invites', { invites: filtered });
     });
 

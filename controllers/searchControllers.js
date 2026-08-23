@@ -8,7 +8,6 @@ const {
 } = require("../utils/searchMatching");
 
 exports.getSearchResult = async (req, res, next) => {
-  console.log("req.query.input");
   try {
     const queryString = String(req.query.input || "").trim();
     const escapedQuery = escapeRegex(queryString);
@@ -47,8 +46,6 @@ exports.getSearchResult = async (req, res, next) => {
         },
       ],
     });
-
-    console.log("usersFound", usersFound);
 
     if (usersFound) {
       searchResponse.users = usersFound;

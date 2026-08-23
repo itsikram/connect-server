@@ -25,13 +25,11 @@ module.exports = function socketHandler(io) {
 
         if (profileId !== 'undefined') {
             socket.join(profileId);
-            console.log('profileId', profileId);
             
             // Cancel any pending offline timeout if user reconnects
             if (offlineTimeouts.has(profileId)) {
                 clearTimeout(offlineTimeouts.get(profileId));
                 offlineTimeouts.delete(profileId);
-                console.log(`⏰ Cancelled offline timeout for profile ${profileId} (user reconnected)`);
             }
             
             // Track multiple socket connections per profile
@@ -62,14 +60,12 @@ module.exports = function socketHandler(io) {
             // Join browser-specific room if browserId is provided
             if (browserId && browserId !== 'undefined') {
                 socket.join(`browser_${browserId}`);
-                console.log(`Browser ${browserId} joined room for profile ${profileId}`);
             }
 
             // Emit friend_online to all friends (regardless of browserId)
             try {
                 if (profileFriends && profileFriends.friends && profileFriends.friends.length > 0) {
                     profileFriends.friends.forEach(friend => {
-                        console.log('friend_online', String(friend), profileId);
                         io.to(String(friend)).emit('friend_online', { profileId });
                     });
                 }
@@ -90,13 +86,7 @@ module.exports = function socketHandler(io) {
                 console.error('Error initializing message/notification sockets:', err);
             }
 
-            console.log(`✅ Socket connected: ${socket.id} (profile: ${profileId}, browser: ${browserId || 'none'})`);
-
-
-        } else {
-            console.log(`✅ Socket connected: ${socket.id} (no profile in handshake query)`);
         }
-
 
         // View post tracking
         socket.on('viewPost', async ({ visitorId, postId }) => {
