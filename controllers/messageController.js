@@ -444,7 +444,7 @@ exports.getNewMessages = async (req, res, next) => {
             // Get all new messages for the user (for Main.js)
             query = {
                 receiverId: profileId,
-                seen: false
+                isSeen: false
             };
             
             // If we have a lastMessageId, only get messages newer than that
@@ -481,7 +481,7 @@ exports.getNewMessagesCount = async (req, res, next) => {
             return res.status(400).json({ hasNewMessages: false, count: 0 });
         }
 
-        const count = await Message.countDocuments({ receiverId: profileId, seen: false });
+        const count = await Message.countDocuments({ receiverId: profileId, isSeen: false });
         return res.status(200).json({
             hasNewMessages: count > 0,
             count

@@ -6,7 +6,7 @@ const updateLastActive = require('../utils/updateLastActive')
 const axios = require('axios')
 
 
-const sendEmailNotification = require('../utils/sendEmailNotification')
+
 const { sendChatMessageDataPush, sendDataPushToProfile } = require('../utils/pushNotifications')
 const config = require('../config/config.json');
 
@@ -36,14 +36,24 @@ module.exports = function messageSocket(io, socket, profileId) {
         if (!myProfile) return;
         if (myProfile?.friends !== null) {
             for (const friendProfile of myProfile.friends) {
+                // Only fetch the most recent message from each friend
+                // and mark it as 'fromInitialLoad' so frontend doesn't show notification
                 const messages = await Message.find({
                     senderId: friendProfile._id,
                     receiverId: profileId
                 }).limit(1).sort({ timestamp: -1 })
 
-                profileContacts.push({ person: friendProfile, messages })
+                // Add flag to indicate these are from initial load (not real-time)
+                const messagesWithFlag = messages.map(msg => ({
+                    ...msg.toObject ? msg.toObject() : msg,
+                    fromInitialLoad: true
+                }))
+
+                profileContacts.push({ person: friendProfile, messages: messagesWithFlag })
             }
-            io.to(profileId).emit('oldMessages', profileContacts)
+            // Emit as 'initialMessages' to distinguish from real-time 'newMessageToUser'
+            // Frontend should NOT show notifications for messages with fromInitialLoad flag
+            io.to(profileId).emit('initialMessages', profileContacts)
         }
 
     })
@@ -62,12 +72,13 @@ module.exports = function messageSocket(io, socket, profileId) {
     socket.on('loadMessages', async ({ myId, friendId, skip }) => {
         let limit = 20
         if (skip < 1) {
-            return io.to(myId).emit('loadMessages', { loadedMessages: [], skip: false })
+            return io.to(myId).emit('loadMessages', { loadedMessages: [], hasNewMessage: false })
         }
         const loadedMessages = await Message.find({ $or: [{ senderId: myId, receiverId: friendId }, { senderId: friendId, receiverId: myId }] }).skip(skip).limit(limit).sort({ timestamp: -1 }).populate('parent');
         let messagesLeft = await Message.find({ $or: [{ senderId: myId, receiverId: friendId }, { senderId: friendId, receiverId: myId }] }).skip(skip).limit(limit).sort({ timestamp: -1 })
         let hasNewMessage = messagesLeft.length < 1 ? false : true
         let msgList = loadedMessages.reverse()
+        // Note: loadMessages is for pagination, not for initial notifications
         return io.to(myId).emit('loadMessages', { loadedMessages: msgList, hasNewMessage })
     })
 
@@ -109,11 +120,13 @@ module.exports = function messageSocket(io, socket, profileId) {
                 limit 
             });
 
-            // Emit the old messages
+            // Emit the old messages (pagination - should NOT trigger notifications)
+            // Frontend should not create notifications for old paginated messages
             socket.emit('oldMessages', oldMessages.reverse());
             
         } catch (error) {
             console.error('Error fetching old messages:', error);
+            // Return empty array on error - no notifications should be triggered
             socket.emit('oldMessages', []);
         }
     });
@@ -265,16 +278,29 @@ module.exports = function messageSocket(io, socket, profileId) {
         if (!profileData) return;
         let senderName = profileData.user?.firstName + ' ' + profileData.user?.surname;
         let senderPP = profileData.profilePic || config?.defaultProfile;
-        io.to(room).emit('newMessage', { updatedMessage, senderName, senderPP, chatPage: true });
+        io.to(room).emit('newMessage', { updatedMessage, senderName, senderPP, chatPage: true, isRealTime: true });
 
         let friendProfile = await Profile.findById(senderId).populate('user')
-        io.to(receiverId).emit('newMessageToUser', { updatedMessage, senderName, senderPP, chatPage: false,friendProfile });
+        // Emit newMessageToUser only for real-time messages (isRealTime: true)
+        // This ensures the receiver gets notification only when a NEW message arrives
+        io.to(receiverId).emit('newMessageToUser', { 
+            updatedMessage, 
+            senderName, 
+            senderPP, 
+            chatPage: false,
+            friendProfile,
+            isRealTime: true  // Flag indicates this is a real-time notification, not from initial load
+        });
 
         let receiverProfile = await Profile.findById(receiverId).populate('user')
 
         let { isActive, lastLogin } = await checkIsActive(receiverId)
+        
+        // Only send notifications for real-time messages, not for old/cached messages
+        // This prevents notification spam when opening the app
         console.log('sendMessage 2');
         // Outbound notifications (FCM + web + email fallback) — not for self-messages
+        // Only send notifications if receiver is not the sender
         if (String(receiverId) !== String(senderId)) {
             try {
                 console.log('sendMessage 3');
@@ -347,16 +373,7 @@ module.exports = function messageSocket(io, socket, profileId) {
                         console.error('saveNotification failed:', saveErr?.message || saveErr);
                     }
 
-                    // 3) Email only if FCM did not accept any token (no mobile reach)
-                    if (fcmResult.successCount < 1 && receiverProfile?.user?.email) {
-                        return sendEmailNotification(
-                            receiverProfile.user.email,
-                            null,
-                            updatedMessage.message,
-                            senderName,
-                            senderPP
-                        );
-                    }
+
                 }
                 console.log('sendMessage 5');
 

@@ -26,8 +26,38 @@ const messageSchema = new Schema({
         type: Boolean,
         default: false
     },
+    unseenReminderEmailSentAt: {
+        type: Date,
+        default: null
+    },
+    unseenReminderEmailProcessingKey: {
+        type: String,
+        default: null
+    },
+    unseenReminderEmailProcessingAt: {
+        type: Date,
+        default: null
+    },
+    unseenReminderEmailLastError: {
+        type: String,
+        default: null
+    },
     timestamp: { type: Date, default: Date.now }
 });
+
+messageSchema.index({ senderId: 1, receiverId: 1, timestamp: -1 });
+messageSchema.index({ receiverId: 1, timestamp: -1 });
+messageSchema.index({ senderId: 1, timestamp: -1 });
+messageSchema.index({
+    isSeen: 1,
+    messageType: 1,
+    unseenReminderEmailSentAt: 1,
+    unseenReminderEmailProcessingAt: 1,
+    receiverId: 1,
+    senderId: 1,
+    timestamp: 1
+});
+
 const Message = model("Message", messageSchema);
 
 module.exports = Message

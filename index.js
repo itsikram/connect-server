@@ -32,6 +32,7 @@ const httpServer = createServer(app);
 const path = require("path");
 const admin = require("firebase-admin");
 const fs = require("fs");
+const { startUnseenMessageReminderWorker } = require("./utils/unseenMessageReminderWorker");
 
 const normalizeMultilineEnv = (value = "") =>
   String(value).replace(/\\n/g, "\n");
@@ -634,6 +635,7 @@ mongoose
   })
   .then(() => {
     console.log("MongoDB connected");
+    startUnseenMessageReminderWorker();
   })
   .catch((e) => {
     console.error(

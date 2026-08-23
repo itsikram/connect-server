@@ -62629,3 +62629,95 @@
     "playersSeq": 55
   }
 }
+[2026-08-23T19:04:15.560Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mt66el2pxapkcd",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 0
+}
+[2026-08-23T19:04:15.652Z] [LUDO-STATE] game:mt66el2pxapkcd {
+  "gameId": "mt66el2pxapkcd",
+  "snapshot": {
+    "gameId": "mt66el2pxapkcd",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false
+          }
+        ],
+        "isOffline": false
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#43A047",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "profileId": "67e431d61e4463f7adfa544e",
+        "isActive": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false
+          }
+        ],
+        "isOffline": false
+      }
+    ],
+    "selectedPlayerCount": 2,
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": false,
+    "timestamp": 1787511855510,
+    "playersSeq": 1
+  }
+}

@@ -12,6 +12,15 @@ async function createIndexes() {
         await Message.createIndex({ receiverId: 1, timestamp: -1 });
         await Message.createIndex({ senderId: 1, timestamp: -1 });
         await Message.createIndex({ timestamp: -1 });
+        await Message.createIndex({
+            isSeen: 1,
+            messageType: 1,
+            unseenReminderEmailSentAt: 1,
+            unseenReminderEmailProcessingAt: 1,
+            receiverId: 1,
+            senderId: 1,
+            timestamp: 1
+        });
 
         // Profile collection indexes
         await Profile.createIndex({ lastActive: -1 });
