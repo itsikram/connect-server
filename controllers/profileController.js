@@ -5,30 +5,32 @@ const mongoose = require("mongoose");
 const User = require("../models/User");
 
 exports.prefileHasStory = async function (req, res, next) {
-  const twentyFourHoursAgo = new Date();
-  twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
-  let profileId = req.query.profileId;
-  if (mongoose.isValidObjectId(profileId)) {
-    let hasStory = await Story.exists({
-      author: profileId,
-      createdAt: { $gte: twentyFourHoursAgo },
-    });
-    if (hasStory == null) {
-      return res
-        .json({ message: "Story Not Available", hasStory: "no" })
-        .status(200);
-    } else {
-      return res
-        .json({ message: "Story Available", hasStory: "yes" })
-        .status(200);
+  try {
+    const twentyFourHoursAgo = new Date();
+    twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+    let profileId = req.query.profileId;
+    
+    if (!profileId) {
+      return res.status(400).json({ message: "profileId is required", hasStory: "no" });
     }
-  } else {
-    return res
-      .json({ message: "Story Not Available", hasStory: "no" })
-      .status(400);
+    
+    if (mongoose.isValidObjectId(profileId)) {
+      let hasStory = await Story.exists({
+        author: profileId,
+        createdAt: { $gte: twentyFourHoursAgo },
+      });
+      if (hasStory == null) {
+        return res.status(200).json({ message: "Story Not Available", hasStory: "no" });
+      } else {
+        return res.status(200).json({ message: "Story Available", hasStory: "yes" });
+      }
+    } else {
+      return res.status(400).json({ message: "Invalid profileId format", hasStory: "no" });
+    }
+  } catch (error) {
+    console.error("Error in prefileHasStory:", error);
+    return res.status(500).json({ message: "Internal server error", error: error.message });
   }
-
-  return next();
 };
 exports.getProfileImages = async function (req, res, next) {
   let { profileId } = req.query;
