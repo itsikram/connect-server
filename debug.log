@@ -274935,3 +274935,2383 @@
     "toPlayer": 1
   }
 }
+[2026-08-24T01:00:50.599Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mt6j56khuuvjst",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 0
+}
+[2026-08-24T01:00:50.668Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "isActive": true,
+        "isOffline": "",
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": false,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 1,
+    "stateVersion": 1,
+    "timestamp": 1787533250560,
+    "lastActionType": "game_lobby_initialized"
+  }
+}
+[2026-08-24T01:00:52.138Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mt6j56khuuvjst",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 0
+}
+[2026-08-24T01:00:52.161Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "isActive": true,
+        "isOffline": "",
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": false,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 2,
+    "stateVersion": 2,
+    "timestamp": 1787533250562,
+    "lastActionType": "game_lobby_initialized"
+  }
+}
+[2026-08-24T01:00:54.052Z] [LUDO-EVENT] players-get-response {
+  "gameId": "mt6j56khuuvjst"
+}
+[2026-08-24T01:00:54.053Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "isActive": true,
+        "isOffline": "",
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": false,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 2,
+    "stateVersion": 2,
+    "timestamp": 1787533250562,
+    "lastActionType": "game_lobby_initialized"
+  }
+}
+[2026-08-24T01:00:54.367Z] [LUDO-EVENT] accept {
+  "socketId": "NRshC_49BR8ZmY8xAAAH",
+  "effectiveProfileId": "67e431d61e4463f7adfa544e",
+  "payload": {
+    "gameId": "mt6j56khuuvjst",
+    "slotIndex": 1,
+    "friend": {
+      "_id": "67e431d61e4463f7adfa544e",
+      "fullName": "Md Atik",
+      "profilePic": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+      "coverPic": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg"
+    },
+    "from": "67bf1e4009395add03e1e234"
+  },
+  "room": "ludo_mt6j56khuuvjst",
+  "roomSize": 2
+}
+[2026-08-24T01:00:54.395Z] [LUDO-EVENT] accepted-emitted {
+  "room": "ludo_mt6j56khuuvjst",
+  "roomSize": 2,
+  "payload": {
+    "gameId": "mt6j56khuuvjst",
+    "slotIndex": 1,
+    "friend": {
+      "_id": "67e431d61e4463f7adfa544e",
+      "fullName": "Md Atik",
+      "profilePic": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+      "coverPic": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg"
+    },
+    "from": "67bf1e4009395add03e1e234",
+    "serverTs": 1787533254394
+  }
+}
+[2026-08-24T01:00:54.396Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ],
+        "profileId": "67e431d61e4463f7adfa544e"
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": false,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 2,
+    "stateVersion": 2,
+    "timestamp": 1787533250562,
+    "lastActionType": "game_lobby_initialized"
+  }
+}
+[2026-08-24T01:00:54.504Z] [LUDO-EVENT] players-get-response {
+  "gameId": "mt6j56khuuvjst"
+}
+[2026-08-24T01:00:54.505Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ],
+        "profileId": "67e431d61e4463f7adfa544e"
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": false,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 2,
+    "stateVersion": 2,
+    "timestamp": 1787533250562,
+    "lastActionType": "game_lobby_initialized"
+  }
+}
+[2026-08-24T01:00:54.704Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mt6j56khuuvjst",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 0
+}
+[2026-08-24T01:00:54.705Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "profileId": "67e431d61e4463f7adfa544e",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": false,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 3,
+    "stateVersion": 3,
+    "timestamp": 1787533254612,
+    "lastActionType": "player_accept_join",
+    "slotIndex": 1,
+    "friendId": "67e431d61e4463f7adfa544e"
+  }
+}
+[2026-08-24T01:00:55.893Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mt6j56khuuvjst",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 0
+}
+[2026-08-24T01:00:55.894Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "profileId": "67e431d61e4463f7adfa544e",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 4,
+    "stateVersion": 4,
+    "timestamp": 1787533255276,
+    "lastActionType": "game_auto_start",
+    "trigger": "recomputeWaitingState"
+  }
+}
+[2026-08-24T01:00:58.058Z] [LUDO-EVENT] roll-validated {
+  "socketId": "Fs_CXQj6-bgtiRbzAAAJ",
+  "gameId": "mt6j56khuuvjst",
+  "by": "67bf1e4009395add03e1e234",
+  "value": 3,
+  "currentPlayer": 0
+}
+[2026-08-24T01:00:58.091Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "profileId": "67e431d61e4463f7adfa544e",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 3,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 4,
+    "stateVersion": 4,
+    "timestamp": 1787533255276,
+    "lastActionType": "game_auto_start",
+    "trigger": "recomputeWaitingState"
+  }
+}
+[2026-08-24T01:00:58.141Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mt6j56khuuvjst",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 0
+}
+[2026-08-24T01:00:58.191Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "profileId": "67e431d61e4463f7adfa544e",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 3,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 5,
+    "stateVersion": 5,
+    "timestamp": 1787533257281,
+    "lastActionType": "dice_roll",
+    "playerIndex": 0,
+    "rolledValue": 3
+  }
+}
+[2026-08-24T01:00:58.192Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mt6j56khuuvjst",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 1
+}
+[2026-08-24T01:00:58.193Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "profileId": "67e431d61e4463f7adfa544e",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 1,
+    "diceValue": 0,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 6,
+    "stateVersion": 6,
+    "timestamp": 1787533257302,
+    "lastActionType": "turn_advance",
+    "fromPlayer": 0,
+    "toPlayer": 1
+  }
+}
+[2026-08-24T01:00:58.243Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mt6j56khuuvjst",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 1
+}
+[2026-08-24T01:00:58.273Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "profileId": "67e431d61e4463f7adfa544e",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 1,
+    "diceValue": 0,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 7,
+    "stateVersion": 7,
+    "timestamp": 1787533257914,
+    "lastActionType": "turn_advance",
+    "fromPlayer": 0,
+    "toPlayer": 1
+  }
+}
+[2026-08-24T01:00:58.895Z] [LUDO-EVENT] players-get-response {
+  "gameId": "mt6j56khuuvjst"
+}
+[2026-08-24T01:00:58.903Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "profileId": "67e431d61e4463f7adfa544e",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 1,
+    "diceValue": 0,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 7,
+    "stateVersion": 7,
+    "timestamp": 1787533257914,
+    "lastActionType": "turn_advance",
+    "fromPlayer": 0,
+    "toPlayer": 1
+  }
+}
+[2026-08-24T01:00:59.327Z] [LUDO-EVENT] players-get-response {
+  "gameId": "mt6j56khuuvjst"
+}
+[2026-08-24T01:00:59.328Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "profileId": "67e431d61e4463f7adfa544e",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 1,
+    "diceValue": 0,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 7,
+    "stateVersion": 7,
+    "timestamp": 1787533257914,
+    "lastActionType": "turn_advance",
+    "fromPlayer": 0,
+    "toPlayer": 1
+  }
+}
+[2026-08-24T01:01:00.651Z] [LUDO-EVENT] roll-validated {
+  "socketId": "NRshC_49BR8ZmY8xAAAH",
+  "gameId": "mt6j56khuuvjst",
+  "by": "67e431d61e4463f7adfa544e",
+  "value": 4,
+  "currentPlayer": 1
+}
+[2026-08-24T01:01:00.653Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "profileId": "67e431d61e4463f7adfa544e",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 1,
+    "diceValue": 4,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 7,
+    "stateVersion": 7,
+    "timestamp": 1787533257914,
+    "lastActionType": "turn_advance",
+    "fromPlayer": 0,
+    "toPlayer": 1
+  }
+}
+[2026-08-24T01:01:03.455Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mt6j56khuuvjst",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 0
+}
+[2026-08-24T01:01:03.491Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "profileId": "67e431d61e4463f7adfa544e",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 8,
+    "stateVersion": 8,
+    "timestamp": 1787533260890,
+    "lastActionType": "turn_advance_no_playable_move",
+    "playerIndex": 1,
+    "rolledValue": 4
+  }
+}
+[2026-08-24T01:01:03.495Z] [LUDO-EVENT] roll-validated {
+  "socketId": "Fs_CXQj6-bgtiRbzAAAJ",
+  "gameId": "mt6j56khuuvjst",
+  "by": "67bf1e4009395add03e1e234",
+  "value": 1,
+  "currentPlayer": 0
+}
+[2026-08-24T01:01:03.496Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "profileId": "67e431d61e4463f7adfa544e",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 1,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 8,
+    "stateVersion": 8,
+    "timestamp": 1787533260890,
+    "lastActionType": "turn_advance_no_playable_move",
+    "playerIndex": 1,
+    "rolledValue": 4
+  }
+}
+[2026-08-24T01:01:03.673Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mt6j56khuuvjst",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 0
+}
+[2026-08-24T01:01:03.675Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "profileId": "67e431d61e4463f7adfa544e",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 1,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 9,
+    "stateVersion": 9,
+    "timestamp": 1787533262007,
+    "lastActionType": "dice_roll",
+    "playerIndex": 0,
+    "rolledValue": 1
+  }
+}
+[2026-08-24T01:01:03.676Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mt6j56khuuvjst",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 1
+}
+[2026-08-24T01:01:03.678Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "profileId": "67e431d61e4463f7adfa544e",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 1,
+    "diceValue": 0,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 10,
+    "stateVersion": 10,
+    "timestamp": 1787533262054,
+    "lastActionType": "turn_advance",
+    "fromPlayer": 0,
+    "toPlayer": 1
+  }
+}
+[2026-08-24T01:01:06.679Z] [LUDO-EVENT] roll-validated {
+  "socketId": "NRshC_49BR8ZmY8xAAAH",
+  "gameId": "mt6j56khuuvjst",
+  "by": "67e431d61e4463f7adfa544e",
+  "value": 3,
+  "currentPlayer": 1
+}
+[2026-08-24T01:01:06.693Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "profileId": "67e431d61e4463f7adfa544e",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 1,
+    "diceValue": 3,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 10,
+    "stateVersion": 10,
+    "timestamp": 1787533262054,
+    "lastActionType": "turn_advance",
+    "fromPlayer": 0,
+    "toPlayer": 1
+  }
+}
+[2026-08-24T01:01:07.809Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mt6j56khuuvjst",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 0
+}
+[2026-08-24T01:01:07.818Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "profileId": "67e431d61e4463f7adfa544e",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 11,
+    "stateVersion": 11,
+    "timestamp": 1787533266921,
+    "lastActionType": "turn_advance_no_playable_move",
+    "playerIndex": 1,
+    "rolledValue": 3
+  }
+}
+[2026-08-24T01:01:09.953Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mt6j56khuuvjst",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 0
+}
+[2026-08-24T01:01:09.981Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "profileId": "67e431d61e4463f7adfa544e",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 12,
+    "stateVersion": 12,
+    "timestamp": 1787533269932,
+    "lastActionType": "turn_advance_no_playable_move",
+    "playerIndex": 1,
+    "rolledValue": 3
+  }
+}
+[2026-08-24T01:01:11.678Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mt6j56khuuvjst",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 0
+}
+[2026-08-24T01:01:11.679Z] [LUDO-STATE] game:mt6j56khuuvjst {
+  "gameId": "mt6j56khuuvjst",
+  "snapshot": {
+    "gameId": "mt6j56khuuvjst",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Md Atik",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1779774308/ccut8qllcbmzl6bxx0yy.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1759779146/gyshxw4n76fbsohz3rcz.jpg",
+        "profileId": "67e431d61e4463f7adfa544e",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 13,
+    "stateVersion": 13,
+    "timestamp": 1787533269933,
+    "lastActionType": "turn_advance_no_playable_move",
+    "playerIndex": 1,
+    "rolledValue": 3
+  }
+}
