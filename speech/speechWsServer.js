@@ -635,6 +635,8 @@ const createSpeechSession = (ws, transcriber) => {
       );
       if (state.isStopping) {
         scheduleFinalizeFlush(250);
+      } else if (state.isRecording && state.lastPartial) {
+        send({ type: "utterance-end" });
       }
     });
 

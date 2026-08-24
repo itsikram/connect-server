@@ -25,6 +25,7 @@ const calendarRoutes = require("./calendarRoutes");
 const habitsRoutes = require("./habitsRoutes");
 const portfolioRoutes = require("./portfolioRoutes");
 const locationRoutes = require("./locationRoutes");
+const aiChatRoutes = require("./aiChatRoutes");
 
 let rootRoute = async (req, res) => {
   return res.sendFile(path.join(__dirname, "build", "index.html"));
@@ -133,6 +134,10 @@ const routes = [
   {
     path: "/api/location",
     handler: locationRoutes,
+  },
+  {
+    path: "/api/ai-chat",
+    handler: aiChatRoutes,
   },
 ];
 

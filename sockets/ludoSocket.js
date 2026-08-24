@@ -11,8 +11,10 @@ const pruneGameIfEmpty = (io, gameId) => {
   const game = games.get(gameId);
   if (!game) return false;
 
-  const onlineCount = game.onlinePlayers instanceof Set ? game.onlinePlayers.size : 0;
-  const offlineCount = game.offlinePlayers instanceof Map ? game.offlinePlayers.size : 0;
+  const onlineCount =
+    game.onlinePlayers instanceof Set ? game.onlinePlayers.size : 0;
+  const offlineCount =
+    game.offlinePlayers instanceof Map ? game.offlinePlayers.size : 0;
 
   if (onlineCount > 0 || offlineCount > 0) {
     return false;
@@ -351,29 +353,69 @@ function ludoSocket(io, socket, profileId) {
     const game = games.get(gameId);
     if (!game) return;
 
+    const hostId = String(game?.lastPlayers?.players?.[0]?.profileId || "");
+    const isHostLeaving = Boolean(pid && hostId && pid === hostId);
+
+    if (isHostLeaving) {
+      const participantIds = new Set([
+        ...Array.from(game.onlinePlayers || []),
+        ...Array.from(game.offlinePlayers?.keys?.() || []),
+        ...(game.lastPlayers?.players || [])
+          .map((player) => String(player?.profileId || ""))
+          .filter(Boolean),
+      ]);
+      participantIds.forEach((participantId) =>
+        clearInvitesForGame(io, participantId, gameId),
+      );
+
+      try {
+        io.to(`ludo_${gameId}`).emit("ludo:game:removed", {
+          gameId,
+          reason: "host_left",
+          serverTs: Date.now(),
+        });
+      } catch (_e) {}
+
+      games.delete(gameId);
+      try {
+        socket.leave(`ludo_${gameId}`);
+      } catch (_e) {}
+      try {
+        debugLogger.ludoEvent("host-left", { gameId, profileId: pid });
+      } catch (_e) {}
+      return;
+    }
+
     if (pid) {
       game.onlinePlayers.delete(pid);
       game.offlinePlayers.delete(pid);
+      clearInvitesForGame(io, pid, gameId);
     }
 
-    if (game?.lastPlayers?.players && Array.isArray(game.lastPlayers.players) && pid) {
-      game.lastPlayers.players = game.lastPlayers.players.map((player, index) => {
-        if (!player?.profileId || String(player.profileId) !== pid) {
-          return player;
-        }
+    if (
+      game?.lastPlayers?.players &&
+      Array.isArray(game.lastPlayers.players) &&
+      pid
+    ) {
+      game.lastPlayers.players = game.lastPlayers.players.map(
+        (player, index) => {
+          if (!player?.profileId || String(player.profileId) !== pid) {
+            return player;
+          }
 
-        return {
-          ...player,
-          profileId: null,
-          isActive: false,
-          isOffline: false,
-          offlineSince: undefined,
-          name:
-            player?.isBot || index === 0
-              ? player.name
-              : `Player ${index + 1}`,
-        };
-      });
+          return {
+            ...player,
+            profileId: null,
+            isActive: false,
+            isOffline: false,
+            offlineSince: undefined,
+            name:
+              player?.isBot || index === 0
+                ? player.name
+                : `Player ${index + 1}`,
+          };
+        },
+      );
     }
 
     try {
@@ -400,7 +442,9 @@ function ludoSocket(io, socket, profileId) {
               ...p,
               isActive: isOnline || !playerId,
               isOffline,
-              offlineSince: isOffline ? game.offlinePlayers.get(playerId) : undefined,
+              offlineSince: isOffline
+                ? game.offlinePlayers.get(playerId)
+                : undefined,
             };
           });
         }
@@ -517,6 +561,23 @@ function ludoSocket(io, socket, profileId) {
     const room = joinRoom(gameId);
     const game = games.get(gameId);
 
+    // A delayed invite acceptance must not reclaim a seat after the host has
+    // replaced waiting players and started the match.
+    if (game?.lastPlayers?.gameStarted) {
+      game.onlinePlayers.delete(pid);
+      game.offlinePlayers.delete(pid);
+      clearInvitesForGame(io, pid, gameId);
+      try {
+        socket.leave(room);
+        socket.emit("ludo:game:removed", {
+          gameId,
+          reason: "game_already_started",
+          serverTs: Date.now(),
+        });
+      } catch (_e) {}
+      return;
+    }
+
     // If host hasn't published initial lastPlayers yet, buffer this accept
     // so it can be merged into the first ludo:players snapshot received.
     if (!game?.lastPlayers) {
@@ -583,7 +644,8 @@ function ludoSocket(io, socket, profileId) {
       } else if (
         acceptedSlot >= 0 &&
         players[acceptedSlot] &&
-        !players[acceptedSlot].profileId
+        !players[acceptedSlot].profileId &&
+        !players[acceptedSlot].isBot
       ) {
         game.lastPlayers.players[acceptedSlot] = {
           ...players[acceptedSlot],
@@ -601,7 +663,7 @@ function ludoSocket(io, socket, profileId) {
       } else {
         const fallbackSlot = players.findIndex((player, index) => {
           if (index === 0) return false;
-          return player && !player.profileId;
+          return player && !player.profileId && !player.isBot;
         });
 
         if (fallbackSlot >= 0) {
@@ -700,7 +762,11 @@ function ludoSocket(io, socket, profileId) {
       // If any accepts were buffered because host had not yet published
       // lastPlayers, merge them into this incoming payload so late-joiners
       // and slot assignments are applied deterministically.
-      if (existing?.pendingAccepts && Array.isArray(existing.pendingAccepts) && existing.pendingAccepts.length > 0) {
+      if (
+        existing?.pendingAccepts &&
+        Array.isArray(existing.pendingAccepts) &&
+        existing.pendingAccepts.length > 0
+      ) {
         try {
           enhancedPayload.players = enhancedPayload.players || [];
           existing.pendingAccepts.forEach((pa) => {
@@ -710,31 +776,56 @@ function ludoSocket(io, socket, profileId) {
 
             const playersArr = enhancedPayload.players;
             const requestedSlot = Number(pending?.slotIndex);
-            let assignedSlot = Number.isInteger(requestedSlot) ? requestedSlot : -1;
+            let assignedSlot = Number.isInteger(requestedSlot)
+              ? requestedSlot
+              : -1;
 
-            const alreadyInGameIndex = playersArr.findIndex((pl) => pl?.profileId && String(pl.profileId) === String(pPid));
+            const alreadyInGameIndex = playersArr.findIndex(
+              (pl) => pl?.profileId && String(pl.profileId) === String(pPid),
+            );
             if (alreadyInGameIndex >= 0) {
               assignedSlot = alreadyInGameIndex;
-            } else if (assignedSlot >= 0 && playersArr[assignedSlot] && !playersArr[assignedSlot].profileId) {
+            } else if (
+              assignedSlot >= 0 &&
+              playersArr[assignedSlot] &&
+              !playersArr[assignedSlot].profileId &&
+              !playersArr[assignedSlot].isBot
+            ) {
               playersArr[assignedSlot] = {
                 ...playersArr[assignedSlot],
-                name: pending?.friend?.fullName || playersArr[assignedSlot].name,
-                avatar: pending?.friend?.profilePic || playersArr[assignedSlot].avatar,
-                cover: pending?.friend?.coverPic || pending?.friend?.cover || playersArr[assignedSlot].cover,
+                name:
+                  pending?.friend?.fullName || playersArr[assignedSlot].name,
+                avatar:
+                  pending?.friend?.profilePic ||
+                  playersArr[assignedSlot].avatar,
+                cover:
+                  pending?.friend?.coverPic ||
+                  pending?.friend?.cover ||
+                  playersArr[assignedSlot].cover,
                 profileId: pPid,
                 isActive: true,
                 isOffline: false,
                 offlineSince: undefined,
               };
             } else {
-              const fallback = playersArr.findIndex((player, idx) => idx === 0 ? false : player && !player.profileId);
+              const fallback = playersArr.findIndex((player, idx) =>
+                idx === 0
+                  ? false
+                  : player && !player.profileId && !player.isBot,
+              );
               if (fallback >= 0) {
                 assignedSlot = fallback;
                 playersArr[assignedSlot] = {
                   ...playersArr[assignedSlot],
-                  name: pending?.friend?.fullName || playersArr[assignedSlot].name,
-                  avatar: pending?.friend?.profilePic || playersArr[assignedSlot].avatar,
-                  cover: pending?.friend?.coverPic || pending?.friend?.cover || playersArr[assignedSlot].cover,
+                  name:
+                    pending?.friend?.fullName || playersArr[assignedSlot].name,
+                  avatar:
+                    pending?.friend?.profilePic ||
+                    playersArr[assignedSlot].avatar,
+                  cover:
+                    pending?.friend?.coverPic ||
+                    pending?.friend?.cover ||
+                    playersArr[assignedSlot].cover,
                   profileId: pPid,
                   isActive: true,
                   isOffline: false,
