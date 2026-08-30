@@ -7,7 +7,7 @@ const Post = require('../models/Post');
 const checkIsActive = require('../utils/checkIsActive');
 const updateLastActive = require('../utils/updateLastActive');
 const callingSocket = require('./callingSocket');
-const { sendPushToProfile } = require('../utils/pushNotifications');
+const { sendBump } = require('../utils/sendBump');
 const ludoSocket = require('./ludoSocket');
 const chessSocket = require('./chessSocket');
 
@@ -105,18 +105,8 @@ module.exports = function socketHandler(io) {
         // bump notification
         socket.on('bump', async ({ friendProfile, myProfile }) => {
             try {
-                if (String(friendProfile) === String(myProfile)) return;
-                // console.log('bump', friendProfile, myProfile)
-                let friendProfileData = await Profile.findById(friendProfile)
-                let myProfileData = await Profile.findById(myProfile)
-                io.to(friendProfile).emit('bumpUser', { friendProfileData, myProfileData });
-                try {
-                    await sendPushToProfile(friendProfile, {
-                        title: 'You were bumped!',
-                        body: `${myProfileData.fullName} bumped you`,
-                        data: { type: 'bump', senderId: String(myProfile) }
-                    });
-                } catch (e) { }
+                const fromId = myProfile || profileId;
+                await sendBump(io, { friendProfile, myProfile: fromId });
             } catch (err) {
                 console.error('bump emit error', err);
             }

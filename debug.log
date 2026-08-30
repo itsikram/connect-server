@@ -302977,3 +302977,2798 @@
     "hasCapture": false
   }
 }
+[2026-08-30T17:34:07.904Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mtg39o0yxayqbs",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 0
+}
+[2026-08-30T17:34:07.953Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "isActive": true,
+        "isOffline": "",
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": false,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 1,
+    "stateVersion": 1,
+    "timestamp": 1788111247901,
+    "lastActionType": "game_lobby_initialized"
+  }
+}
+[2026-08-30T17:34:08.645Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mtg39o0yxayqbs",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 0
+}
+[2026-08-30T17:34:08.646Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "isActive": true,
+        "isOffline": "",
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": false,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 2,
+    "stateVersion": 2,
+    "timestamp": 1788111247902,
+    "lastActionType": "game_lobby_initialized"
+  }
+}
+[2026-08-30T17:34:19.226Z] [LUDO-EVENT] players-get-response {
+  "gameId": "mtg39o0yxayqbs"
+}
+[2026-08-30T17:34:19.227Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "isActive": true,
+        "isOffline": "",
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": false,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 2,
+    "stateVersion": 2,
+    "timestamp": 1788111247902,
+    "lastActionType": "game_lobby_initialized"
+  }
+}
+[2026-08-30T17:34:19.492Z] [LUDO-EVENT] accept {
+  "socketId": "ZriFutSMNjSbDNisAAAU",
+  "effectiveProfileId": "68ba47a03c9a326dacbc2f80",
+  "payload": {
+    "gameId": "mtg39o0yxayqbs",
+    "slotIndex": 1,
+    "friend": {
+      "_id": "68ba47a03c9a326dacbc2f80",
+      "fullName": "Rahima Akter",
+      "profilePic": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+      "coverPic": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg"
+    },
+    "from": "67bf1e4009395add03e1e234"
+  },
+  "room": "ludo_mtg39o0yxayqbs",
+  "roomSize": 2
+}
+[2026-08-30T17:34:19.495Z] [LUDO-EVENT] accepted-emitted {
+  "room": "ludo_mtg39o0yxayqbs",
+  "roomSize": 2,
+  "payload": {
+    "gameId": "mtg39o0yxayqbs",
+    "slotIndex": 1,
+    "friend": {
+      "_id": "68ba47a03c9a326dacbc2f80",
+      "fullName": "Rahima Akter",
+      "profilePic": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+      "coverPic": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg"
+    },
+    "from": "67bf1e4009395add03e1e234",
+    "serverTs": 1788111259494
+  }
+}
+[2026-08-30T17:34:19.504Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ],
+        "profileId": "68ba47a03c9a326dacbc2f80"
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": false,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 2,
+    "stateVersion": 2,
+    "timestamp": 1788111247902,
+    "lastActionType": "game_lobby_initialized"
+  }
+}
+[2026-08-30T17:34:19.518Z] [LUDO-EVENT] players-get-response {
+  "gameId": "mtg39o0yxayqbs"
+}
+[2026-08-30T17:34:19.518Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ],
+        "profileId": "68ba47a03c9a326dacbc2f80"
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": false,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 2,
+    "stateVersion": 2,
+    "timestamp": 1788111247902,
+    "lastActionType": "game_lobby_initialized"
+  }
+}
+[2026-08-30T17:34:19.763Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mtg39o0yxayqbs",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 0
+}
+[2026-08-30T17:34:19.769Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "profileId": "68ba47a03c9a326dacbc2f80",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": false,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 3,
+    "stateVersion": 3,
+    "timestamp": 1788111259709,
+    "lastActionType": "player_accept_join",
+    "slotIndex": 1,
+    "friendId": "68ba47a03c9a326dacbc2f80"
+  }
+}
+[2026-08-30T17:34:20.577Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mtg39o0yxayqbs",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 0
+}
+[2026-08-30T17:34:20.578Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "profileId": "68ba47a03c9a326dacbc2f80",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 4,
+    "stateVersion": 4,
+    "timestamp": 1788111260571,
+    "lastActionType": "game_auto_start",
+    "trigger": "recomputeWaitingState"
+  }
+}
+[2026-08-30T17:34:22.553Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mtg39o0yxayqbs",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 0
+}
+[2026-08-30T17:34:22.561Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "profileId": "68ba47a03c9a326dacbc2f80",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 5,
+    "stateVersion": 5,
+    "timestamp": 1788111261996,
+    "lastActionType": "game_auto_start",
+    "trigger": "recomputeWaitingState"
+  }
+}
+[2026-08-30T17:34:23.895Z] [LUDO-EVENT] players-get-response {
+  "gameId": "mtg39o0yxayqbs"
+}
+[2026-08-30T17:34:23.911Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "profileId": "68ba47a03c9a326dacbc2f80",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 5,
+    "stateVersion": 5,
+    "timestamp": 1788111261996,
+    "lastActionType": "game_auto_start",
+    "trigger": "recomputeWaitingState"
+  }
+}
+[2026-08-30T17:34:24.162Z] [LUDO-EVENT] players-get-response {
+  "gameId": "mtg39o0yxayqbs"
+}
+[2026-08-30T17:34:24.195Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "profileId": "68ba47a03c9a326dacbc2f80",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 5,
+    "stateVersion": 5,
+    "timestamp": 1788111261996,
+    "lastActionType": "game_auto_start",
+    "trigger": "recomputeWaitingState"
+  }
+}
+[2026-08-30T17:34:25.069Z] [LUDO-EVENT] roll-validated {
+  "socketId": "BKuzpgHAGODZRF9tAAAS",
+  "gameId": "mtg39o0yxayqbs",
+  "by": "67bf1e4009395add03e1e234",
+  "value": 1,
+  "currentPlayer": 0
+}
+[2026-08-30T17:34:25.070Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "profileId": "68ba47a03c9a326dacbc2f80",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 1,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 5,
+    "stateVersion": 5,
+    "timestamp": 1788111261996,
+    "lastActionType": "game_auto_start",
+    "trigger": "recomputeWaitingState"
+  }
+}
+[2026-08-30T17:34:25.356Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mtg39o0yxayqbs",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 0
+}
+[2026-08-30T17:34:25.357Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "profileId": "68ba47a03c9a326dacbc2f80",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 1,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 6,
+    "stateVersion": 6,
+    "timestamp": 1788111265321,
+    "lastActionType": "dice_roll",
+    "playerIndex": 0,
+    "rolledValue": 1
+  }
+}
+[2026-08-30T17:34:25.430Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mtg39o0yxayqbs",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 1
+}
+[2026-08-30T17:34:25.431Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "profileId": "68ba47a03c9a326dacbc2f80",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 1,
+    "diceValue": 0,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 7,
+    "stateVersion": 7,
+    "timestamp": 1788111265421,
+    "lastActionType": "turn_advance",
+    "fromPlayer": 0,
+    "toPlayer": 1
+  }
+}
+[2026-08-30T17:34:29.080Z] [LUDO-EVENT] roll-validated {
+  "socketId": "ZriFutSMNjSbDNisAAAU",
+  "gameId": "mtg39o0yxayqbs",
+  "by": "68ba47a03c9a326dacbc2f80",
+  "value": 2,
+  "currentPlayer": 1
+}
+[2026-08-30T17:34:29.096Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "profileId": "68ba47a03c9a326dacbc2f80",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 1,
+    "diceValue": 2,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 7,
+    "stateVersion": 7,
+    "timestamp": 1788111265421,
+    "lastActionType": "turn_advance",
+    "fromPlayer": 0,
+    "toPlayer": 1
+  }
+}
+[2026-08-30T17:34:29.335Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mtg39o0yxayqbs",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 0
+}
+[2026-08-30T17:34:29.338Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "profileId": "68ba47a03c9a326dacbc2f80",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 8,
+    "stateVersion": 8,
+    "timestamp": 1788111269333,
+    "lastActionType": "turn_advance_no_playable_move",
+    "playerIndex": 1,
+    "rolledValue": 2
+  }
+}
+[2026-08-30T17:34:29.584Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mtg39o0yxayqbs",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 1
+}
+[2026-08-30T17:34:29.587Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "profileId": "68ba47a03c9a326dacbc2f80",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 1,
+    "diceValue": 2,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 9,
+    "stateVersion": 9,
+    "timestamp": 1788111269569,
+    "lastActionType": "turn_advance",
+    "fromPlayer": 0,
+    "toPlayer": 1
+  }
+}
+[2026-08-30T17:34:31.616Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mtg39o0yxayqbs",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 1
+}
+[2026-08-30T17:34:31.624Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "profileId": "68ba47a03c9a326dacbc2f80",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 1,
+    "diceValue": 2,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 10,
+    "stateVersion": 10,
+    "timestamp": 1788111271596,
+    "lastActionType": "turn_advance",
+    "fromPlayer": 0,
+    "toPlayer": 1
+  }
+}
+[2026-08-30T17:34:34.412Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mtg39o0yxayqbs",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 1
+}
+[2026-08-30T17:34:34.416Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "profileId": "68ba47a03c9a326dacbc2f80",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 1,
+    "diceValue": 2,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 11,
+    "stateVersion": 11,
+    "timestamp": 1788111271605,
+    "lastActionType": "turn_advance",
+    "fromPlayer": 0,
+    "toPlayer": 1
+  }
+}
+[2026-08-30T17:34:38.861Z] [LUDO-EVENT] players-get-response {
+  "gameId": "mtg39o0yxayqbs"
+}
+[2026-08-30T17:34:38.862Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "profileId": "68ba47a03c9a326dacbc2f80",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 1,
+    "diceValue": 2,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 11,
+    "stateVersion": 11,
+    "timestamp": 1788111271605,
+    "lastActionType": "turn_advance",
+    "fromPlayer": 0,
+    "toPlayer": 1
+  }
+}
+[2026-08-30T17:34:39.313Z] [LUDO-EVENT] players-get-response {
+  "gameId": "mtg39o0yxayqbs"
+}
+[2026-08-30T17:34:39.315Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "profileId": "68ba47a03c9a326dacbc2f80",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 1,
+    "diceValue": 2,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 11,
+    "stateVersion": 11,
+    "timestamp": 1788111271605,
+    "lastActionType": "turn_advance",
+    "fromPlayer": 0,
+    "toPlayer": 1
+  }
+}
+[2026-08-30T17:34:40.771Z] [LUDO-EVENT] players-get-response {
+  "gameId": "mtg39o0yxayqbs"
+}
+[2026-08-30T17:34:40.776Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "profileId": "68ba47a03c9a326dacbc2f80",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 1,
+    "diceValue": 2,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 11,
+    "stateVersion": 11,
+    "timestamp": 1788111271605,
+    "lastActionType": "turn_advance",
+    "fromPlayer": 0,
+    "toPlayer": 1
+  }
+}
+[2026-08-30T17:34:41.883Z] [LUDO-EVENT] players-get-response {
+  "gameId": "mtg39o0yxayqbs"
+}
+[2026-08-30T17:34:41.884Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "profileId": "68ba47a03c9a326dacbc2f80",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 1,
+    "diceValue": 2,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 11,
+    "stateVersion": 11,
+    "timestamp": 1788111271605,
+    "lastActionType": "turn_advance",
+    "fromPlayer": 0,
+    "toPlayer": 1
+  }
+}
+[2026-08-30T17:34:54.322Z] [LUDO-EVENT] players-get-response {
+  "gameId": "mtg39o0yxayqbs"
+}
+[2026-08-30T17:34:54.324Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "profileId": "68ba47a03c9a326dacbc2f80",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 1,
+    "diceValue": 2,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 11,
+    "stateVersion": 11,
+    "timestamp": 1788111271605,
+    "lastActionType": "turn_advance",
+    "fromPlayer": 0,
+    "toPlayer": 1
+  }
+}
+[2026-08-30T17:35:01.812Z] [LUDO-EVENT] leave {
+  "gameId": "mtg39o0yxayqbs",
+  "profileId": "68ba47a03c9a326dacbc2f80",
+  "removed": false
+}
+[2026-08-30T17:35:02.688Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mtg39o0yxayqbs",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 0
+}
+[2026-08-30T17:35:02.690Z] [LUDO-STATE] game:mtg39o0yxayqbs {
+  "gameId": "mtg39o0yxayqbs",
+  "snapshot": {
+    "gameId": "mtg39o0yxayqbs",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Green",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "isActive": true,
+        "isOffline": "",
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": true,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 12,
+    "stateVersion": 12,
+    "timestamp": 1788111302570,
+    "lastActionType": "player_left_turn_advance",
+    "leftPlayerIndex": 1,
+    "nextPlayer": 0
+  }
+}
+[2026-08-30T17:35:40.846Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mtg3bnzxzo17ya",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 0
+}
+[2026-08-30T17:35:40.847Z] [LUDO-STATE] game:mtg3bnzxzo17ya {
+  "gameId": "mtg3bnzxzo17ya",
+  "snapshot": {
+    "gameId": "mtg3bnzxzo17ya",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "isActive": true,
+        "isOffline": "",
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": false,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 1,
+    "stateVersion": 1,
+    "timestamp": 1788111340838,
+    "lastActionType": "game_lobby_initialized"
+  }
+}
+[2026-08-30T17:35:41.495Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "mtg3bnzxzo17ya",
+  "players": 2,
+  "selectedPlayerCount": 2,
+  "currentPlayer": 0
+}
+[2026-08-30T17:35:41.496Z] [LUDO-STATE] game:mtg3bnzxzo17ya {
+  "gameId": "mtg3bnzxzo17ya",
+  "snapshot": {
+    "gameId": "mtg3bnzxzo17ya",
+    "players": [
+      {
+        "id": 0,
+        "name": "Mohammad Ikram",
+        "color": "#E53935",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1786061008/y2bgpcmceri6ogm2anvw.png",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1780098021/abtk9davy21pzff2x0cd.png",
+        "profileId": "67bf1e4009395add03e1e234",
+        "isActive": true,
+        "isOffline": false,
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#E53935"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "name": "Rahima Akter",
+        "color": "#FDD835",
+        "avatar": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041872/ay6kcyknzp7s2b1mse5v.jpg",
+        "cover": "https://res.cloudinary.com/dz88yjerw/image/upload/v1757041908/menwd42j8pzegfpmz2ps.jpg",
+        "isActive": true,
+        "isOffline": "",
+        "isBot": false,
+        "pieces": [
+          {
+            "id": 0,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 1,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 2,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          },
+          {
+            "id": 3,
+            "steps": 0,
+            "isHome": true,
+            "isInPlay": false,
+            "color": "#FDD835"
+          }
+        ]
+      }
+    ],
+    "currentPlayer": 0,
+    "diceValue": 0,
+    "gameStarted": false,
+    "gameEnded": false,
+    "winners": [],
+    "selectedPlayerCount": 2,
+    "playersSeq": 2,
+    "stateVersion": 2,
+    "timestamp": 1788111340842,
+    "lastActionType": "game_lobby_initialized"
+  }
+}
+[2026-08-30T17:38:10.461Z] [LUDO-EVENT] leave {
+  "gameId": "mtg3bnzxzo17ya",
+  "profileId": "68ba47a03c9a326dacbc2f80",
+  "removed": false
+}

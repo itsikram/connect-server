@@ -33,6 +33,8 @@ const path = require("path");
 const admin = require("firebase-admin");
 const fs = require("fs");
 const { startUnseenMessageReminderWorker } = require("./utils/unseenMessageReminderWorker");
+const isAuth = require("./middlewares/isAuth");
+const { sendBump } = require("./controllers/messageController");
 
 const normalizeMultilineEnv = (value = "") =>
   String(value).replace(/\\n/g, "\n");
@@ -486,6 +488,8 @@ middilewares(app);
 
 // setting up routes
 routes(app);
+
+app.post("/api/bump", isAuth, sendBump);
 
 // YouTube download service (Node.js ytdl-core)
 app.use(ytDownloadRoutes);

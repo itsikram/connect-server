@@ -8,7 +8,38 @@ const JWT_SECRET = process.env.JWT_SECRET_KEY;
 const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
 const DEFAULT_DEEPGRAM_MODEL = process.env.DEEPGRAM_MODEL || "nova-3";
 const DEFAULT_BANGLA_MODEL = process.env.DEEPGRAM_BANGLA_MODEL || "nova-3";
-const FINALIZE_GRACE_MS = Number(process.env.SPEECH_FINALIZE_GRACE_MS || 1200);
+const FINALIZE_GRACE_MS = Number(process.env.SPEECH_FINALIZE_GRACE_MS || 450);
+const BANGLA_ENDPOINTING_MS = Number(
+  process.env.SPEECH_BANGLA_ENDPOINTING_MS || 250,
+);
+const ENGLISH_ENDPOINTING_MS = Number(
+  process.env.SPEECH_ENGLISH_ENDPOINTING_MS || 350,
+);
+
+const BANGLA_KEYTERMS = [
+  "কল",
+  "কল করো",
+  "ভিডিও কল",
+  "মেসেজ",
+  "বার্তা",
+  "পাঠাও",
+  "পাঠান",
+  "প্রোফাইল",
+  "সেটিংস",
+  "বন্ধু",
+  "লুডো",
+  "দাবা",
+  "খোলো",
+  "খুলুন",
+  "যাও",
+  "যান",
+  "কোথায়",
+  "নোট",
+  "কাজ",
+  "টাস্ক",
+];
+
+const BANGLA_REPLACEMENTS = ["কোল:কল", "পেঠাও:পাঠাও", "সেটিং:সেটিংস"];
 
 const normalizeText = (text = "") => String(text).replace(/\s+/g, " ").trim();
 
@@ -126,6 +157,19 @@ const prepareBanglaText = (text = "", language = "bn") => {
     .replace(/\bবল্তেশী\b/g, "বলতেছি")
     .replace(/\bবোল্তেশি\b/g, "বলতেছি")
     .replace(/\bবোল্তেসি\b/g, "বলতেছি")
+    .replace(/\bকল কর\b/g, "কল করো")
+    .replace(/\bকোল করো\b/g, "কল করো")
+    .replace(/\bকোল কর\b/g, "কল করো")
+    .replace(/\bকোল করুন\b/g, "কল করুন")
+    .replace(/\bমেসেজ পেঠাও\b/g, "মেসেজ পাঠাও")
+    .replace(/\bমেসেজ পাঠা\b/g, "মেসেজ পাঠাও")
+    .replace(/\bবার্তা পেঠাও\b/g, "বার্তা পাঠাও")
+    .replace(/\bপ্রোফাইল খোল\b/g, "প্রোফাইল খোলো")
+    .replace(/\bপ্রোফাইল খুল\b/g, "প্রোফাইল খোলো")
+    .replace(/\bসেটিং খোলো\b/g, "সেটিংস খোলো")
+    .replace(/\bসেটিংস খোল\b/g, "সেটিংস খোলো")
+    .replace(/\bফ্রেন্ড\b/g, "বন্ধু")
+    .replace(/\bফ্রেন্ডস\b/g, "বন্ধু")
     .replace(/(?<![\u0980-\u09FF])যাব(?![\u0980-\u09FF])/g, "যাবো");
 
   return value;
@@ -158,9 +202,9 @@ const looksDisplayableTranscript = (text = "", language = "bn") => {
   if (isKnownBadBanglaGuess(value)) return false;
 
   const banglaChars = value.match(/[\u0980-\u09FF]/g) || [];
-  if (banglaChars.length >= 2) return true;
+  if (banglaChars.length >= 1) return true;
 
-  return value.length >= 4;
+  return value.length >= 3;
 };
 
 const combineTranscriptSegments = (previous = "", current = "") => {
@@ -230,6 +274,68 @@ const resolveInputFormatFromMimeType = (mimeType = "") => {
   if (value.includes("ogg")) return "ogg";
   if (value.includes("mp4") || value.includes("aac")) return "mp4";
   return null;
+};
+
+const canStreamNativeContainer = (mimeType = "") => {
+  const value = String(mimeType || "").toLowerCase();
+  return (
+    value.includes("webm") || value.includes("ogg") || value.includes("opus")
+  );
+};
+
+const isLinear16Audio = (mimeType = "", encoding = "") => {
+  const mime = String(mimeType || "").toLowerCase();
+  const enc = String(encoding || "").toLowerCase();
+  return (
+    enc === "linear16" ||
+    enc === "pcm" ||
+    mime.includes("l16") ||
+    mime.includes("pcm") ||
+    mime.includes("wav")
+  );
+};
+
+const scoreTranscriptCandidate = (text = "", confidence = 0, language = "bn") => {
+  const value = normalizeText(text);
+  if (!value) return -1;
+
+  const compact = value.replace(/\s+/g, "");
+  const banglaChars = (value.match(BENGALI_CHAR_REGEX) || []).length;
+  const banglaRatio = banglaChars / Math.max(1, compact.length);
+  const conf = Number(confidence) || 0;
+
+  if (String(language || "").toLowerCase().startsWith("bn")) {
+    if (banglaChars === 0 && compact.length >= 6) return conf * 0.12;
+    return banglaChars * 4 + banglaRatio * 16 + conf * 10 + Math.min(compact.length, 48) * 0.08;
+  }
+
+  return value.length + conf * 8;
+};
+
+const pickBestDeepgramAlternative = (payload, language = "bn") => {
+  const alternatives = Array.isArray(payload?.channel?.alternatives)
+    ? payload.channel.alternatives
+    : [];
+
+  let bestText = "";
+  let bestConfidence = 0;
+  let bestScore = -1;
+
+  for (let i = 0; i < alternatives.length; i += 1) {
+    const raw = normalizeText(alternatives[i]?.transcript || "");
+    const confidence = Number(alternatives[i]?.confidence || 0);
+    const sanitized = sanitizeTranscript(raw, language);
+    if (!sanitized) continue;
+
+    const score = scoreTranscriptCandidate(sanitized, confidence, language);
+    if (score > bestScore) {
+      bestScore = score;
+      bestText = sanitized;
+      bestConfidence = confidence;
+    }
+  }
+
+  return { text: bestText, confidence: bestConfidence };
 };
 
 const createFfmpegArgs = (mimeType = "audio/webm") => {
@@ -322,7 +428,7 @@ class DeepgramBridge {
     return configuredModel || "nova-3";
   }
 
-  createLiveConnection(language = "bn") {
+  createLiveConnection(language = "bn", audioOptions = {}) {
     if (this.bootError) {
       throw this.bootError;
     }
@@ -331,26 +437,51 @@ class DeepgramBridge {
       throw new Error("Deepgram client is not initialized");
     }
 
+    const mimeType =
+      typeof audioOptions === "string"
+        ? audioOptions
+        : audioOptions?.mimeType || "";
+    const encoding =
+      typeof audioOptions === "string" ? "" : audioOptions?.encoding || "";
+    const sampleRate =
+      typeof audioOptions === "string"
+        ? 16000
+        : Number(audioOptions?.sampleRate || 16000) || 16000;
+
     const effectiveLanguage = this.resolveLanguage(language);
     const model = this.resolveModel(effectiveLanguage);
-
-    console.log(
-      `[speech] opening Deepgram live stream language=${effectiveLanguage} model=${model}`,
-    );
-
-    return this.client.listen.live({
+    const pcmStream = isLinear16Audio(mimeType, encoding);
+    const nativeContainer = !pcmStream && canStreamNativeContainer(mimeType);
+    const isBangla = effectiveLanguage.startsWith("bn");
+    const options = {
       model,
       language: effectiveLanguage,
-      encoding: "linear16",
-      sample_rate: 16000,
       channels: 1,
       interim_results: true,
       punctuate: true,
       smart_format: true,
       vad_events: true,
       utterance_end_ms: 1000,
-      endpointing: 400,
-    });
+      endpointing: isBangla ? BANGLA_ENDPOINTING_MS : ENGLISH_ENDPOINTING_MS,
+      filler_words: false,
+      numerals: true,
+    };
+
+    if (pcmStream || !nativeContainer) {
+      options.encoding = "linear16";
+      options.sample_rate = pcmStream ? sampleRate : 16000;
+    }
+
+    if (/^nova-3/i.test(model) && isBangla) {
+      options.keyterm = BANGLA_KEYTERMS;
+      options.replace = BANGLA_REPLACEMENTS;
+    }
+
+    console.log(
+      `[speech] opening Deepgram live stream language=${effectiveLanguage} model=${model} pcm=${pcmStream} native=${nativeContainer} mimeType=${mimeType || "n/a"}`,
+    );
+
+    return this.client.listen.live(options);
   }
 }
 
@@ -366,7 +497,11 @@ const createSpeechSession = (ws, transcriber) => {
     finalSent: false,
     language: "bn",
     mimeType: "audio/webm",
-    chunkDurationMs: 400,
+    chunkDurationMs: 80,
+    encoding: "",
+    sampleRate: 16000,
+    usePcmStream: false,
+    useNativeContainer: false,
     deepgramConnection: null,
     deepgramOpen: false,
     ffmpegProcess: null,
@@ -404,6 +539,9 @@ const createSpeechSession = (ws, transcriber) => {
     state.lastTranscriptAt = 0;
     state.pendingPcmChunks = [];
     state.pendingPcmBytes = 0;
+    state.usePcmStream = isLinear16Audio(state.mimeType, state.encoding);
+    state.useNativeContainer =
+      !state.usePcmStream && canStreamNativeContainer(state.mimeType);
     clearFinalizeTimer();
     closeDeepgramConnection();
     killFfmpegProcess();
@@ -481,7 +619,11 @@ const createSpeechSession = (ws, transcriber) => {
     console.log(
       `[speech] session=${state.sessionLabel} sending final text="${finalText}"`,
     );
-    send({ type: "final", text: finalText });
+    send({
+      type: "final",
+      text: finalText,
+      confidence: 1,
+    });
 
     closeDeepgramConnection();
     killFfmpegProcess();
@@ -529,14 +671,17 @@ const createSpeechSession = (ws, transcriber) => {
     const maxPendingBytes = 512 * 1024;
     while (
       state.pendingPcmBytes > maxPendingBytes &&
-      state.pendingPcmChunks.length
+      state.pendingPcmChunks.length > 1
     ) {
-      const removed = state.pendingPcmChunks.shift();
+      const removed = state.pendingPcmChunks.splice(1, 1)[0];
       state.pendingPcmBytes -= removed?.length || 0;
     }
   };
 
-  const applyTranscript = (rawTranscript, { isFinal = false } = {}) => {
+  const applyTranscript = (
+    rawTranscript,
+    { isFinal = false, confidence = 0 } = {},
+  ) => {
     const transcript = sanitizeTranscript(rawTranscript, state.language);
     if (!transcript) {
       if (rawTranscript) {
@@ -563,9 +708,14 @@ const createSpeechSession = (ws, transcriber) => {
     if (combined && combined !== state.lastPartial) {
       state.lastPartial = combined;
       console.log(
-        `[speech] session=${state.sessionLabel} sending partial text="${combined}" isFinal=${isFinal}`,
+        `[speech] session=${state.sessionLabel} sending partial text="${combined}" isFinal=${isFinal} confidence=${confidence}`,
       );
-      send({ type: "partial", text: combined });
+      send({
+        type: "partial",
+        text: combined,
+        confidence,
+        isFinal,
+      });
     }
 
     return combined;
@@ -611,9 +761,10 @@ const createSpeechSession = (ws, transcriber) => {
     });
 
     connection.on(DG_EVENTS.Transcript, (payload) => {
-      const rawTranscript = normalizeText(
-        payload?.channel?.alternatives?.[0]?.transcript || "",
-      );
+      const picked = pickBestDeepgramAlternative(payload, state.language);
+      const rawTranscript =
+        picked.text ||
+        normalizeText(payload?.channel?.alternatives?.[0]?.transcript || "");
       const isFinal = Boolean(payload?.is_final);
       const speechFinal = Boolean(
         payload?.speech_final || payload?.from_finalize,
@@ -621,11 +772,14 @@ const createSpeechSession = (ws, transcriber) => {
 
       if (rawTranscript) {
         state.lastTranscriptAt = Date.now();
-        applyTranscript(rawTranscript, { isFinal });
+        applyTranscript(rawTranscript, {
+          isFinal,
+          confidence: picked.confidence,
+        });
       }
 
       if (state.isStopping) {
-        scheduleFinalizeFlush(speechFinal || isFinal ? 250 : FINALIZE_GRACE_MS);
+        scheduleFinalizeFlush(speechFinal || isFinal ? 80 : FINALIZE_GRACE_MS);
       }
     });
 
@@ -634,7 +788,7 @@ const createSpeechSession = (ws, transcriber) => {
         `[speech] session=${state.sessionLabel} Deepgram utterance end`,
       );
       if (state.isStopping) {
-        scheduleFinalizeFlush(250);
+        scheduleFinalizeFlush(80);
       } else if (state.isRecording && state.lastPartial) {
         send({ type: "utterance-end" });
       }
@@ -746,7 +900,12 @@ const createSpeechSession = (ws, transcriber) => {
 
     state.language = payload.language || "bn";
     state.mimeType = payload.mimeType || "audio/webm";
-    state.chunkDurationMs = Number(payload.chunkDurationMs || 400);
+    state.encoding = payload.encoding || "";
+    state.sampleRate = Number(payload.sampleRate || 16000) || 16000;
+    state.chunkDurationMs = Number(payload.chunkDurationMs || 80);
+    state.usePcmStream = isLinear16Audio(state.mimeType, state.encoding);
+    state.useNativeContainer =
+      !state.usePcmStream && canStreamNativeContainer(state.mimeType);
     state.isRecording = true;
 
     if (state.transcriber.bootError) {
@@ -767,12 +926,19 @@ const createSpeechSession = (ws, transcriber) => {
     try {
       state.deepgramConnection = state.transcriber.createLiveConnection(
         state.language,
+        {
+          mimeType: state.mimeType,
+          encoding: state.encoding,
+          sampleRate: state.sampleRate,
+        },
       );
       attachDeepgramEvents(state.deepgramConnection);
-      startFfmpegTranscoder();
+      if (!state.usePcmStream && !state.useNativeContainer) {
+        startFfmpegTranscoder();
+      }
 
       console.log(
-        `[speech] session=${state.sessionLabel} start language=${state.language} mimeType=${state.mimeType} chunkDurationMs=${state.chunkDurationMs}`,
+        `[speech] session=${state.sessionLabel} start language=${state.language} mimeType=${state.mimeType} pcm=${state.usePcmStream} native=${state.useNativeContainer} chunkDurationMs=${state.chunkDurationMs}`,
       );
       send({ type: "ready", message: "Speech stream started" });
     } catch (error) {
@@ -800,6 +966,12 @@ const createSpeechSession = (ws, transcriber) => {
 
     console.log(`[speech] session=${state.sessionLabel} stop requested`);
 
+    if (state.usePcmStream || state.useNativeContainer) {
+      requestDeepgramFinalize(state.usePcmStream ? "pcm-stop" : "native-stop");
+      scheduleFinalizeFlush(Math.min(FINALIZE_GRACE_MS, 280));
+      return;
+    }
+
     if (state.ffmpegProcess?.stdin && !state.ffmpegProcess.stdin.destroyed) {
       try {
         state.ffmpegProcess.stdin.end();
@@ -814,12 +986,17 @@ const createSpeechSession = (ws, transcriber) => {
       requestDeepgramFinalize("no-ffmpeg-stdin");
     }
 
-    scheduleFinalizeFlush(FINALIZE_GRACE_MS + 400);
+    scheduleFinalizeFlush(FINALIZE_GRACE_MS + 250);
   };
 
   const pushChunk = (buffer) => {
     if (!buffer || !buffer.length) return;
     if (!state.isRecording && !state.isStopping) return;
+
+    if (state.usePcmStream || state.useNativeContainer) {
+      sendPcmToDeepgram(buffer);
+      return;
+    }
 
     const input = state.ffmpegProcess?.stdin;
     if (!input || input.destroyed || input.writableEnded) {

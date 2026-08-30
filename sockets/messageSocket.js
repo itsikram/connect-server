@@ -743,11 +743,19 @@ module.exports = function messageSocket(io, socket, profileId) {
 
   socket.on("live-voice-stop", ({ to, channelName }) => {
     try {
-      if (!to || !channelName) return;
-      io.to(String(to)).emit("live-voice-stop", {
+      if (!to && !channelName) return;
+      const payload = {
         from: profileId,
-        channelName,
-      });
+        channelName: channelName || null,
+      };
+      if (to) {
+        io.to(String(to)).emit("live-voice-stop", payload);
+      }
+      // Also notify anyone in the 1:1 chat room so the peer still
+      // disconnects if they are not currently addressed by profile id.
+      if (channelName) {
+        io.to(String(channelName)).emit("live-voice-stop", payload);
+      }
     } catch (e) {
       console.error("live-voice-stop relay failed:", e?.message || e);
     }

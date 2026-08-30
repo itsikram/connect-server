@@ -639,3 +639,22 @@ exports.deleteMessage = async (req, res, next) => {
     }
 };
 
+exports.sendBump = async (req, res, next) => {
+    try {
+        const io = req.app.get('io');
+        const friendProfile = req.body?.friendProfile;
+        const myProfile = req.body?.myProfile || req.profile?._id;
+        const result = await require('../utils/sendBump').sendBump(io, {
+            friendProfile,
+            myProfile,
+        });
+        if (!result.ok) {
+            return res.status(400).json({ message: 'Bump failed', reason: result.reason });
+        }
+        return res.status(200).json({ message: 'Bump sent', skipped: !!result.skipped });
+    } catch (error) {
+        next(error);
+    }
+};
+
+

@@ -6,6 +6,58 @@ const games = new Map(); // gameId -> { createdAt: number, lastPlayers: object, 
 const userInvites = new Map(); // profileId -> [{ gameId, by, name, avatar, slotIndex, playerCount, ts }]
 const playerSockets = new Map(); // profileId -> Set<socketId> (track all sockets for a profile)
 
+const isHumanProfileId = (profileId) => {
+  if (profileId == null || profileId === "") return false;
+  const value = String(profileId);
+  return value !== "local" && !value.startsWith("bot-");
+};
+
+const isOccupiedSeat = (seat, index) => {
+  if (Number(index) === 0) return true;
+  if (seat?.isBot) return true;
+  return isHumanProfileId(seat?.profileId);
+};
+
+const countOccupiedSeats = (players = []) =>
+  players.reduce(
+    (count, seat, index) => count + (isOccupiedSeat(seat, index) ? 1 : 0),
+    0,
+  );
+
+const bumpPlayersSeq = (snapshot = {}) => {
+  const nextSeq =
+    Math.max(
+      Number(snapshot.playersSeq || 0),
+      Number(snapshot.stateVersion || 0),
+      0,
+    ) + 1;
+  snapshot.playersSeq = nextSeq;
+  snapshot.stateVersion = nextSeq;
+  return snapshot;
+};
+
+const mergeLobbyOccupants = (incomingPlayers = [], existingPlayers = []) => {
+  if (!Array.isArray(incomingPlayers) || incomingPlayers.length === 0) {
+    return incomingPlayers;
+  }
+  return incomingPlayers.map((seat, index) => {
+    if (isOccupiedSeat(seat, index)) return seat;
+    const previous = existingPlayers[index];
+    if (!isOccupiedSeat(previous, index)) return seat;
+    return {
+      ...seat,
+      name: previous.name || seat?.name,
+      avatar: previous.avatar || seat?.avatar,
+      cover: previous.cover || seat?.cover,
+      profileId: previous.profileId || seat?.profileId,
+      isBot: Boolean(previous.isBot),
+      isActive: true,
+      isOffline: false,
+      offlineSince: undefined,
+    };
+  });
+};
+
 const pruneGameIfEmpty = (io, gameId) => {
   if (!gameId) return false;
   const game = games.get(gameId);
@@ -704,6 +756,7 @@ function ludoSocket(io, socket, profileId) {
       });
 
       if (game?.lastPlayers) {
+        bumpPlayersSeq(game.lastPlayers);
         debugLogger.ludoState(gameId, game.lastPlayers);
         io.to(room).emit("ludo:players", {
           ...game.lastPlayers,
@@ -839,6 +892,35 @@ function ludoSocket(io, socket, profileId) {
           existing.pendingAccepts = [];
         } catch (_e) {}
       }
+    }
+    if (
+      existing?.lastPlayers?.players &&
+      Array.isArray(enhancedPayload.players) &&
+      !enhancedPayload.gameStarted
+    ) {
+      const incomingOccupied = countOccupiedSeats(enhancedPayload.players);
+      const existingOccupied = countOccupiedSeats(existing.lastPlayers.players);
+      if (incomingOccupied < existingOccupied) {
+        enhancedPayload.players = mergeLobbyOccupants(
+          enhancedPayload.players,
+          existing.lastPlayers.players,
+        );
+        bumpPlayersSeq(enhancedPayload);
+      }
+    }
+    if (existing?.lastPlayers) {
+      const prevSeq = Math.max(
+        Number(existing.lastPlayers.playersSeq || 0),
+        Number(existing.lastPlayers.stateVersion || 0),
+        0,
+      );
+      const nextSeq = Math.max(
+        Number(enhancedPayload.playersSeq || 0),
+        Number(enhancedPayload.stateVersion || 0),
+        prevSeq,
+      );
+      enhancedPayload.playersSeq = nextSeq;
+      enhancedPayload.stateVersion = nextSeq;
     }
     games.set(gameId, { ...existing, lastPlayers: enhancedPayload });
     try {
