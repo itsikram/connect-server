@@ -319,5 +319,77 @@ exports.getProfileWatch = async (req, res, next) => {
     }
 }
 
+exports.shareWatch = async (req, res, next) => {
+    try {
+        const profileId = req.profile._id
+        const watchId = req.body.watchId
+        const caption = req.body.caption || ''
+
+        if (!mongoose.isValidObjectId(watchId)) {
+            return res.status(400).json({ message: 'Watch share failed' })
+        }
+
+        const theWatch = await Watch.findById(watchId)
+        if (!theWatch) {
+            return res.status(404).json({ message: 'Watch not found' })
+        }
+
+        const sharedPost = new Post({
+            caption,
+            photos: theWatch.thumbnail || '',
+            author: profileId,
+            type: 'shareWatch',
+            location: String(watchId),
+        })
+        const savedPost = await sharedPost.save()
+
+        const updateWatch = await Watch.findOneAndUpdate(
+            { _id: watchId },
+            { $push: { shares: profileId } },
+            { new: true }
+        )
+
+        const getPost = await Post.findById(savedPost._id).populate([
+            {
+                path: 'author',
+                model: Profile,
+                populate: {
+                    path: 'user'
+                }
+            },
+            {
+                path: 'comments',
+                model: Comment,
+                populate: [{
+                    path: 'author',
+                    select: ['profilePic', 'user'],
+                    populate: {
+                        path: 'user',
+                        select: ['firstName', 'surname']
+                    }
+                }, {
+                    path: 'replies',
+                    Model: CmntReply,
+                    populate: {
+                        path: 'author',
+                        model: Profile
+                    }
+                }]
+            }
+        ])
+
+        if (updateWatch && getPost) {
+            return res.status(200).json({
+                message: 'Watch Shared Successfully',
+                post: getPost,
+                watch: updateWatch,
+            })
+        }
+
+        return res.status(400).json({ message: 'Watch share failed' })
+    } catch (error) {
+        next(error)
+    }
+}
 
 

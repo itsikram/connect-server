@@ -1,17 +1,28 @@
 const Post = require('../models/Post')
 const Story = require('../models/Story')
+const Watch = require('../models/Watch')
 const Profile = require('../models/Profile')
 const { saveNotification } = require('./notificationController')
 const checkIsActive = require('../utils/checkIsActive')
 const { sendPushToProfile } = require('../utils/pushNotifications')
+const { normalizeReactType } = require('../utils/reactTypes')
 
 exports.postAddReact = async (req, res, next) => {
     try {
 
         let profile = (req.profile._id).toString()
         let myProfileData = req.profile
-        let { reactType, id, postType } = req.body
+        let { reactType, id, postType, watchType } = req.body
+        postType = postType || watchType
+        reactType = normalizeReactType(reactType)
         let io = req.app.get('io')
+
+        if (!reactType) {
+            return res.status(400).json({ message: 'Invalid reaction type' })
+        }
+        if (!id || !['post', 'story', 'watch'].includes(postType)) {
+            return res.status(400).json({ message: 'Invalid reaction target' })
+        }
 
         let friendProfile = ''
 
@@ -146,10 +157,75 @@ exports.postAddReact = async (req, res, next) => {
                 break;
             case 'watch':
 
+                friendProfile = (await Watch.findOne({ _id: id }).populate('author')).author
+                await Watch.findOneAndUpdate({
+                    _id: id
+                }, {
+                    $pull: {
+                        reacts: {
+                            profile: profile,
+                        }
+                    }
+                }, { new: true })
+
+                let addWatchReact = await Watch.findOneAndUpdate({
+                    _id: id
+                }, {
+                    $push: {
+                        reacts: {
+                            profile,
+                            type: reactType
+                        }
+                    }
+
+                }, { new: true })
+
+                if (friendProfile && String(friendProfile._id) !== String(profile)) {
+                    const activeBrowserIds = friendProfile.browserIds
+                        ?.filter(browser => browser.isActive)
+                        ?.map(browser => browser.browserId) || [];
+
+                    let watchReactNotification = {
+                        receiverId: friendProfile._id,
+                        text: `${myProfileData.fullName} Reacted your video`,
+                        link: '/watch/' + addWatchReact._id,
+                        type: 'postReact',
+                        icon: myProfileData.profilePic,
+                        browserIds: activeBrowserIds,
+                        data: {
+                            senderId: profile,
+                            senderName: myProfileData.fullName,
+                            senderProfilePic: myProfileData.profilePic,
+                            watchId: addWatchReact._id,
+                            reactType: reactType
+                        }
+                    }
+                    saveNotification(io, watchReactNotification)
+
+                    io.to(friendProfile._id).emit('postReactNotification', {
+                        senderName: myProfileData.fullName,
+                        senderPP: myProfileData.profilePic,
+                        watchId: addWatchReact._id,
+                        reactType: reactType
+                    })
+
+                    try {
+                        const { isActive } = await checkIsActive(friendProfile._id)
+                        if (!isActive) {
+                            await sendPushToProfile(friendProfile._id, {
+                                title: 'New reaction',
+                                body: `${myProfileData.fullName} reacted to your video`,
+                                data: { type: 'watch_react', watchId: String(addWatchReact._id) }
+                            });
+                        }
+                    } catch (e) {}
+                }
+
+                return res.json(addWatchReact).status(200)
                 break;
 
             default:
-                break;
+                return res.status(400).json({ message: 'Invalid reaction target' })
         }
 
 
@@ -161,8 +237,13 @@ exports.postAddReact = async (req, res, next) => {
 exports.postRemoveReact = async (req, res, next) => {
     try {
         let profile = req.profile._id
-        let { id, postType,reactor } = req.body
-        let io = req.app.get('io')
+        let { id, postType, watchType, reactor } = req.body
+        postType = postType || watchType
+        reactor = reactor || profile
+
+        if (!id || !['post', 'story', 'watch'].includes(postType)) {
+            return res.status(400).json({ message: 'Invalid reaction target' })
+        }
 
         switch (postType) {
             case 'post':
@@ -191,10 +272,22 @@ exports.postRemoveReact = async (req, res, next) => {
 
                 return res.json(removeStoryReact)
                 break;
+            case 'watch':
+                let removeWatchReact = await Watch.findByIdAndUpdate({
+                    _id: id
+                }, {
+                    $pull: {
+                        reacts: {
+                            profile: reactor,
+                        }
+                    }
+                }, { new: true })
+
+                return res.json(removeWatchReact)
+                break;
 
             default:
-
-                break;
+                return res.status(400).json({ message: 'Invalid reaction target' })
         }
 
 

@@ -7,6 +7,7 @@ const checkIsActive = require('../utils/checkIsActive')
 const { sendPushToProfile } = require('../utils/pushNotifications')
 const { getPostId, postLink } = require('../utils/getPostId')
 const Story = require('../models/Story')
+const Watch = require('../models/Watch')
 const mongoose = require('mongoose')
 
 async function resolveCommentParent(parentId) {
@@ -19,6 +20,16 @@ async function resolveCommentParent(parentId) {
             type: 'story',
             doc: story,
             link: `/story/${id}`,
+            id,
+        }
+    }
+
+    const watch = await Watch.findById(id).populate('author')
+    if (watch) {
+        return {
+            type: 'watch',
+            doc: watch,
+            link: `/watch/${id}`,
             id,
         }
     }
@@ -40,10 +51,82 @@ exports.postAddComment = async (req, res, next) => {
         let attachment = req.body.attachment ? req.body.attachment : ''
         let body = req.body.body|| ''
         let post = req.body.post || ''
+        let watch = req.body.watch || ''
         let profile = req.profile._id|| ''
         let myProfileData = req.profile
 
         let io = req.app.get('io')
+
+        if (watch && mongoose.isValidObjectId(watch) && mongoose.isValidObjectId(profile)) {
+            let commentData = new Comment({
+                attachment,
+                body,
+                author: profile,
+                watch,
+            })
+            let savedCommentData = await commentData.save()
+
+            let updateWatch = await Watch.findOneAndUpdate({
+                _id: watch
+            }, {
+                $push: {
+                    comments: savedCommentData._id
+                }
+            }, { new: true }).populate('author')
+
+            if (updateWatch && updateWatch.author && String(updateWatch.author._id) !== String(profile)) {
+                const activeBrowserIds = updateWatch.author.browserIds
+                    ?.filter(browser => browser.isActive)
+                    ?.map(browser => browser.browserId) || [];
+
+                let notification = {
+                    receiverId: updateWatch.author._id,
+                    text: `${myProfileData.fullName} Commented on your video`,
+                    link: '/watch/' + watch,
+                    type: 'postComment',
+                    icon: myProfileData.profilePic,
+                    browserIds: activeBrowserIds,
+                    data: {
+                        senderId: profile,
+                        senderName: myProfileData.fullName,
+                        senderProfilePic: myProfileData.profilePic,
+                        watchId: watch,
+                        commentId: savedCommentData._id,
+                        commentBody: body
+                    }
+                }
+
+                saveNotification(io, notification)
+                io.to(updateWatch.author._id).emit('postCommentNotification', {
+                    senderName: myProfileData.fullName,
+                    senderPP: myProfileData.profilePic,
+                    watchId: watch,
+                    commentBody: body
+                })
+
+                try {
+                    const { isActive } = await checkIsActive(updateWatch.author._id)
+                    if (!isActive) {
+                        await sendPushToProfile(updateWatch.author._id, {
+                            title: 'New comment',
+                            body: `${myProfileData.fullName} commented on your video`,
+                            data: { type: 'watch_comment', watchId: String(watch) }
+                        });
+                    }
+                } catch (e) {}
+            }
+
+            const populatedComment = await Comment.findById(savedCommentData._id).populate({
+                path: 'author',
+                select: ['profilePic', 'user', 'fullName', 'displayName'],
+                populate: {
+                    path: 'user',
+                    select: ['firstName', 'surname']
+                }
+            });
+
+            return res.json(populatedComment).status(200)
+        }
 
 
         if(!mongoose.isValidObjectId(post) || !mongoose.isValidObjectId(profile)) {
@@ -247,7 +330,7 @@ exports.addCommentReact = async (req, res, next) => {
                 const myProfile = req.profile;
                 if (comment && comment.author && String(comment.author._id) !== String(myProfile._id)) {
                     const io = req.app.get('io');
-                    const parent = await resolveCommentParent(comment.post);
+                    const parent = await resolveCommentParent(comment.watch || comment.post);
                     const notification = {
                         receiverId: comment.author._id,
                         text: `${myProfile.fullName} liked your comment`,
@@ -332,7 +415,7 @@ exports.postCommentReply = async (req, res, next) => {
             }, { new: true })
 
             if (updateComment) {
-                const parent = await resolveCommentParent(updateComment.post);
+                const parent = await resolveCommentParent(updateComment.watch || updateComment.post);
                 let newReplyWithAuthor = await CmntReply.findOne({ _id: newReply._id }).populate({
                     path: 'author',
                     select: ['profilePic', 'user', 'fullName', 'displayName'],
@@ -504,15 +587,19 @@ exports.removeReplyReact = async (req, res, next) => {
 exports.postDeleteComment = async (req, res, next) => {
     try {
         let commentId = req.body.commentId
-        let parentId = req.body.postId || req.body.storyId
+        let parentId = req.body.postId || req.body.storyId || req.body.watchId
         let parentType = req.body.parentType
 
         let deleteComment = await Comment.findOneAndDelete({ _id: commentId })
         if (deleteComment) {
-            const idToPull = parentId || deleteComment.post
+            const idToPull = parentId || deleteComment.watch || deleteComment.post
 
             if (parentType === 'story') {
                 await Story.findByIdAndUpdate(idToPull, {
+                    $pull: { comments: commentId }
+                }, { new: true })
+            } else if (parentType === 'watch') {
+                await Watch.findByIdAndUpdate(idToPull, {
                     $pull: { comments: commentId }
                 }, { new: true })
             } else {
@@ -521,9 +608,14 @@ exports.postDeleteComment = async (req, res, next) => {
                 }, { new: true })
 
                 if (!updatedPost) {
-                    await Story.findByIdAndUpdate(idToPull, {
+                    const updatedWatch = await Watch.findByIdAndUpdate(idToPull, {
                         $pull: { comments: commentId }
                     }, { new: true })
+                    if (!updatedWatch) {
+                        await Story.findByIdAndUpdate(idToPull, {
+                            $pull: { comments: commentId }
+                        }, { new: true })
+                    }
                 }
             }
 

@@ -17,7 +17,12 @@ const commentSchema = new Schema({
     },
     post: {
         type: Schema.Types.ObjectId,
-        required: true
+        required: false
+    },
+    watch: {
+        type: Schema.Types.ObjectId,
+        ref: 'Watch',
+        required: false
     },
     replies: [{
         type:  Schema.Types.ObjectId,

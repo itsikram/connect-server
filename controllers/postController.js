@@ -272,8 +272,8 @@ exports.getSinglePost = async (req, res, next) => {
             },
             {
                 path: 'viewers',
-                Model: Profile
-
+                model: Profile,
+                select: 'fullName displayName profilePic username isActive',
             }
 
         ])
