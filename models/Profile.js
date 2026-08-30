@@ -113,6 +113,11 @@ let profileSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    lastActive: {
+      type: Date,
+      default: null,
+      index: true,
+    },
     deviceTokens: [
       {
         type: String,

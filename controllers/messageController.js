@@ -138,8 +138,14 @@ exports.getChatList = async(req,res,next) => {
             }
         ]);
 
-        // Get profile with friends
-        const myProfile = await Profile.findOne({ _id: profileId }).populate('friends');
+        // Get profile with slim friend fields (avoid shipping tokens, push subs, nested friends)
+        const myProfile = await Profile.findOne({ _id: profileId })
+            .select('_id friends')
+            .populate({
+                path: 'friends',
+                select: '_id fullName displayName username nickname profilePic isActive lastActive user',
+                populate: { path: 'user', select: 'firstName surname' },
+            });
         
         if (!myProfile) {
             clearTimeout(timeout);
@@ -162,7 +168,8 @@ exports.getChatList = async(req,res,next) => {
         // Build profile contacts array
         const profileContacts = myProfile.friends.map(friendProfile => {
             const lastActive = friendProfile.lastActive ? new Date(friendProfile.lastActive) : null;
-            const isOnline = lastActive && (now - lastActive) < 5 * 60 * 1000;
+            const isOnline = Boolean(friendProfile.isActive) ||
+                (lastActive && (now - lastActive) < 5 * 60 * 1000);
             
             return {
                 person: friendProfile,
@@ -210,27 +217,19 @@ exports.getChatHistory = async(req,res,next) => {
             ]
         };
 
-        // Fetch messages (most recent first, then reverse for chronological order)
+        // Fetch one extra row instead of a separate countDocuments query
         const messages = await Message.find(query)
             .sort({ timestamp: -1 })
             .skip(skip)
-            .limit(limit)
+            .limit(limit + 1)
             .populate('parent');
 
-        // Check if there are more messages available
-        const totalMessages = await Message.countDocuments(query);
-        const hasMore = totalMessages > limit;
-
-        console.log('getChatHistory result:', { 
-            foundMessages: messages.length, 
-            hasMore, 
-            totalMessages, 
-            limit 
-        });
+        const hasMore = messages.length > limit;
+        const pageMessages = hasMore ? messages.slice(0, limit) : messages;
 
         // Return messages in chronological order (oldest first)
         res.status(200).json({
-            messages: messages.reverse(),
+            messages: pageMessages.reverse(),
             hasMore
         });
         
@@ -407,7 +406,7 @@ exports.sendMessage = async (req, res, next) => {
 // Helper function to update last active time
 const updateLastActive = async (userId) => {
     try {
-        await Profile.findByIdAndUpdate(userId, { lastActive: new Date() });
+        await Profile.findByIdAndUpdate(userId, { lastActive: new Date(), isActive: true });
     } catch (error) {
         console.error('Error updating last active time:', error);
     }

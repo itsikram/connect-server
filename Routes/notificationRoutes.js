@@ -14,6 +14,7 @@ const {
   rejectIncomingCallFromPush,
   notifyIncomingCallRingingFromPush,
   resolveLudoInviteNotifications,
+  resolveChessInviteNotifications,
 } = require("../controllers/notificationController");
 const isAuth = require("../middlewares/isAuth");
 
@@ -35,5 +36,6 @@ Router.get("/new", isAuth, getNewNotifications);
 Router.post("/delete", isAuth, deleteNotification);
 Router.post("/deleteall", isAuth, deleteAllNotifications);
 Router.post("/resolve-ludo-invite", isAuth, resolveLudoInviteNotifications);
+Router.post("/resolve-chess-invite", isAuth, resolveChessInviteNotifications);
 
 module.exports = Router;

@@ -1,4 +1,5 @@
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 const dns = require("dns");
 // Local DNS (e.g. 192.168.1.1) often refuses MongoDB SRV lookups → querySrv ECONNREFUSED.
 // Prefer public resolvers so mongodb+srv:// still works if used.
@@ -29,7 +30,6 @@ app.set("trust proxy", 1);
 const socketHandler = require("./sockets/socketHandler");
 const { initializeSpeechWebSocketServer } = require("./speech/speechWsServer");
 const httpServer = createServer(app);
-const path = require("path");
 const admin = require("firebase-admin");
 const fs = require("fs");
 const { startUnseenMessageReminderWorker } = require("./utils/unseenMessageReminderWorker");
@@ -651,5 +651,9 @@ mongoose
   });
 
 httpServer.listen(PORT, "0.0.0.0", () => {
+  const { isCursorConfigured } = require("./utils/cursorAgentClient");
   console.log(`Server is running on port ${PORT}`);
+  console.log(
+    `Cursor Cloud Agents: ${isCursorConfigured() ? "key loaded from server/.env" : "CURSOR_API_KEY missing"}`,
+  );
 });

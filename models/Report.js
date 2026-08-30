@@ -21,11 +21,14 @@ const reportSchema = new Schema({
     },
     reason: {
         type: String,
-        trim: true
+        trim: true,
+        required: true,
+        maxLength: 80
     },
     details: {
         type: String,
-        trim: true
+        trim: true,
+        maxLength: 500
     },
     status: {
         type: String,
@@ -33,6 +36,9 @@ const reportSchema = new Schema({
         default: 'open'
     }
 }, { timestamps: true })
+
+reportSchema.index({ type: 1, targetPost: 1, reportedBy: 1, status: 1 })
+reportSchema.index({ type: 1, targetProfile: 1, reportedBy: 1, status: 1 })
 
 const Report = model('Report', reportSchema)
 

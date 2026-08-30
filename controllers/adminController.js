@@ -638,7 +638,7 @@ exports.getStats = async (req, res, next) => {
 exports.getReportedPosts = async (req, res, next) => {
     try {
         const reports = await Report.find({ type: 'post' })
-            .populate({ path: 'targetPost', populate: { path: 'author', select: 'fullName displayName profilePic' } })
+            .populate({ path: 'targetPost', select: 'caption type photos author createdAt', populate: { path: 'author', select: 'fullName displayName profilePic' } })
             .populate({ path: 'reportedBy', select: 'fullName displayName profilePic', populate: { path: 'user', select: 'firstName surname' } })
             .sort({ createdAt: -1 })
             .limit(200)
@@ -651,7 +651,7 @@ exports.getReportedPosts = async (req, res, next) => {
 exports.getReportedProfiles = async (req, res, next) => {
     try {
         const reports = await Report.find({ type: 'profile' })
-            .populate({ path: 'targetProfile', populate: { path: 'user', select: 'firstName surname email' } })
+            .populate({ path: 'targetProfile', select: 'fullName displayName username profilePic user', populate: { path: 'user', select: 'firstName surname email' } })
             .populate({ path: 'reportedBy', select: 'fullName displayName profilePic', populate: { path: 'user', select: 'firstName surname' } })
             .sort({ createdAt: -1 })
             .limit(200)

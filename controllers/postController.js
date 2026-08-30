@@ -376,14 +376,9 @@ exports.getNewsFeed = async (req, res, next) => {
             return res.status(401).json({ message: 'Unauthorized' })
         }
         
-        // Get current user's profile with friends list
-        const currentProfile = await Profile.findById(profile._id).select('friends blockedUsers')
-        if (!currentProfile) {
-            return res.status(404).json({ message: 'Profile not found' })
-        }
-        const currentUserId = currentProfile._id
-        const friendsList = currentProfile.friends || []
-        const blockedUsers = currentProfile.blockedUsers || []
+        const currentUserId = profile._id
+        const friendsList = profile.friends || []
+        const blockedUsers = profile.blockedUsers || []
 
         // Build audience filter query
         // Audience values: 1 = Public, 2 = Friends, 3 = Only Me
@@ -413,48 +408,26 @@ exports.getNewsFeed = async (req, res, next) => {
             ]
         }
 
-        const RANK_WINDOW = 80
+        const RANK_WINDOW = 40
         const friendIds = new Set((friendsList || []).map((id) => String(id)))
+        const authorLite = {
+            path: 'author',
+            select: 'fullName displayName username nickname profilePic isOfficial isActive lastActive user',
+            populate: {
+                path: 'user',
+                select: 'firstName surname',
+            },
+        }
 
         const rankedWindow = await Post.find(audienceFilter).populate([
-            {
-                path: 'author',
-                model: Profile,
-                populate: {
-                    path: 'user'
-                }
-            },
+            authorLite,
             {
                 path: 'parentPost',
                 model: Post,
-                populate: [{
-                    path: 'author',
-                    model: Profile
-                }, {
-                    path: 'author.user'
-                }]
+                select: 'author caption photos type createdAt',
+                populate: authorLite,
             },
-            {
-                path: 'comments',
-                model: Comment,
-                populate: [{
-                    path: 'author',
-                    select: ['profilePic', 'user'],
-                    populate: {
-                        path: 'user',
-                        select: ['firstName', 'surname']
-                    }
-                }, {
-                    path: 'replies',
-                    Model: CmntReply,
-                    populate: {
-                        path: 'author',
-                        model: Profile
-                    }
-                }]
-            }
-
-        ]).sort({ 'createdAt': -1 }).limit(RANK_WINDOW)
+        ]).sort({ createdAt: -1 }).limit(RANK_WINDOW).lean()
 
         const ranked = rankPosts(rankedWindow, {
             friendIds,

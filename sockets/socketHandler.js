@@ -50,7 +50,7 @@ module.exports = function socketHandler(io) {
                 );
                 await Profile.findOneAndUpdate(
                     { _id: profileId },
-                    { isActive: true },
+                    { isActive: true, lastActive: new Date() },
                     { new: true }
                 );
             } catch (err) {

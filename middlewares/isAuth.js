@@ -24,7 +24,7 @@ let isAuth = async (req, res, next) => {
     }
 
     // Build the status/location update payload
-    const updateData = { isActive: true };
+    const updateData = { isActive: true, lastActive: new Date() };
 
     const latitude = req.headers["x-latitude"] || req.body?.latitude;
     const longitude = req.headers["x-longitude"] || req.body?.longitude;

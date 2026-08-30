@@ -29,7 +29,7 @@ module.exports = async (profileId) => {
         // Update isActive status to true
         await Profile.findByIdAndUpdate(
             profileId,
-            { isActive: true },
+            { isActive: true, lastActive: new Date() },
             { new: false }
         );
     } catch (error) {

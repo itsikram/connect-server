@@ -263,6 +263,42 @@ exports.resolveLudoInviteNotifications = async (req, res, next) => {
   }
 };
 
+exports.resolveChessInviteNotifications = async (req, res, next) => {
+  try {
+    const profileId = req.profile?._id;
+    const gameId = req.body?.gameId;
+    const inviterId = req.body?.inviterId;
+
+    if (!profileId) {
+      return res.status(400).json({ message: "Profile required" });
+    }
+    if (!gameId) {
+      return res.status(400).json({ message: "gameId is required" });
+    }
+
+    const filter = {
+      receiverId: profileId,
+      type: "chess_invite",
+      "data.gameId": String(gameId),
+    };
+    if (inviterId) {
+      filter["data.inviterId"] = String(inviterId);
+    }
+
+    const result = await Notification.deleteMany(filter);
+
+    return res.status(200).json({
+      message: "Chess invite notifications resolved",
+      deletedCount: result?.deletedCount || 0,
+    });
+  } catch (error) {
+    console.error("Error resolving chess invite notifications:", error);
+    return res
+      .status(500)
+      .json({ message: "Failed to resolve chess invite notifications" });
+  }
+};
+
 exports.deleteAllNotifications = async (req, res, next) => {
   try {
     const profileId = req.profile?._id || req.body.profile;

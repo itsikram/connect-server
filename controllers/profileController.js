@@ -4,6 +4,58 @@ const Story = require("../models/Story");
 const mongoose = require("mongoose");
 const User = require("../models/User");
 
+const MONGO_ID_RE = /^[a-fA-F0-9]{24}$/;
+const ONLINE_WINDOW_MS = 5 * 60 * 1000;
+const PROFILE_PRIVATE_EXCLUDE =
+  "-deviceTokens -browserIds -webPushSubscriptions";
+const FRIEND_PUBLIC_FIELDS =
+  "_id fullName displayName username nickname profilePic bio isActive lastActive lastLocation user";
+const USER_PUBLIC_FIELDS = "firstName surname";
+const LITE_PROFILE_FIELDS =
+  "_id fullName displayName username nickname profilePic coverPic bio isActive lastActive lastLocation blockedUsers friends friendReqs user";
+
+const isMongoId = (value) => MONGO_ID_RE.test(String(value || ""));
+
+const computeIsActive = (profile) => {
+  if (!profile) return false;
+  if (profile.isActive) return true;
+  const lastActive = profile.lastActive
+    ? new Date(profile.lastActive).getTime()
+    : 0;
+  return Boolean(lastActive && Date.now() - lastActive < ONLINE_WINDOW_MS);
+};
+
+const loadProfileDocument = async (profileId, { lite = false } = {}) => {
+  if (!profileId) return null;
+
+  const query = isMongoId(profileId)
+    ? { _id: profileId }
+    : { username: profileId };
+
+  const findQuery = Profile.findOne(query);
+
+  if (lite) {
+    findQuery.select(LITE_PROFILE_FIELDS).populate({
+      path: "user",
+      select: USER_PUBLIC_FIELDS,
+    });
+  } else {
+    findQuery
+      .select(PROFILE_PRIVATE_EXCLUDE)
+      .populate({
+        path: "friends",
+        select: FRIEND_PUBLIC_FIELDS,
+        populate: { path: "user", select: USER_PUBLIC_FIELDS },
+      })
+      .populate({
+        path: "user",
+        select: USER_PUBLIC_FIELDS,
+      });
+  }
+
+  return findQuery;
+};
+
 exports.prefileHasStory = async function (req, res, next) {
   try {
     const twentyFourHoursAgo = new Date();
@@ -57,56 +109,22 @@ exports.getProfileImages = async function (req, res, next) {
 
 exports.profileGet = async function (req, res, next) {
   try {
-    const fromQuery = req.query?.profileId;
-    const fromParams = req.params?.profileId;
-    const profileId = fromQuery || fromParams;
-    console.log(
-      "profileGet called with id:",
-      profileId,
-      "fromQuery:",
-      fromQuery ? "yes" : "no",
-    );
+    const profileId = req.query?.profileId || req.params?.profileId;
+    const lite =
+      req.query?.lite === "1" ||
+      req.query?.lite === "true" ||
+      req.query?.fields === "lite";
 
     if (!profileId) {
-      console.log("No profileId provided");
       return res.status(400).json({ message: "Profile ID is required" });
     }
 
-    console.log("Looking for profile with ID:", profileId);
-
-    // Check if profileId is a username
-    let hasUsername = await Profile.findOne({ username: profileId });
-    if (hasUsername) {
-      console.log("Found profile by username");
-      let profileData = await Profile.findOne({ username: profileId }).populate(
-        "user",
-      );
-      return res.status(200).json(profileData);
+    const profileData = await loadProfileDocument(profileId, { lite });
+    if (!profileData) {
+      return res.status(404).json({ message: "Profile Not Found" });
     }
 
-    // Check if profileId is a valid ObjectId
-    if (mongoose.isValidObjectId(profileId)) {
-      console.log("ProfileId is valid ObjectId, searching by _id");
-      let hasProfile = await Profile.findOne({ _id: profileId });
-      if (!hasProfile) {
-        console.log("Profile not found by _id", profileId);
-        return res.status(404).json({ message: "Profile Not Found" });
-      }
-
-      let profileData = await Profile.findOne({ _id: profileId }).populate([
-        "friends",
-        "user",
-      ]);
-
-      if (profileData) {
-        return res.status(200).json(profileData);
-      } else {
-        return res.status(404).json({ message: "Profile data not found" });
-      }
-    } else {
-      console.log("Invalid profile ID format:", profileId);
-      return res.status(400).json({ message: "Invalid profile ID format" });
-    }
+    return res.status(200).json(profileData);
   } catch (error) {
     console.error("Error in profileGet:", error);
     return res.status(500).json({ message: "Internal server error" });
@@ -115,21 +133,18 @@ exports.profileGet = async function (req, res, next) {
 
 exports.profilePost = async (req, res, next) => {
   try {
-    let profileId = req.body.profile;
-    if (profileId == false) return;
-
-    if (mongoose.isValidObjectId(profileId)) {
-      let hasProfile = await Profile.exists({ _id: profileId });
-      if (!hasProfile)
-        return res.json({ message: "Profile Not Found" }).status(404);
-      let profileData = await Profile.findOne({ _id: profileId }).populate([
-        "friends",
-        "user",
-      ]);
-      if (profileData) {
-        return res.json(profileData);
-      }
+    const profileId = req.body.profile;
+    if (!profileId) {
+      return res.status(400).json({ message: "Profile ID is required" });
     }
+
+    const lite = Boolean(req.body.lite);
+    const profileData = await loadProfileDocument(profileId, { lite });
+    if (!profileData) {
+      return res.status(404).json({ message: "Profile Not Found" });
+    }
+
+    return res.status(200).json(profileData);
   } catch (error) {
     next(error);
   }
@@ -382,29 +397,57 @@ exports.getNearbyProfiles = async (req, res, next) => {
 // HTTP-based online status checking
 exports.getOnlineStatus = async (req, res, next) => {
   try {
-    const { profileId, myId } = req.query;
+    const { profileId, profileIds } = req.query;
+    const rawIds = [];
 
-    if (!profileId) {
-      return res.status(400).json({ isActive: false, lastSeen: null });
+    if (profileIds) {
+      const parsed = Array.isArray(profileIds)
+        ? profileIds
+        : String(profileIds).split(",");
+      rawIds.push(...parsed);
+    }
+    if (profileId) {
+      rawIds.push(profileId);
     }
 
-    const profile = await Profile.findById(profileId);
+    const uniqueIds = [
+      ...new Set(rawIds.map((id) => String(id || "").trim()).filter(isMongoId)),
+    ];
 
-    if (!profile) {
-      return res.status(404).json({ isActive: false, lastSeen: null });
+    if (uniqueIds.length === 0) {
+      return res.status(400).json({ isActive: false, lastSeen: null, statuses: {} });
     }
 
-    const now = new Date();
-    const lastActive = profile.lastActive ? new Date(profile.lastActive) : null;
-    const isActive = lastActive && now - lastActive < 5 * 60 * 1000; // Active if last seen within 5 minutes
+    const profiles = await Profile.find({ _id: { $in: uniqueIds } })
+      .select("_id isActive lastActive")
+      .lean();
 
-    return res.status(200).json({
-      isActive,
-      lastSeen: lastActive,
+    const statuses = {};
+    profiles.forEach((profile) => {
+      const lastSeen = profile.lastActive ? new Date(profile.lastActive) : null;
+      statuses[String(profile._id)] = {
+        isActive: computeIsActive(profile),
+        lastSeen,
+      };
     });
+
+    uniqueIds.forEach((id) => {
+      if (!statuses[id]) {
+        statuses[id] = { isActive: false, lastSeen: null };
+      }
+    });
+
+    if (uniqueIds.length === 1) {
+      return res.status(200).json({
+        ...statuses[uniqueIds[0]],
+        statuses,
+      });
+    }
+
+    return res.status(200).json({ statuses });
   } catch (error) {
     console.error("Error checking online status:", error);
-    return res.status(500).json({ isActive: false, lastSeen: null });
+    return res.status(500).json({ isActive: false, lastSeen: null, statuses: {} });
   }
 };
 
