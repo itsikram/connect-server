@@ -278,6 +278,11 @@ module.exports = function messageSocket(io, socket, profileId) {
         if (!profileData) return;
         let senderName = profileData.user?.firstName + ' ' + profileData.user?.surname;
         let senderPP = profileData.profilePic || config?.defaultProfile;
+        
+        // Enrich message object with sender info for consistency
+        updatedMessage.senderName = senderName;
+        updatedMessage.senderPP = senderPP;
+        
         io.to(room).emit('newMessage', { updatedMessage, senderName, senderPP, chatPage: true, isRealTime: true });
 
         let friendProfile = await Profile.findById(senderId).populate('user')

@@ -462,8 +462,37 @@ exports.getNewMessages = async (req, res, next) => {
             .limit(20)
             .populate('parent');
         
+        // Enrich messages with sender profile information
+        const enrichedMessages = await Promise.all(
+            newMessages.map(async (msg) => {
+                const msgObj = msg.toObject();
+                try {
+                    const senderProfile = await Profile.findById(msg.senderId).select('name profilePic');
+                    if (senderProfile) {
+                        msgObj.senderName = senderProfile.name || 'Friend';
+                        msgObj.senderPP = senderProfile.profilePic || '/default-avatar.png';
+                    } else {
+                        msgObj.senderName = msgObj.senderName || 'Friend';
+                        msgObj.senderPP = msgObj.senderPP || '/default-avatar.png';
+                    }
+                } catch (error) {
+                    console.warn('Error fetching sender profile for message:', msg._id);
+                    msgObj.senderName = msgObj.senderName || 'Friend';
+                    msgObj.senderPP = msgObj.senderPP || '/default-avatar.png';
+                }
+                return msgObj;
+            })
+        );
+        
+        // Filter out invalid messages that are missing senderId or receiverId
+        const validMessages = enrichedMessages.filter(msg => msg.senderId && msg.receiverId);
+        
+        if (enrichedMessages.length > validMessages.length) {
+            console.warn(`Filtered ${enrichedMessages.length - validMessages.length} invalid messages (missing senderId/receiverId)`);
+        }
+        
         return res.status(200).json({
-            messages: newMessages.reverse() // Reverse to show in chronological order
+            messages: validMessages.reverse() // Reverse to show in chronological order
         });
         
     } catch (error) {
@@ -520,6 +549,62 @@ exports.getMessageReactions = async (req, res, next) => {
 // HTTP-based mark message as seen
 exports.markMessageAsSeen = async (req, res, next) => {
     try {
+        const { messageId, messageIds } = req.body;
+        
+        console.log('📍 markMessageAsSeen - Body received:', { messageId, messageIds, body: req.body });
+        
+        // Support both single and multiple message IDs
+        const ids = messageIds && Array.isArray(messageIds) ? messageIds : (messageId ? [messageId] : []);
+        
+        if (!ids || ids.length === 0) {
+            console.warn('❌ No message IDs provided - messageId:', messageId, 'messageIds:', messageIds);
+            return res.status(400).json({ message: 'Message ID(s) required', received: { messageId, messageIds } });
+        }
+        
+        console.log('✅ Processing message IDs:', ids);
+        
+        // Update all messages as seen
+        const result = await Message.updateMany(
+            { _id: { $in: ids } },
+            { isSeen: true },
+            { new: true }
+        );
+        
+        console.log('📝 Message update result:', { matchedCount: result.matchedCount, modifiedCount: result.modifiedCount });
+        
+        if (result.modifiedCount > 0 || result.matchedCount > 0) {
+            console.log('✅ Successfully updated messages as seen - emitting socket events');
+            // Emit socket event to notify senders that messages were seen
+            const io = req.app.get('io');
+            if (io) {
+                ids.forEach((id) => {
+                    console.log('📡 Emitting messageSeen event for:', id);
+                    io.emit('messageSeen', {
+                        messageId: id,
+                        seenBy: req.profile._id,
+                        timestamp: new Date()
+                    });
+                });
+            }
+            
+            return res.status(200).json({ 
+                message: 'Messages marked as seen',
+                updatedCount: result.modifiedCount,
+                matchedCount: result.matchedCount
+            });
+        }
+        
+        console.warn('❌ Failed to update any messages:', { matchedCount: result.matchedCount, modifiedCount: result.modifiedCount, ids });
+        return res.status(400).json({ message: 'Failed to mark messages as seen', matched: result.matchedCount, modified: result.modifiedCount });
+        
+    } catch (error) {
+        console.error('❌ Error marking message as seen:', error);
+        return res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+};
+
+exports.deleteMessage = async (req, res, next) => {
+    try {
         const { messageId } = req.body;
         
         if (!messageId) {
@@ -532,34 +617,25 @@ exports.markMessageAsSeen = async (req, res, next) => {
             return res.status(404).json({ message: 'Message not found' });
         }
         
-        // Update message as seen
-        const updatedMessage = await Message.findByIdAndUpdate(
-            messageId,
-            { isSeen: true },
-            { new: true }
-        );
-        
-        if (updatedMessage) {
-            // Emit socket event to notify sender that message was seen
-            const io = req.app.get('io');
-            if (io) {
-                io.to(message.senderId).emit('messageSeen', {
-                    messageId: messageId,
-                    seenBy: message.receiverId,
-                    timestamp: new Date()
-                });
-            }
-            
-            return res.status(200).json({ 
-                message: 'Message marked as seen',
-                messageId: messageId
-            });
+        // Message sender IDs are stored as strings, while req.profile._id is an ObjectId.
+        // Normalize both sides before checking ownership.
+        if (String(message.senderId) !== String(req.profile._id)) {
+            return res.status(403).json({ message: 'You can only delete your own messages' });
         }
         
-        return res.status(400).json({ message: 'Failed to mark message as seen' });
+        // Delete the message
+        await Message.findByIdAndDelete(messageId);
         
+        // Emit real-time event to all users in the chat room
+        const io = req.app.get('io');
+        if (io && message.room) {
+            io.to(message.room).emit('deleteMessage', messageId);
+        }
+        
+        return res.status(200).json({ message: 'Message deleted successfully' });
     } catch (error) {
-        console.error('Error marking message as seen:', error);
+        console.error('Error deleting message:', error);
         return res.status(500).json({ message: 'Internal server error' });
     }
 };
+
