@@ -330,13 +330,11 @@ module.exports = function messageSocket(io, socket, profileId) {
           const reply = response.data.choices[0].message.content;
           console.log("ai reply", response.data);
 
-          return io
-            .to(room)
-            .emit("newMessage", {
-              reply,
-              senderName: "Chat Gpt",
-              senderPP: config?.logo,
-            });
+          return io.to(room).emit("newMessage", {
+            reply,
+            senderName: "Chat Gpt",
+            senderPP: config?.logo,
+          });
         } catch (error) {
           return console.error(error.response?.data || error.message);
         }
@@ -722,10 +720,22 @@ module.exports = function messageSocket(io, socket, profileId) {
     }
   });
 
-  // Live voice relays (push-to-talk over Agora)
-  socket.on("live-voice-start", ({ to, channelName }) => {
+  // Live voice relays (two-way Agora, auto-connect on the peer)
+  socket.on("live-voice-start", async ({ to, channelName }) => {
     try {
-      io.to(to).emit("live-voice-start", { from: profileId, channelName });
+      if (!to || !channelName) return;
+      let callerName = "Friend";
+      try {
+        const myProfileData = await Profile.findById(profileId).select(
+          "fullName",
+        );
+        callerName = myProfileData?.fullName || "Friend";
+      } catch (_e) {}
+      io.to(String(to)).emit("live-voice-start", {
+        from: profileId,
+        channelName,
+        callerName,
+      });
     } catch (e) {
       console.error("live-voice-start relay failed:", e?.message || e);
     }
@@ -733,7 +743,11 @@ module.exports = function messageSocket(io, socket, profileId) {
 
   socket.on("live-voice-stop", ({ to, channelName }) => {
     try {
-      io.to(to).emit("live-voice-stop", { from: profileId, channelName });
+      if (!to || !channelName) return;
+      io.to(String(to)).emit("live-voice-stop", {
+        from: profileId,
+        channelName,
+      });
     } catch (e) {
       console.error("live-voice-stop relay failed:", e?.message || e);
     }
