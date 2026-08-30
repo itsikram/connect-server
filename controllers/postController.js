@@ -289,7 +289,11 @@ exports.getSinglePost = async (req, res, next) => {
 exports.updatePost = async (req, res, next) => {
     let { postId, caption, feelings, location, photos, audience } = req.body
     try {
-        let updateData = { caption }
+        let updateData = {}
+
+        if (caption !== undefined) {
+            updateData.caption = caption
+        }
         
         if (feelings !== undefined) {
             updateData.feelings = feelings
@@ -313,9 +317,48 @@ exports.updatePost = async (req, res, next) => {
             return res.status(404).json({ message: 'Post not found' })
         }
 
+        const populatedPost = await Post.findOne({ _id: updatedPost._id }).populate([
+            {
+                path: 'author',
+                model: Profile,
+                populate: {
+                    path: 'user'
+                }
+            },
+            {
+                path: 'parentPost',
+                model: Post,
+                populate: [{
+                    path: 'author',
+                    model: Profile
+                }, {
+                    path: 'author.user'
+                }]
+            },
+            {
+                path: 'comments',
+                model: Comment,
+                populate: [{
+                    path: 'author',
+                    select: ['profilePic', 'user'],
+                    populate: {
+                        path: 'user',
+                        select: ['firstName', 'surname']
+                    }
+                }, {
+                    path: 'replies',
+                    Model: CmntReply,
+                    populate: {
+                        path: 'author',
+                        model: Profile
+                    }
+                }]
+            }
+        ])
+
         res.status(200).json({ 
             message: 'Post Updated Successfully',
-            post: updatedPost
+            post: populatedPost
         })
     } catch (error) {
         next(error)

@@ -183,13 +183,13 @@ exports.getNewNotifications = async (req, res, next) => {
       return res.status(400).json({ notifications: [] });
     }
 
-    // Get recent notifications (last 5 minutes)
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    // Get recent unseen notifications only
+    // Only return notifications that haven't been seen yet
     const notifications = await Notification.find({
       receiverId: profileId,
-      timestamp: { $gte: fiveMinutesAgo },
+      isSeen: false
     })
-      .limit(20)
+      .limit(50)
       .sort({ timestamp: -1 });
 
     return res.status(200).json({ notifications });
