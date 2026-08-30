@@ -33,6 +33,7 @@ const path = require("path");
 const admin = require("firebase-admin");
 const fs = require("fs");
 const { startUnseenMessageReminderWorker } = require("./utils/unseenMessageReminderWorker");
+const { startDailyPromptWorker } = require("./utils/dailyPromptWorker");
 const isAuth = require("./middlewares/isAuth");
 const { sendBump } = require("./controllers/messageController");
 
@@ -640,6 +641,7 @@ mongoose
   .then(() => {
     console.log("MongoDB connected");
     startUnseenMessageReminderWorker();
+    startDailyPromptWorker();
   })
   .catch((e) => {
     console.error(

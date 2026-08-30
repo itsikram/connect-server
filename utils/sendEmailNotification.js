@@ -1,8 +1,7 @@
 const nodemailer = require('nodemailer');
-const axios = require('axios');
 const dns = require('dns');
 
-// Prefer IPv4 when Node resolves hosts (helps local SMTP; Render still blocks SMTP ports)
+// Prefer IPv4 when Node resolves hosts (helps Gmail SMTP)
 try {
   dns.setDefaultResultOrder('ipv4first');
 } catch {
@@ -21,88 +20,8 @@ function getSmtpCredentials() {
 
 function getFromAddress(senderName) {
   const fromName = senderName || process.env.SMTP_FROM_NAME || 'Connect';
-  const fromAddress = (
-    process.env.RESEND_FROM ||
-    process.env.SENDGRID_FROM ||
-    process.env.SMTP_FROM ||
-    process.env.SMTP_USER ||
-    ''
-  ).trim();
+  const fromAddress = (process.env.SMTP_FROM || process.env.SMTP_USER || '').trim();
   return { fromName, fromAddress };
-}
-
-function resolveProvider() {
-  const forced = (process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
-  if (forced === 'resend' || forced === 'sendgrid' || forced === 'smtp') {
-    return forced;
-  }
-  // Render / most PaaS block outbound SMTP — prefer HTTPS APIs when configured
-  if ((process.env.RESEND_API_KEY || '').trim()) return 'resend';
-  if ((process.env.SENDGRID_API_KEY || '').trim()) return 'sendgrid';
-  return 'smtp';
-}
-
-async function sendViaResend({ to, fromName, fromAddress, subject, text, html, replyTo }) {
-  const apiKey = (process.env.RESEND_API_KEY || '').trim();
-  if (!apiKey) throw new Error('RESEND_API_KEY is not set');
-
-  // Free Resend accounts can use onboarding@resend.dev until a domain is verified
-  const from =
-    fromAddress.includes('<')
-      ? fromAddress
-      : `"${fromName}" <${fromAddress || 'onboarding@resend.dev'}>`;
-
-  const { data } = await axios.post(
-    'https://api.resend.com/emails',
-    {
-      from,
-      to: [to],
-      subject,
-      text,
-      ...(html ? { html } : {}),
-      ...(replyTo ? { reply_to: replyTo } : {}),
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      timeout: Number(process.env.SMTP_CONNECTION_TIMEOUT) || 20000,
-    }
-  );
-
-  return { success: true, messageId: data.id, provider: 'resend' };
-}
-
-async function sendViaSendGrid({ to, fromName, fromAddress, subject, text, html, replyTo }) {
-  const apiKey = (process.env.SENDGRID_API_KEY || '').trim();
-  if (!apiKey) throw new Error('SENDGRID_API_KEY is not set');
-  if (!fromAddress) throw new Error('SENDGRID_FROM or SMTP_FROM must be set');
-
-  const { data, headers } = await axios.post(
-    'https://api.sendgrid.com/v3/mail/send',
-    {
-      personalizations: [{ to: [{ email: to }] }],
-      from: { email: fromAddress, name: fromName },
-      subject,
-      content: [
-        { type: 'text/plain', value: text || ' ' },
-        ...(html ? [{ type: 'text/html', value: html }] : []),
-      ],
-      ...(replyTo ? { reply_to: { email: replyTo } } : {}),
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      timeout: Number(process.env.SMTP_CONNECTION_TIMEOUT) || 20000,
-      validateStatus: (s) => s < 300,
-    }
-  );
-
-  const messageId = headers['x-message-id'] || data?.id || 'sendgrid';
-  return { success: true, messageId, provider: 'sendgrid' };
 }
 
 function buildTransportOptions(port, secure) {
@@ -151,10 +70,7 @@ function getCandidateConfigs() {
 async function createWorkingTransporter() {
   const { user, pass } = getSmtpCredentials();
   if (!user || !pass) {
-    throw new Error(
-      'No email provider configured. Set RESEND_API_KEY (recommended on Render) ' +
-        'or SMTP_USER/SMTP_PASS for local SMTP.'
-    );
+    throw new Error('SMTP is not configured. Set SMTP_USER and SMTP_PASS.');
   }
 
   const candidates = getCandidateConfigs();
@@ -184,11 +100,7 @@ async function createWorkingTransporter() {
     }
   }
 
-  throw new Error(
-    `SMTP connection failed on all ports. Last errors: ${errors.join(' | ')}. ` +
-      'Render (and many hosts) block outbound SMTP on 587/465. ' +
-      'Set RESEND_API_KEY in the Render env and redeploy — email will use HTTPS instead.'
-  );
+  throw new Error(`SMTP connection failed on all ports. Last errors: ${errors.join(' | ')}.`);
 }
 
 async function getTransporter() {
@@ -209,25 +121,8 @@ function resetTransporter() {
   transporterKey = '';
 }
 
-async function sendViaSmtp(email, subject, message, senderName, options) {
-  const mailTransport = await getTransporter();
-  const { fromName, fromAddress } = getFromAddress(senderName);
-
-  const info = await mailTransport.sendMail({
-    from: `"${fromName}" <${fromAddress}>`,
-    to: email,
-    subject: subject || `New message from ${senderName || 'Connect'} On Connect`,
-    text: message,
-    ...(options.html ? { html: options.html } : {}),
-    ...(options.replyTo ? { replyTo: options.replyTo } : {}),
-  });
-
-  console.log(`Mail sent successfully via SMTP (${transporterKey}):`, info.messageId);
-  return { success: true, messageId: info.messageId, provider: 'smtp' };
-}
-
 /**
- * Send an email via Resend/SendGrid (HTTPS — works on Render) or SMTP (local).
+ * Send an email via SMTP (Nodemailer).
  * @param {string} email - Recipient address
  * @param {string|null} subject - Email subject (optional)
  * @param {string} message - Plain-text body
@@ -242,50 +137,29 @@ let sendEmailNotification = async (email, subject = null, message, senderName, o
     return { success: false, error: 'Missing recipient email' };
   }
 
-  const provider = resolveProvider();
-  const { fromName, fromAddress } = getFromAddress(senderName);
-  const mailSubject = subject || `New message from ${senderName || 'Connect'} On Connect`;
-
   try {
-    if (provider === 'resend') {
-      console.log('Mail: sending via Resend (HTTPS)...');
-      const result = await sendViaResend({
-        to: email,
-        fromName,
-        fromAddress: fromAddress || 'onboarding@resend.dev',
-        subject: mailSubject,
-        text: message,
-        html: options.html,
-        replyTo: options.replyTo,
-      });
-      console.log('Mail sent successfully via Resend:', result.messageId);
-      return result;
+    const mailTransport = await getTransporter();
+    const { fromName, fromAddress } = getFromAddress(senderName);
+
+    if (!fromAddress) {
+      throw new Error('SMTP_FROM or SMTP_USER must be set');
     }
 
-    if (provider === 'sendgrid') {
-      console.log('Mail: sending via SendGrid (HTTPS)...');
-      const result = await sendViaSendGrid({
-        to: email,
-        fromName,
-        fromAddress,
-        subject: mailSubject,
-        text: message,
-        html: options.html,
-        replyTo: options.replyTo,
-      });
-      console.log('Mail sent successfully via SendGrid:', result.messageId);
-      return result;
-    }
+    const info = await mailTransport.sendMail({
+      from: `"${fromName}" <${fromAddress}>`,
+      to: email,
+      subject: subject || `New message from ${senderName || 'Connect'} On Connect`,
+      text: message,
+      ...(options.html ? { html: options.html } : {}),
+      ...(options.replyTo ? { replyTo: options.replyTo } : {}),
+    });
 
-    return await sendViaSmtp(email, subject, message, senderName, options);
+    console.log(`Mail sent successfully via SMTP (${transporterKey}):`, info.messageId);
+    return { success: true, messageId: info.messageId, provider: 'smtp' };
   } catch (err) {
-    const detail =
-      err.response?.data?.message ||
-      err.response?.data?.errors?.[0]?.message ||
-      err.message ||
-      err;
+    const detail = err.message || err;
     console.error('Error sending mail:', detail);
-    if (provider === 'smtp') resetTransporter();
+    resetTransporter();
     if (options.throwOnError) {
       const wrapped = new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
       throw wrapped;

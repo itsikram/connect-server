@@ -40,28 +40,14 @@ function section(title) {
 async function checkConfig() {
   section('Unseen Message Reminder Configuration Check');
 
-  log('Email Provider Settings:', 'bright');
-  const emailProvider = process.env.EMAIL_PROVIDER || 'auto-detect';
-  log(`  EMAIL_PROVIDER: ${emailProvider}`);
-  
-  if (emailProvider === 'resend' || !emailProvider) {
-    const resendKey = process.env.RESEND_API_KEY ? '✓ Set' : '✗ Not set';
-    log(`  RESEND_API_KEY: ${resendKey}`, process.env.RESEND_API_KEY ? 'green' : 'red');
-  }
-  
-  if (emailProvider === 'sendgrid' || !emailProvider) {
-    const sendgridKey = process.env.SENDGRID_API_KEY ? '✓ Set' : '✗ Not set';
-    log(`  SENDGRID_API_KEY: ${sendgridKey}`, process.env.SENDGRID_API_KEY ? 'green' : 'red');
-  }
-  
-  if (emailProvider === 'smtp' || !emailProvider) {
-    const smtpUser = process.env.SMTP_USER ? '✓ Set' : '✗ Not set';
-    const smtpPass = process.env.SMTP_PASS ? '✓ Set' : '✗ Not set';
-    log(`  SMTP_USER: ${smtpUser}`, process.env.SMTP_USER ? 'green' : 'red');
-    log(`  SMTP_PASS: ${smtpPass}`, process.env.SMTP_PASS ? 'green' : 'red');
-    log(`  SMTP_HOST: ${process.env.SMTP_HOST || 'smtp.gmail.com'}`);
-    log(`  SMTP_PORT: ${process.env.SMTP_PORT || '587'}`);
-  }
+  log('Email Provider Settings (SMTP):', 'bright');
+  log(`  EMAIL_PROVIDER: ${process.env.EMAIL_PROVIDER || 'smtp'}`);
+  const smtpUser = process.env.SMTP_USER ? '✓ Set' : '✗ Not set';
+  const smtpPass = process.env.SMTP_PASS ? '✓ Set' : '✗ Not set';
+  log(`  SMTP_USER: ${smtpUser}`, process.env.SMTP_USER ? 'green' : 'red');
+  log(`  SMTP_PASS: ${smtpPass}`, process.env.SMTP_PASS ? 'green' : 'red');
+  log(`  SMTP_HOST: ${process.env.SMTP_HOST || 'smtp.gmail.com'}`);
+  log(`  SMTP_PORT: ${process.env.SMTP_PORT || '587'}`);
 
   log(`\nWorker Settings:`, 'bright');
   log(`  DELAY_MS: ${process.env.UNSEEN_MESSAGE_REMINDER_DELAY_MS || '300000'} (default: 5 minutes)`);
@@ -76,7 +62,7 @@ async function checkConfig() {
   log(`  ${clientUrl}`);
 
   log(`\nEmail From Address:`, 'bright');
-  const fromAddress = process.env.RESEND_FROM || process.env.SENDGRID_FROM || process.env.SMTP_FROM || 'not-configured';
+  const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || 'not-configured';
   const fromName = process.env.SMTP_FROM_NAME || 'Connect';
   log(`  Name: ${fromName}`);
   log(`  Email: ${fromAddress}`);
@@ -167,16 +153,11 @@ async function testEmail() {
 
   try {
     // Verify email provider is configured
-    const hasResend = !!process.env.RESEND_API_KEY;
-    const hasSendGrid = !!process.env.SENDGRID_API_KEY;
     const hasSmtp = !!(process.env.SMTP_USER && process.env.SMTP_PASS);
 
-    if (!hasResend && !hasSendGrid && !hasSmtp) {
-      log('No email provider configured!', 'red');
-      log('\nTo test, set one of:', 'yellow');
-      log('  - RESEND_API_KEY (recommended)');
-      log('  - SENDGRID_API_KEY');
-      log('  - SMTP_USER and SMTP_PASS');
+    if (!hasSmtp) {
+      log('SMTP is not configured!', 'red');
+      log('\nSet SMTP_USER and SMTP_PASS (Gmail app password).', 'yellow');
       return;
     }
 
@@ -205,7 +186,7 @@ async function testEmail() {
               <div style="font-size: 13px; color: #6b7280; margin-bottom: 6px;">Test Details</div>
               <div style="font-size: 15px; color: #111827;">
                 Sent: ${new Date().toISOString()}<br>
-                Email Provider: ${process.env.EMAIL_PROVIDER || 'auto-detected'}
+                Email Provider: smtp
               </div>
             </div>
             <p style="margin: 20px 0 0; font-size: 13px; color: #6b7280;">

@@ -5,6 +5,7 @@ const Comment = require('../models/Comment')
 const jwt = require('jsonwebtoken')
 const CmntReply = require('../models/CmntReply')
 const mongoose = require('mongoose')
+const { rankPosts } = require('../utils/feedRanking')
 
 
 exports.createPost = async (req, res, next) => {
@@ -412,7 +413,10 @@ exports.getNewsFeed = async (req, res, next) => {
             ]
         }
 
-        let newsFeedPosts = await Post.find(audienceFilter).populate([
+        const RANK_WINDOW = 80
+        const friendIds = new Set((friendsList || []).map((id) => String(id)))
+
+        const rankedWindow = await Post.find(audienceFilter).populate([
             {
                 path: 'author',
                 model: Profile,
@@ -450,11 +454,15 @@ exports.getNewsFeed = async (req, res, next) => {
                 }]
             }
 
-        ]).skip((pageNumber - 1) * limit).limit(limit).sort({ 'createdAt': -1 })
+        ]).sort({ 'createdAt': -1 }).limit(RANK_WINDOW)
 
-        let nextPosts = await Post.find(audienceFilter).skip((pageNumber) * limit).limit(limit).sort({ 'createdAt': -1 })
-
-        let hasNewPost = nextPosts.length == 0 ? false : true
+        const ranked = rankPosts(rankedWindow, {
+            friendIds,
+            currentUserId: String(currentUserId),
+        })
+        const start = (pageNumber - 1) * limit
+        const newsFeedPosts = ranked.slice(start, start + limit)
+        const hasNewPost = start + limit < ranked.length
         res.status(200).json({ posts: newsFeedPosts, hasNewPost })
 
     } catch (error) {

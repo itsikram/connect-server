@@ -3,7 +3,7 @@ const { sendPushToProfile } = require('./pushNotifications');
 const { sendWebPushToProfile } = require('./webPush');
 
 const recentBumps = new Map();
-const BUMP_DEDUP_MS = 800;
+const BUMP_DEDUP_MS = 3000;
 
 const shouldEmitBump = (fromId, toId) => {
   const key = `${String(fromId)}:${String(toId)}`;
@@ -55,45 +55,56 @@ async function sendBump(io, { friendProfile, myProfile }) {
     myProfileData,
   };
 
+  let recipientOnline = false;
   if (io) {
+    try {
+      const room = io.sockets?.adapter?.rooms?.get(toId);
+      recipientOnline = !!(room && room.size > 0);
+    } catch (_e) {
+      recipientOnline = false;
+    }
     io.to(toId).emit('bumpUser', payload);
   }
 
-  try {
-    await sendPushToProfile(toId, {
-      title: 'You were bumped!',
-      body: `${senderName} bumped you`,
-      data: {
-        type: 'bump',
-        senderId: fromId,
-        callerName: senderName,
-        url: chatLink,
-        link: chatLink,
-      },
-    });
-  } catch (_e) {}
+  // Online friends already got the live socket event — extra push caused
+  // duplicate alerts in the open tab.
+  if (!recipientOnline) {
+    try {
+      await sendPushToProfile(toId, {
+        title: 'You were bumped!',
+        body: `${senderName} bumped you`,
+        data: {
+          type: 'bump',
+          senderId: fromId,
+          callerName: senderName,
+          url: chatLink,
+          link: chatLink,
+        },
+      });
+    } catch (_e) {}
 
-  try {
-    await sendWebPushToProfile(toId, {
-      title: 'You were bumped!',
-      body: `${senderName} bumped you`,
-      type: 'bump',
-      tag: `bump-${fromId}`,
-      link: chatLink,
-      icon: senderPic || undefined,
-      sound: '/assets/audio/notification_sound.wav',
-      vibrate: [80, 40, 140, 40, 80],
-      urgency: 'high',
-      ttl: 60,
-      data: {
+    try {
+      await sendWebPushToProfile(toId, {
+        title: 'You were bumped!',
+        body: `${senderName} bumped you`,
         type: 'bump',
-        senderId: fromId,
-        senderName,
-        url: chatLink,
+        tag: `bump-${fromId}`,
         link: chatLink,
-      },
-    });
-  } catch (_e) {}
+        icon: senderPic || undefined,
+        sound: '/assets/audio/notification_sound.wav',
+        vibrate: [80, 40, 140, 40, 80],
+        urgency: 'high',
+        ttl: 60,
+        data: {
+          type: 'bump',
+          senderId: fromId,
+          senderName,
+          url: chatLink,
+          link: chatLink,
+        },
+      });
+    } catch (_e) {}
+  }
 
   return { ok: true };
 }

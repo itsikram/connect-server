@@ -48,6 +48,10 @@ let postSchema = new Schema({
     type: {
         type: String,
         default: 'post'
+    },
+    source: {
+        type: String,
+        default: 'user'
     }
 
 },{

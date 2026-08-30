@@ -294,9 +294,8 @@ module.exports = function messageSocket(io, socket, profileId) {
     },
   );
 
-  socket.on(
-    "sendMessage",
-    async ({
+  socket.on("sendMessage", async (payload = {}, ack) => {
+    const {
       room,
       senderId,
       receiverId,
@@ -308,7 +307,24 @@ module.exports = function messageSocket(io, socket, profileId) {
       callType,
       callEvent,
       tempId,
-    }) => {
+    } = payload;
+
+    const reply = (data) => {
+      if (typeof ack === "function") {
+        try {
+          ack(data);
+        } catch (_e) {
+          /* ignore client disconnect during ack */
+        }
+      }
+    };
+
+    const serializeMessage = (doc) => {
+      const obj = doc?.toObject ? doc.toObject() : doc;
+      if (obj && tempId && !obj.tempId) obj.tempId = tempId;
+      return obj;
+    };
+
       console.log("sendMessage 0");
 
       if (isAi) {
@@ -327,15 +343,20 @@ module.exports = function messageSocket(io, socket, profileId) {
             },
           );
 
-          const reply = response.data.choices[0].message.content;
+          const aiReply = response.data.choices[0].message.content;
           console.log("ai reply", response.data);
 
-          return io.to(room).emit("newMessage", {
-            reply,
+          const aiPayload = {
+            reply: aiReply,
             senderName: "Chat Gpt",
             senderPP: config?.logo,
-          });
+            tempId,
+          };
+          io.to(room).emit("newMessage", aiPayload);
+          reply({ ok: true, ...aiPayload });
+          return;
         } catch (error) {
+          reply({ ok: false, error: error.message });
           return console.error(error.response?.data || error.message);
         }
       }
@@ -353,15 +374,17 @@ module.exports = function messageSocket(io, socket, profileId) {
           (id) => String(id) === String(senderId),
         );
         if (senderBlockedReceiver || receiverBlockedSender) {
-          // Inform sender the message is blocked
-          io.to(String(senderId)).emit("message_blocked", {
+          const blockedPayload = {
             room,
             senderId,
             receiverId,
+            tempId,
             reason: senderBlockedReceiver
               ? "You blocked this user"
               : "You are blocked by this user",
-          });
+          };
+          io.to(String(senderId)).emit("message_blocked", blockedPayload);
+          reply({ ok: false, blocked: true, ...blockedPayload });
           return;
         }
       } catch (e) {
@@ -398,6 +421,7 @@ module.exports = function messageSocket(io, socket, profileId) {
           tempId,
         });
       }
+      try {
       await newMessage.save();
 
       // Update last active time for sending message
@@ -407,22 +431,31 @@ module.exports = function messageSocket(io, socket, profileId) {
         _id: newMessage._id,
       }).populate("parent");
       let profileData = await Profile.findById(senderId).populate("user");
-      if (!profileData) return;
+      if (!profileData) {
+        reply({ ok: false, error: "Sender profile not found" });
+        return;
+      }
       let senderName =
         profileData.user?.firstName + " " + profileData.user?.surname;
       let senderPP = profileData.profilePic || config?.defaultProfile;
 
-      // Enrich message object with sender info for consistency
+      updatedMessage = serializeMessage(updatedMessage);
       updatedMessage.senderName = senderName;
       updatedMessage.senderPP = senderPP;
 
-      io.to(room).emit("newMessage", {
+      const messagePayload = {
         updatedMessage,
         senderName,
         senderPP,
         chatPage: true,
         isRealTime: true,
-      });
+        tempId,
+      };
+
+      io.to(room).emit("newMessage", messagePayload);
+      // Sender confirmation even if they are not currently in the chat room
+      socket.emit("messageSent", messagePayload);
+      reply({ ok: true, updatedMessage, tempId });
 
       let friendProfile = await Profile.findById(senderId).populate("user");
       // Emit newMessageToUser only for real-time messages (isRealTime: true)
@@ -546,8 +579,11 @@ module.exports = function messageSocket(io, socket, profileId) {
       if (!isActive && String(receiverId) !== String(senderId)) {
         // Try push notification first; fallback to email if none sent
       }
-    },
-  );
+      } catch (error) {
+        console.error("sendMessage failed:", error?.message || error);
+        reply({ ok: false, error: error?.message || "Failed to send message", tempId });
+      }
+  });
 
   // Unified handler to emit emotion change to one, many, or all friends
   async function handleEmotionChange(payload) {

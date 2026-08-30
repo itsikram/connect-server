@@ -100,6 +100,15 @@ let profileSchema = new Schema(
     settings: {
       type: Object,
     },
+    isOfficial: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    lastWeeklyRecapAt: {
+      type: Date,
+      default: null,
+    },
     isActive: {
       type: Boolean,
       default: false,

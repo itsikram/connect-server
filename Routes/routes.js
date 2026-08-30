@@ -27,6 +27,7 @@ const portfolioRoutes = require("./portfolioRoutes");
 const locationRoutes = require("./locationRoutes");
 const aiChatRoutes = require("./aiChatRoutes");
 const savedVideoRoutes = require("./savedVideoRoutes");
+const contentRoutes = require("./contentRoutes");
 
 let rootRoute = async (req, res) => {
   return res.sendFile(path.join(__dirname, "build", "index.html"));
@@ -143,6 +144,10 @@ const routes = [
   {
     path: "/api/saved-videos",
     handler: savedVideoRoutes,
+  },
+  {
+    path: "/api/content",
+    handler: contentRoutes,
   },
 ];
 
