@@ -68,22 +68,37 @@ async function sendExpoPushBatch(messages) {
   let successCount = 0;
   let failureCount = 0;
   try {
+    // Expo rejects a request containing tokens from different Expo projects
+    // (PUSH_TOO_MANY_EXPERIENCE_IDS). Tokens are intentionally allowed to
+    // coexist while users upgrade/reinstall, so send one token per request.
     for (let offset = 0; offset < messages.length; offset += EXPO_PUSH_MAX_BATCH) {
       const chunk = messages.slice(offset, offset + EXPO_PUSH_MAX_BATCH);
-      const { data: responseBody } = await axios.post(EXPO_PUSH_URL, chunk, {
-        headers,
-        timeout: 30000,
-        validateStatus: (s) => s >= 200 && s < 300,
-      });
-      const raw = responseBody?.data;
-      const rows = Array.isArray(raw) ? raw : raw != null ? [raw] : [];
-      for (const row of rows) {
-        if (row && row.status === 'ok') successCount += 1;
-        else failureCount += 1;
-      }
-      if (rows.some((r) => r && r.status !== 'ok')) {
-        const errs = rows.filter((r) => r && r.status !== 'ok').slice(0, 5);
-        console.warn('Expo push partial failure', { chunkSize: chunk.length, sampleErrors: errs });
+      for (const message of chunk) {
+        try {
+          const { data: responseBody } = await axios.post(EXPO_PUSH_URL, [message], {
+            headers,
+            timeout: 30000,
+            validateStatus: (s) => s >= 200 && s < 300,
+          });
+          const row = Array.isArray(responseBody?.data)
+            ? responseBody.data[0]
+            : responseBody?.data;
+          if (row && row.status === 'ok') {
+            successCount += 1;
+            continue;
+          }
+          failureCount += 1;
+          console.warn('Expo push failure', {
+            token: redactToken(message.to),
+            error: row,
+          });
+        } catch (err) {
+          failureCount += 1;
+          console.warn('Expo push request failed', {
+            token: redactToken(message.to),
+            error: err?.response?.data || err?.message || err,
+          });
+        }
       }
     }
     console.log('Expo push result', { messagesCount: messages.length, successCount, failureCount });
@@ -596,6 +611,4 @@ async function sendChatMessageDataPush(receiverId, payload) {
 module.exports.sendDataPushToTokens = sendDataPushToTokens;
 module.exports.sendDataPushToProfile = sendDataPushToProfile;
 module.exports.sendChatMessageDataPush = sendChatMessageDataPush;
-
-
 
