@@ -279,44 +279,46 @@ try {
 
   const useAdcFile = adcFileEval.ok;
 
-  if (adcJsonEval.ok && adcJsonEval.serviceAccount) {
-    admin.initializeApp(
-      firebaseAppOptionsFromServiceAccount(adcJsonEval.serviceAccount),
-    );
-  } else if (useAdcFile) {
-    const fileJson = JSON.parse(fs.readFileSync(adcPathResolved, "utf8"));
-    admin.initializeApp(firebaseAppOptionsFromServiceAccount(fileJson));
-  } else {
-    const envSa = loadServiceAccountFromEnvJson();
-    if (envSa.ok && envSa.serviceAccount) {
+  if (admin.apps.length === 0) {
+    if (adcJsonEval.ok && adcJsonEval.serviceAccount) {
       admin.initializeApp(
-        firebaseAppOptionsFromServiceAccount(envSa.serviceAccount),
+        firebaseAppOptionsFromServiceAccount(adcJsonEval.serviceAccount),
       );
-    } else if (splitServiceAccount) {
-      admin.initializeApp(
-        firebaseAppOptionsFromServiceAccount(splitServiceAccount),
-      );
+    } else if (useAdcFile) {
+      const fileJson = JSON.parse(fs.readFileSync(adcPathResolved, "utf8"));
+      admin.initializeApp(firebaseAppOptionsFromServiceAccount(fileJson));
     } else {
-      let serviceAccount = null;
-      for (const name of [
-        "serviceAccountKey.json",
-        "serviceAccountKeys.json",
-      ]) {
-        const saPath = path.join(__dirname, name);
-        if (fs.existsSync(saPath)) {
-          serviceAccount = require(saPath);
-          break;
-        }
-      }
-      if (serviceAccount) {
+      const envSa = loadServiceAccountFromEnvJson();
+      if (envSa.ok && envSa.serviceAccount) {
         admin.initializeApp(
-          firebaseAppOptionsFromServiceAccount(serviceAccount),
+          firebaseAppOptionsFromServiceAccount(envSa.serviceAccount),
+        );
+      } else if (splitServiceAccount) {
+        admin.initializeApp(
+          firebaseAppOptionsFromServiceAccount(splitServiceAccount),
         );
       } else {
-        admin.initializeApp();
-        console.warn(
-          "Firebase Admin initialized without explicit credentials. Set GOOGLE_APPLICATION_CREDENTIALS, FIREBASE_SERVICE_ACCOUNT, FIREBASE_SERVICE_ACCOUNT_BASE64, or add serviceAccountKeys.json beside index.js.",
-        );
+        let serviceAccount = null;
+        for (const name of [
+          "serviceAccountKey.json",
+          "serviceAccountKeys.json",
+        ]) {
+          const saPath = path.join(__dirname, name);
+          if (fs.existsSync(saPath)) {
+            serviceAccount = require(saPath);
+            break;
+          }
+        }
+        if (serviceAccount) {
+          admin.initializeApp(
+            firebaseAppOptionsFromServiceAccount(serviceAccount),
+          );
+        } else {
+          admin.initializeApp();
+          console.warn(
+            "Firebase Admin initialized without explicit credentials. Set GOOGLE_APPLICATION_CREDENTIALS, FIREBASE_SERVICE_ACCOUNT, FIREBASE_SERVICE_ACCOUNT_BASE64, or add serviceAccountKeys.json beside index.js.",
+          );
+        }
       }
     }
   }

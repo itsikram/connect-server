@@ -14,43 +14,16 @@ const { getIncomingCallAlertForProfile } = require('./ringtone');
 function ensureFirebaseAdminInitialized() {
   if (admin.apps && admin.apps.length > 0) return;
 
+  // Do not create a second Firebase app here. The main server bootstrap in index.js is the
+  // single source of truth for Firebase Admin initialization. This module should only guard and
+  // fail fast if no app is available yet.
   const projectId = process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
-  const serviceAccountEnv = process.env.FIREBASE_SERVICE_ACCOUNT || process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
+  const envJson = process.env.FIREBASE_SERVICE_ACCOUNT;
+  const envB64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
 
-  try {
-    if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-      const adcPath = process.env.GOOGLE_APPLICATION_CREDENTIALS.trim();
-      if (adcPath.startsWith('{')) {
-        const parsed = JSON.parse(adcPath);
-        if (parsed && parsed.type === 'service_account') {
-          admin.initializeApp({
-            credential: admin.credential.cert(parsed),
-            projectId: projectId || parsed.project_id,
-          });
-          return;
-        }
-      }
-      if (fs.existsSync(adcPath)) {
-        const parsed = JSON.parse(fs.readFileSync(adcPath, 'utf8'));
-        admin.initializeApp({
-          credential: admin.credential.cert(parsed),
-          projectId: projectId || parsed.project_id,
-        });
-        return;
-      }
-    }
-
-    if (serviceAccountEnv) {
-      let parsed;
-      try {
-        parsed = JSON.parse(serviceAccountEnv);
-      } catch (_) {
-        try {
-          parsed = JSON.parse(Buffer.from(serviceAccountEnv, 'base64').toString('utf8'));
-        } catch (_) {
-          parsed = null;
-        }
-      }
+  if (envJson && envJson.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(envJson);
       if (parsed && parsed.type === 'service_account') {
         admin.initializeApp({
           credential: admin.credential.cert(parsed),
@@ -58,29 +31,46 @@ function ensureFirebaseAdminInitialized() {
         });
         return;
       }
+    } catch (err) {
+      console.warn('[firebase] FIREBASE_SERVICE_ACCOUNT exists but is not valid JSON; skipping fallback init in pushNotifications.js.', err?.message || err);
     }
+  }
 
-    const candidateNames = ['serviceAccountKey.json', 'serviceAccountKeys.json'];
-    for (const fileName of candidateNames) {
-      const filePath = path.join(__dirname, '..', fileName);
-      if (fs.existsSync(filePath)) {
-        const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  if (envB64 && envB64.trim()) {
+    try {
+      const decoded = JSON.parse(Buffer.from(envB64, 'base64').toString('utf8'));
+      if (decoded && decoded.type === 'service_account') {
         admin.initializeApp({
-          credential: admin.credential.cert(parsed),
-          projectId: projectId || parsed.project_id,
+          credential: admin.credential.cert(decoded),
+          projectId: projectId || decoded.project_id,
         });
         return;
       }
+    } catch (err) {
+      console.warn('[firebase] FIREBASE_SERVICE_ACCOUNT_BASE64 is not valid; skipping fallback init in pushNotifications.js.', err?.message || err);
     }
-
-    admin.initializeApp();
-    console.warn('[firebase] Fallback admin.initializeApp() used; set FIREBASE_SERVICE_ACCOUNT or GOOGLE_APPLICATION_CREDENTIALS for live production push delivery.');
-  } catch (err) {
-    console.warn('[firebase] Failed to initialize admin in pushNotifications.js fallback path:', err?.message || err);
-    try {
-      admin.initializeApp();
-    } catch (_) {}
   }
+
+  const candidateNames = ['serviceAccountKey.json', 'serviceAccountKeys.json'];
+  for (const fileName of candidateNames) {
+    const filePath = path.join(__dirname, '..', fileName);
+    if (fs.existsSync(filePath)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        if (parsed && parsed.type === 'service_account') {
+          admin.initializeApp({
+            credential: admin.credential.cert(parsed),
+            projectId: projectId || parsed.project_id,
+          });
+          return;
+        }
+      } catch (err) {
+        console.warn('[firebase] Local service account file exists but is invalid:', err?.message || err);
+      }
+    }
+  }
+
+  console.warn('[firebase] Firebase Admin not initialized yet; push delivery will be skipped until index.js boots the app with valid credentials.');
 }
 
 /** Expo / React Native apps using expo-notifications register these — not FCM registration tokens. */
@@ -318,6 +308,13 @@ async function sendPushToTokens(tokens = [], notification = {}) {
   }
 
   ensureFirebaseAdminInitialized();
+  if (!admin.apps || admin.apps.length === 0) {
+   console.warn('[firebase] Skipping FCM send because Firebase Admin is not initialized for this process.', {
+     profileTokens: fcmTokens.length,
+     reason: 'missing_default_app',
+   });
+   return { successCount, failureCount: failureCount + fcmTokens.length, invalidTokens: [...new Set(invalidTokens)] };
+  }
 
   const titleStr = String(notification.title || 'Notification');
   const bodyStr = String(notificationBody);
@@ -518,6 +515,11 @@ async function sendFcmChatMulticast(fcmTokens, { title, body, data }) {
   if (!fcmTokens || fcmTokens.length === 0) {
     return { successCount: 0, failureCount: 0 };
   }
+  ensureFirebaseAdminInitialized();
+  if (!admin.apps || admin.apps.length === 0) {
+    console.warn('[firebase] Skipping chat FCM send because Firebase Admin is not initialized for this process.');
+    return { successCount: 0, failureCount: fcmTokens.length };
+  }
   try {
     const res = await admin.messaging().sendEachForMulticast({
       tokens: fcmTokens,
@@ -660,6 +662,12 @@ async function sendDataPushToTokens(tokens = [], data = {}) {
 
   if (fcmTokens.length === 0) {
     return { successCount, failureCount };
+  }
+
+  ensureFirebaseAdminInitialized();
+  if (!admin.apps || admin.apps.length === 0) {
+    console.warn('[firebase] Skipping data FCM send because Firebase Admin is not initialized for this process.');
+    return { successCount, failureCount: failureCount + fcmTokens.length };
   }
 
   try {
