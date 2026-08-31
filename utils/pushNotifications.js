@@ -32,6 +32,52 @@ const redactToken = (t) => {
   return s.length <= 12 ? `${s}***` : `${s.slice(0, 6)}...${s.slice(-4)}`;
 };
 
+function isStaleFcmTokenError(error) {
+  const code = error?.code || error?.error?.code || '';
+  const message = String(error?.message || error?.error?.message || '');
+  return (
+    code === 'messaging/registration-token-not-registered' ||
+    code === 'messaging/invalid-registration-token' ||
+    message.includes('registration-token-not-registered') ||
+    message.includes('not registered') ||
+    message.includes('invalid-registration-token') ||
+    message.includes('registration token') && message.toLowerCase().includes('invalid')
+  );
+}
+
+async function removeStaleDeviceTokens(profileId, invalidTokens = []) {
+  if (!profileId || !Array.isArray(invalidTokens) || invalidTokens.length === 0) {
+    return 0;
+  }
+
+  const tokens = [...new Set(invalidTokens.map((t) => String(t || '').trim()).filter(Boolean))];
+  if (tokens.length === 0) {
+    return 0;
+  }
+
+  try {
+    const result = await Profile.updateOne(
+      { $or: [{ _id: profileId }, { user: profileId }] },
+      { $pullAll: { deviceTokens: tokens } },
+    );
+    const removed = Number(result?.modifiedCount || 0);
+    if (removed > 0) {
+      console.warn('[push] removed stale FCM tokens from profile', {
+        profileId,
+        count: removed,
+        preview: tokens.slice(0, 3).map((t) => redactToken(t)),
+      });
+    }
+    return removed;
+  } catch (err) {
+    console.warn('[push] failed to remove stale FCM tokens', {
+      profileId,
+      error: err?.message || err,
+    });
+    return 0;
+  }
+}
+
 /**
  * FCM `data` map rejects reserved keys (e.g. `from` → messaging/invalid-argument).
  * Strip those and any `google.*` / `gcm.*` keys before sendEachForMulticast.
@@ -160,6 +206,7 @@ async function sendPushToTokens(tokens = [], notification = {}) {
 
   let successCount = 0;
   let failureCount = 0;
+  let invalidTokens = [];
 
   if (expoTokens.length > 0) {
     const channelId = isIncomingCall
@@ -193,7 +240,7 @@ async function sendPushToTokens(tokens = [], notification = {}) {
   }
 
   if (fcmTokens.length === 0) {
-    return { successCount, failureCount };
+   return { successCount, failureCount, invalidTokens };
   }
 
   const titleStr = String(notification.title || 'Notification');
@@ -240,77 +287,94 @@ async function sendPushToTokens(tokens = [], notification = {}) {
           .filter(({ r }) => !r.success)
           .slice(0, 5);
         for (const { r, idx } of failed) {
-          console.warn('FCM incoming_call send failure', {
-            idx,
-            token: redactToken(fcmTokens[idx]),
-            error: r.error && r.error.toJSON ? r.error.toJSON() : r.error,
-          });
-        }
-      }
-      return { successCount, failureCount };
-    } catch (err) {
-      console.error('FCM incoming_call multicast error:', err && err.message ? err.message : err);
-      return { successCount, failureCount: failureCount + fcmTokens.length };
-    }
+         if (isStaleFcmTokenError(r.error)) {
+           invalidTokens.push(fcmTokens[idx]);
+         }
+         console.warn('FCM incoming_call send failure', {
+           idx,
+           token: redactToken(fcmTokens[idx]),
+           error: r.error && r.error.toJSON ? r.error.toJSON() : r.error,
+         });
+       }
+     }
+     return { successCount, failureCount, invalidTokens: [...new Set(invalidTokens)] };
+   } catch (err) {
+     console.error('FCM incoming_call multicast error:', err && err.message ? err.message : err);
+     if (isStaleFcmTokenError(err)) {
+       invalidTokens.push(...fcmTokens);
+     }
+     return {
+       successCount,
+       failureCount: failureCount + fcmTokens.length,
+       invalidTokens: [...new Set(invalidTokens)],
+     };
+   }
   }
 
   const payload = {
-    notification: {
-      title: notification.title || 'Notification',
-      body: notificationBody,
+   notification: {
+     title: notification.title || 'Notification',
+     body: notificationBody,
     },
-    data: stringData,
-    tokens: fcmTokens,
-    android: {
-      priority: 'high',
-      directBootOk: true,
-      notification: {
-        channelId: String(notification.channelId || EXPO_DEFAULT_ANDROID_CHANNEL_ID),
-        sound: 'default',
-      },
-    },
+   data: stringData,
+   tokens: fcmTokens,
+   android: {
+     priority: 'high',
+     directBootOk: true,
+     notification: {
+       channelId: String(notification.channelId || EXPO_DEFAULT_ANDROID_CHANNEL_ID),
+       sound: 'default',
+     },
+   },
   };
 
   try {
-    const res = await admin.messaging().sendEachForMulticast(payload);
+   const res = await admin.messaging().sendEachForMulticast(payload);
 
-    const previewTokens = fcmTokens.slice(0, 3).map(redactToken);
-    console.log('FCM sendEachForMulticast result', {
-      tokensCount: fcmTokens.length,
-      previewTokens,
-      successCount: res.successCount,
-      failureCount: res.failureCount,
-      payloadType: notification?.data?.type,
-      messageId: notification?.data?.messageId || notification?.data?.data?.messageId || undefined,
-    });
+   const previewTokens = fcmTokens.slice(0, 3).map(redactToken);
+   console.log('FCM sendEachForMulticast result', {
+     tokensCount: fcmTokens.length,
+     previewTokens,
+     successCount: res.successCount,
+     failureCount: res.failureCount,
+     payloadType: notification?.data?.type,
+     messageId: notification?.data?.messageId || notification?.data?.data?.messageId || undefined,
+   });
 
-    successCount += res.successCount;
-    failureCount += res.failureCount;
+   successCount += res.successCount;
+   failureCount += res.failureCount;
 
-    if (res.failureCount > 0 && Array.isArray(res.responses)) {
-      const failed = res.responses
-        .map((r, idx) => ({ r, idx }))
-        .filter(({ r }) => !r.success)
-        .slice(0, 5);
+   if (res.failureCount > 0 && Array.isArray(res.responses)) {
+     const failed = res.responses
+       .map((r, idx) => ({ r, idx }))
+       .filter(({ r }) => !r.success)
+       .slice(0, 5);
 
-      for (const { r, idx } of failed) {
-        const err = r.error;
-        console.warn('FCM failed token response', {
-          tokenIndex: idx,
-          token: redactToken(fcmTokens[idx]),
-          errorCode: err?.code,
-          errorMessage: err?.message,
-        });
-      }
-    }
+     for (const { r, idx } of failed) {
+       const err = r.error;
+       if (isStaleFcmTokenError(err)) {
+         invalidTokens.push(fcmTokens[idx]);
+       }
+       console.warn('FCM failed token response', {
+         tokenIndex: idx,
+         token: redactToken(fcmTokens[idx]),
+         errorCode: err?.code,
+         errorMessage: err?.message,
+       });
+     }
+   }
 
-    return { successCount, failureCount };
+   return { successCount, failureCount, invalidTokens: [...new Set(invalidTokens)] };
   } catch (err) {
-    console.error('FCM send error:', err && err.message ? err.message : err);
-    return {
-      successCount,
-      failureCount: failureCount + fcmTokens.length,
-    };
+   console.error('FCM send error:', err && err.message ? err.message : err);
+   if (isStaleFcmTokenError(err)) {
+     invalidTokens.push(...fcmTokens);
+   }
+   return {
+     successCount,
+     failureCount: failureCount + fcmTokens.length,
+     invalidTokens: [...new Set(invalidTokens)],
+   };
   }
 }
 
@@ -351,7 +415,11 @@ async function sendPushToProfile(profileId, notification = {}) {
   });
   console.log('sendPushToProfile working', profileId, tokens, nextNotification);
 
-  return sendPushToTokens(tokens, nextNotification);
+  const result = await sendPushToTokens(tokens, nextNotification);
+  if (Array.isArray(result?.invalidTokens) && result.invalidTokens.length > 0) {
+    await removeStaleDeviceTokens(profileId, result.invalidTokens);
+  }
+  return result;
 }
 
 module.exports = {

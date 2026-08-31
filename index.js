@@ -41,6 +41,10 @@ const {
 } = require("./utils/peerSocketAdapter");
 const isAuth = require("./middlewares/isAuth");
 const { sendBump } = require("./controllers/messageController");
+const {
+  getCobaltConfig,
+  applyCobaltUrl,
+} = require("./utils/cobaltTunnelSync");
 
 const normalizeMultilineEnv = (value = "") =>
   String(value).replace(/\\n/g, "\n");
@@ -486,6 +490,8 @@ const io = socketIo(httpServer, {
   cookie: false,
 });
 
+global.io = io;
+
 socketHandler(io);
 initializeSpeechWebSocketServer(httpServer);
 startCpuSampler();
@@ -500,6 +506,45 @@ app.get("/health", (req, res) => {
 app.get("/api/health", (req, res) => {
   res.json(getMetrics({ io }));
 });
+
+app.get("/api/youtube/cobalt-config", (req, res) => {
+  res.json(getCobaltConfig());
+});
+
+app.post("/api/youtube/cobalt-url", (req, res) => {
+  const expectedSecret = String(
+    process.env.COBALT_SYNC_SECRET || process.env.COBALT_API_KEY || "",
+  ).trim();
+  const incomingSecret = String(
+    req.headers["x-cobalt-sync-secret"] ||
+      req.headers.authorization ||
+      req.body?.secret ||
+      "",
+  )
+    .replace(/^Bearer\s+/i, "")
+    .replace(/^Api-Key\s+/i, "")
+    .trim();
+
+  if (expectedSecret && incomingSecret !== expectedSecret) {
+    return res.status(401).json({
+      ok: false,
+      error: "Invalid cobalt sync secret",
+    });
+  }
+
+  const url = String(req.body?.url || req.query?.url || "").trim();
+  const result = applyCobaltUrl(url, "home-cobalt-sync");
+  if (!result.ok) {
+    return res.status(400).json({ ok: false, error: result.error });
+  }
+
+  if (io) {
+    io.emit("youtube-cobalt-url", getCobaltConfig());
+  }
+
+  return res.json({ ok: true, ...getCobaltConfig() });
+});
+
 attachPeerRelayRoute(app, io);
 
 // setting up routes
