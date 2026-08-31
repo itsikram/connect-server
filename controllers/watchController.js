@@ -113,38 +113,34 @@ exports.deleteWatch = async (req, res, next) => {
 exports.getRelatedWatchs = async (req, res, next) => {
 
     try {
-        let profile_id = req.query.profile;
-
-        // if(!mongoose.isValidObjectId(profile_id)) return res.json().status(400)
-        let watches = await Watch.find().populate([
-            {
+        const pageSize = Math.min(parseInt(req.query.limit, 10) || 24, 40);
+        const watches = await Watch.find()
+            .select('caption thumbnail videoUrl reacts comments shares feeling audience author type createdAt')
+            .populate({
                 path: 'author',
-                model: Profile,
+                select: 'profilePic user fullName displayName',
                 populate: {
-                    path: 'user'
-                }
-            },
-            {
+                    path: 'user',
+                    select: 'firstName surname',
+                },
+            })
+            .populate({
                 path: 'comments',
-                model: Comment,
-                populate: [{
+                select: 'body attachment author timestamp reacts',
+                populate: {
                     path: 'author',
-                    select: ['profilePic', 'user'],
+                    select: 'profilePic user',
                     populate: {
                         path: 'user',
-                        select: ['firstName', 'surname']
-                    }
-                }, {
-                    path: 'replies',
-                    Model: CmntReply,
-                    populate: {
-                        path: 'author',
-                        model: Profile
-                    }
-                }]
-            }]).sort({ 'createdAt': -1 })
+                        select: 'firstName surname',
+                    },
+                },
+            })
+            .sort({ createdAt: -1 })
+            .limit(pageSize)
+            .lean();
 
-        res.json(watches).status(200)
+        return res.status(200).json(watches);
 
     } catch (error) {
         next(error)

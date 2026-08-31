@@ -3,17 +3,17 @@ const fs = require("fs");
 const path = require("path");
 
 const CURSOR_API_BASE = "https://api.cursor.com/v1";
-const POLL_MS = 250;
-const POLL_MAX_MS = 900;
+const POLL_MS = 150;
+const POLL_MAX_MS = 600;
 const MAX_WAIT_MS = 180000;
 const CREATE_TIMEOUT_MS = 120000;
 const SESSION_TTL_MS = 45 * 60 * 1000;
-const MAX_SESSION_TURNS = 12;
-const MAX_PROMPT_CHARS = 10000;
-const MAX_SYSTEM_CHARS = 3500;
-const MAX_FOLLOWUP_CHARS = 5000;
-const MAX_HISTORY_MESSAGES = 10;
-const MAX_HISTORY_MESSAGE_CHARS = 400;
+const MAX_SESSION_TURNS = 16;
+const MAX_PROMPT_CHARS = 4000;
+const MAX_SYSTEM_CHARS = 1600;
+const MAX_FOLLOWUP_CHARS = 2200;
+const MAX_HISTORY_MESSAGES = 4;
+const MAX_HISTORY_MESSAGE_CHARS = 200;
 const MODELS_TTL_MS = 10 * 60 * 1000;
 const FAST_CHAT_MODEL_IDS = [
   "composer-2.5",
@@ -480,7 +480,7 @@ const waitForRunResult = async (opts) => {
         error?.status === 404 ||
         error?.status === 410;
       if (unavailable && attempt < 2) {
-        await sleep(350 * (attempt + 1));
+        await sleep(120 * (attempt + 1));
         continue;
       }
       if (unavailable || error?.code === "ECONNRESET") {

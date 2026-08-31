@@ -32,6 +32,9 @@ const NotificationSchema = new Schema({
     timestamp: { type: Date, default: Date.now }
 });
 
+NotificationSchema.index({ receiverId: 1, isSeen: 1, timestamp: -1 });
+NotificationSchema.index({ receiverId: 1, timestamp: -1 });
+
 const Notification = model('Notification', NotificationSchema);
 
 module.exports = Notification

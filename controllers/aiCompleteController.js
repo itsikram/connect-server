@@ -73,7 +73,7 @@ const completeOpenAi = async ({
     body.max_tokens = maxTokens;
   }
 
-  const timeout = json ? 25000 : 45000;
+  const timeout = json ? 18000 : 28000;
   const response = await axios.post(OPENAI_URL, body, {
     headers,
     timeout,
@@ -155,9 +155,10 @@ const completeGemini = async ({
     contents,
     generationConfig: {
       temperature,
-      topK: 20,
-      topP: 0.85,
-      maxOutputTokens: maxTokens,
+      topK: json ? 8 : 16,
+      topP: json ? 0.7 : 0.85,
+      maxOutputTokens: json ? Math.min(maxTokens, 256) : Math.min(maxTokens, 320),
+      candidateCount: 1,
       ...(json ? { responseMimeType: "application/json" } : {}),
       ...(/gemini-(2\.5|3)/i.test(String(model))
         ? { thinkingConfig: { thinkingBudget: 0 } }
@@ -172,7 +173,7 @@ const completeGemini = async ({
         model,
       )}:generateContent?key=${encodeURIComponent(keys[i])}`,
       requestBody,
-      { timeout: json ? 25000 : 45000, validateStatus: () => true },
+      { timeout: json ? 18000 : 25000, validateStatus: () => true },
     );
     if (response.status < 400) {
       const text = extractGeminiText(response.data);

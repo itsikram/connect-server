@@ -165,9 +165,14 @@ exports.notificationViewAll = async (req, res, next) => {
 exports.getNotifications = async (req, res, next) => {
   let receverId = req.query.receverId || req.query.profileId || req.profile._id;
   let limit = Math.min(Number(req.query.limit) || 50, 100);
-  let notifications = await Notification.find({ receiverId: receverId })
+  let notifications = await Notification.find({
+    receiverId: receverId,
+    type: { $ne: "message" },
+  })
+    .select("receiverId text title icon link type data isSeen timestamp")
     .limit(limit)
-    .sort({ timestamp: -1 });
+    .sort({ timestamp: -1 })
+    .lean();
   if (notifications) {
     return res.status(200).json(notifications);
   }
@@ -183,14 +188,15 @@ exports.getNewNotifications = async (req, res, next) => {
       return res.status(400).json({ notifications: [] });
     }
 
-    // Get recent unseen notifications only
-    // Only return notifications that haven't been seen yet
     const notifications = await Notification.find({
       receiverId: profileId,
-      isSeen: false
+      isSeen: false,
+      type: { $ne: "message" },
     })
-      .limit(50)
-      .sort({ timestamp: -1 });
+      .select("receiverId text title icon link type data isSeen timestamp")
+      .limit(20)
+      .sort({ timestamp: -1 })
+      .lean();
 
     return res.status(200).json({ notifications });
   } catch (error) {

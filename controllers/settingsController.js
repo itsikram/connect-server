@@ -29,6 +29,7 @@ const defaultSettings = () => ({
     newFriendPostEmail: false,
     newFriendStoryEmail: false,
     newFriendWatchEmail: false,
+    friendChatSettings: {},
 })
 
 exports.getSetting = async (req, res, next) => {
@@ -77,6 +78,14 @@ exports.updateSetting = async (req, res, next) => {
 
         if (settingObject.ringtone !== undefined) {
             settingObject.ringtone = Number(settingObject.ringtone) || 1
+        }
+
+        if (typeof settingObject.friendChatSettings === 'string') {
+            try {
+                settingObject.friendChatSettings = JSON.parse(settingObject.friendChatSettings)
+            } catch (error) {
+                delete settingObject.friendChatSettings
+            }
         }
 
         // Handle chatBackground file upload if present

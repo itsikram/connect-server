@@ -79,7 +79,11 @@ exports.getMedia = async(req,res,next) => {
                 { senderId: req.query.profileId, receiverId: req.profile._id }
             ],
             attachment: { $regex: fileUrlRegex }
-        }).sort({ createdAt: -1 }).limit(10)
+        })
+            .select('attachment timestamp')
+            .sort({ timestamp: -1 })
+            .limit(10)
+            .lean();
 
         res.json(getMessages).status(200)
         
@@ -101,42 +105,32 @@ exports.getChatList = async(req,res,next) => {
         let profileId = req.query.profileId || req.profile._id;
         const now = new Date();
 
-        // Use aggregation pipeline for better performance
-        const lastMessages = await Message.aggregate([
-            {
-                $match: {
-                    $or: [
-                        { senderId: profileId },
-                        { receiverId: profileId }
-                    ]
-                }
-            },
-            {
-                $addFields: {
-                    otherUserId: {
-                        $cond: {
-                            if: { $eq: ['$senderId', profileId] },
-                            then: '$receiverId',
-                            else: '$senderId'
-                        }
-                    }
-                }
-            },
-            {
-                $match: {
-                    otherUserId: { $ne: null }
-                }
-            },
-            {
-                $sort: { timestamp: -1 }
-            },
-            {
-                $group: {
-                    _id: '$otherUserId',
-                    lastMessage: { $first: '$$ROOT' }
-                }
-            }
+        // Use two indexed scans instead of a single $or (which cannot use both indexes)
+        const profileIdStr = String(profileId);
+        const [sentAgg, receivedAgg] = await Promise.all([
+            Message.aggregate([
+                { $match: { senderId: profileIdStr } },
+                { $sort: { timestamp: -1 } },
+                { $group: { _id: '$receiverId', lastMessage: { $first: '$$ROOT' } } },
+            ]),
+            Message.aggregate([
+                { $match: { receiverId: profileIdStr } },
+                { $sort: { timestamp: -1 } },
+                { $group: { _id: '$senderId', lastMessage: { $first: '$$ROOT' } } },
+            ]),
         ]);
+
+        const lastMessagesByPeer = new Map();
+        const consider = (otherId, msg) => {
+            if (otherId == null || !msg) return;
+            const key = String(otherId);
+            const existing = lastMessagesByPeer.get(key);
+            if (!existing || new Date(msg.timestamp) > new Date(existing.timestamp)) {
+                lastMessagesByPeer.set(key, msg);
+            }
+        };
+        sentAgg.forEach((row) => consider(row._id, row.lastMessage));
+        receivedAgg.forEach((row) => consider(row._id, row.lastMessage));
 
         // Get profile with slim friend fields (avoid shipping tokens, push subs, nested friends)
         const myProfile = await Profile.findOne({ _id: profileId })
@@ -158,12 +152,7 @@ exports.getChatList = async(req,res,next) => {
         }
 
         // Create a map for quick lookup of last messages
-        const messageMap = new Map();
-        lastMessages.forEach(msg => {
-            if (msg._id != null) {
-                messageMap.set(msg._id.toString(), msg.lastMessage);
-            }
-        });
+        const messageMap = lastMessagesByPeer;
 
         // Build profile contacts array
         const profileContacts = myProfile.friends.map(friendProfile => {
@@ -219,10 +208,15 @@ exports.getChatHistory = async(req,res,next) => {
 
         // Fetch one extra row instead of a separate countDocuments query
         const messages = await Message.find(query)
+            .select('-unseenReminderEmailSentAt -unseenReminderEmailProcessingKey -unseenReminderEmailProcessingAt -unseenReminderEmailLastError')
             .sort({ timestamp: -1 })
             .skip(skip)
             .limit(limit + 1)
-            .populate('parent');
+            .populate({
+                path: 'parent',
+                select: 'message senderId attachment timestamp messageType',
+            })
+            .lean();
 
         const hasMore = messages.length > limit;
         const pageMessages = hasMore ? messages.slice(0, limit) : messages;
@@ -286,27 +280,19 @@ exports.getOldMessages = async(req,res,next) => {
             timestamp: { $lt: timestamp }
         };
 
-        // Fetch old messages (most recent first, then reverse for chronological order)
         const messages = await Message.find(query)
+            .select('-unseenReminderEmailSentAt -unseenReminderEmailProcessingKey -unseenReminderEmailProcessingAt -unseenReminderEmailLastError')
             .sort({ timestamp: -1 })
-            .limit(limit + 1) // Fetch one extra to check if there are more
-            .populate('parent');
+            .limit(limit + 1)
+            .populate({
+                path: 'parent',
+                select: 'message senderId attachment timestamp messageType',
+            })
+            .lean();
 
-        // Check if there are more messages available
         const hasMore = messages.length > limit;
-        const resultMessages = messages.slice(0, limit); // Take only the limit
+        const resultMessages = messages.slice(0, limit);
 
-        console.log('getOldMessages result:', { 
-            profileId,
-            friendId,
-            beforeTimestamp,
-            foundMessages: resultMessages.length, 
-            hasMore, 
-            totalFetched: messages.length,
-            limit 
-        });
-
-        // Return messages in chronological order (oldest first)
         res.status(200).json({
             messages: resultMessages.reverse(),
             hasMore
@@ -455,43 +441,49 @@ exports.getNewMessages = async (req, res, next) => {
             }
         }
         
-        // Fetch new messages (newest first)
         const newMessages = await Message.find(query)
+            .select('-unseenReminderEmailSentAt -unseenReminderEmailProcessingKey -unseenReminderEmailProcessingAt -unseenReminderEmailLastError')
             .sort({ timestamp: -1 })
             .limit(20)
-            .populate('parent');
-        
-        // Enrich messages with sender profile information
-        const enrichedMessages = await Promise.all(
-            newMessages.map(async (msg) => {
-                const msgObj = msg.toObject();
-                try {
-                    const senderProfile = await Profile.findById(msg.senderId).select('name profilePic');
-                    if (senderProfile) {
-                        msgObj.senderName = senderProfile.name || 'Friend';
-                        msgObj.senderPP = senderProfile.profilePic || '/default-avatar.png';
-                    } else {
-                        msgObj.senderName = msgObj.senderName || 'Friend';
-                        msgObj.senderPP = msgObj.senderPP || '/default-avatar.png';
-                    }
-                } catch (error) {
-                    console.warn('Error fetching sender profile for message:', msg._id);
-                    msgObj.senderName = msgObj.senderName || 'Friend';
-                    msgObj.senderPP = msgObj.senderPP || '/default-avatar.png';
-                }
-                return msgObj;
+            .populate({
+                path: 'parent',
+                select: 'message senderId attachment timestamp messageType',
             })
+            .lean();
+
+        const senderIds = [
+            ...new Set(
+                newMessages
+                    .map((msg) => (msg.senderId ? String(msg.senderId) : ''))
+                    .filter(Boolean),
+            ),
+        ];
+        const senders =
+            senderIds.length > 0
+                ? await Profile.find({ _id: { $in: senderIds } })
+                      .select('name profilePic')
+                      .lean()
+                : [];
+        const senderMap = new Map(
+            senders.map((profile) => [String(profile._id), profile]),
         );
+
+        const enrichedMessages = newMessages.map((msg) => {
+            const senderProfile = senderMap.get(String(msg.senderId));
+            return {
+                ...msg,
+                senderName: senderProfile?.name || msg.senderName || 'Friend',
+                senderPP:
+                    senderProfile?.profilePic ||
+                    msg.senderPP ||
+                    '/default-avatar.png',
+            };
+        });
         
-        // Filter out invalid messages that are missing senderId or receiverId
         const validMessages = enrichedMessages.filter(msg => msg.senderId && msg.receiverId);
         
-        if (enrichedMessages.length > validMessages.length) {
-            console.warn(`Filtered ${enrichedMessages.length - validMessages.length} invalid messages (missing senderId/receiverId)`);
-        }
-        
         return res.status(200).json({
-            messages: validMessages.reverse() // Reverse to show in chronological order
+            messages: validMessages.reverse()
         });
         
     } catch (error) {
@@ -549,35 +541,21 @@ exports.getMessageReactions = async (req, res, next) => {
 exports.markMessageAsSeen = async (req, res, next) => {
     try {
         const { messageId, messageIds } = req.body;
-        
-        console.log('📍 markMessageAsSeen - Body received:', { messageId, messageIds, body: req.body });
-        
-        // Support both single and multiple message IDs
         const ids = messageIds && Array.isArray(messageIds) ? messageIds : (messageId ? [messageId] : []);
         
         if (!ids || ids.length === 0) {
-            console.warn('❌ No message IDs provided - messageId:', messageId, 'messageIds:', messageIds);
-            return res.status(400).json({ message: 'Message ID(s) required', received: { messageId, messageIds } });
+            return res.status(400).json({ message: 'Message ID(s) required' });
         }
-        
-        console.log('✅ Processing message IDs:', ids);
-        
-        // Update all messages as seen
+
         const result = await Message.updateMany(
-            { _id: { $in: ids } },
-            { isSeen: true },
-            { new: true }
+            { _id: { $in: ids }, isSeen: { $ne: true } },
+            { $set: { isSeen: true } }
         );
-        
-        console.log('📝 Message update result:', { matchedCount: result.matchedCount, modifiedCount: result.modifiedCount });
-        
-        if (result.modifiedCount > 0 || result.matchedCount > 0) {
-            console.log('✅ Successfully updated messages as seen - emitting socket events');
-            // Emit socket event to notify senders that messages were seen
+
+        if (result.modifiedCount > 0) {
             const io = req.app.get('io');
             if (io) {
                 ids.forEach((id) => {
-                    console.log('📡 Emitting messageSeen event for:', id);
                     io.emit('messageSeen', {
                         messageId: id,
                         seenBy: req.profile._id,
@@ -585,19 +563,16 @@ exports.markMessageAsSeen = async (req, res, next) => {
                     });
                 });
             }
-            
-            return res.status(200).json({ 
-                message: 'Messages marked as seen',
-                updatedCount: result.modifiedCount,
-                matchedCount: result.matchedCount
-            });
         }
-        
-        console.warn('❌ Failed to update any messages:', { matchedCount: result.matchedCount, modifiedCount: result.modifiedCount, ids });
-        return res.status(400).json({ message: 'Failed to mark messages as seen', matched: result.matchedCount, modified: result.modifiedCount });
+
+        return res.status(200).json({ 
+            message: 'Messages marked as seen',
+            updatedCount: result.modifiedCount,
+            matchedCount: result.matchedCount
+        });
         
     } catch (error) {
-        console.error('❌ Error marking message as seen:', error);
+        console.error('Error marking message as seen:', error);
         return res.status(500).json({ message: 'Internal server error', error: error.message });
     }
 };

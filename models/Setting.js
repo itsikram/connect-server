@@ -95,6 +95,10 @@ let settingSchema = new Schema({
         type: String,
         default: null,
     },
+    friendChatSettings: {
+        type: Schema.Types.Mixed,
+        default: {},
+    },
     profile: {
         ref: Profile,
         type: Schema.Types.ObjectId,
