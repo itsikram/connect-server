@@ -12,6 +12,9 @@ const {
   getNearbyProfiles,
   getOnlineStatus,
   getNearbyPlaces,
+  followProfile,
+  unfollowProfile,
+  getFollowStatus,
 } = require("../controllers/profileController");
 const coverPicUpload = require("../middlewares/UploadCover");
 const photosUpload = require("../middlewares/photosUpload");
@@ -27,7 +30,7 @@ Router.get("/getImages", getProfileImages);
 Router.get("/nearby", isAuth, getNearbyProfiles); // Get nearby profiles endpoint
 Router.get("/nearby-places", isAuth, getNearbyPlaces); // Get nearby places from OpenStreetMap endpoint
 Router.get("/online-status", isAuth, getOnlineStatus); // Check online status endpoint
-Router.post("/", profilePost);
+Router.post("/", isAuth, profilePost);
 Router.post(
   "/update/coverPic",
   upload.single("image"),
@@ -43,5 +46,8 @@ Router.post(
 Router.post("/update/bio", isAuth, updateBioPost);
 Router.post("/update/bangla-name", isAuth, updateBanglaName);
 Router.post("/update", isAuth, updateProfile);
+Router.post("/follow", isAuth, followProfile);
+Router.post("/unfollow", isAuth, unfollowProfile);
+Router.get("/follow-status", isAuth, getFollowStatus);
 
 module.exports = Router;

@@ -3,6 +3,9 @@ const Post = require("../models/Post");
 const Story = require("../models/Story");
 const mongoose = require("mongoose");
 const User = require("../models/User");
+const { asId, listHasId } = require("../utils/ids");
+const { saveNotification } = require("./notificationController");
+const { sendPushToProfile } = require("../utils/pushNotifications");
 
 const MONGO_ID_RE = /^[a-fA-F0-9]{24}$/;
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
@@ -11,10 +14,19 @@ const PROFILE_PRIVATE_EXCLUDE =
 const FRIEND_PUBLIC_FIELDS =
   "_id fullName displayName username nickname profilePic bio isActive lastActive lastLocation user";
 const USER_PUBLIC_FIELDS = "firstName surname";
+const USER_OWN_FIELDS = "firstName surname email";
 const LITE_PROFILE_FIELDS =
-  "_id fullName displayName username nickname profilePic coverPic bio isActive lastActive lastLocation blockedUsers friends friendReqs user";
+  "_id fullName displayName username nickname profilePic coverPic bio isActive lastActive lastLocation blockedUsers friends friendReqs following followers user";
 
 const isMongoId = (value) => MONGO_ID_RE.test(String(value || ""));
+
+const isOwnProfileRequest = (req, profileId) => {
+  const ownId = req.profile?._id;
+  if (!ownId || !profileId) return false;
+  if (String(ownId) === String(profileId)) return true;
+  const ownUsername = req.profile?.username;
+  return Boolean(ownUsername && String(ownUsername) === String(profileId));
+};
 
 const computeIsActive = (profile) => {
   if (!profile) return false;
@@ -25,7 +37,10 @@ const computeIsActive = (profile) => {
   return Boolean(lastActive && Date.now() - lastActive < ONLINE_WINDOW_MS);
 };
 
-const loadProfileDocument = async (profileId, { lite = false } = {}) => {
+const loadProfileDocument = async (
+  profileId,
+  { lite = false, includePrivateUserFields = false } = {},
+) => {
   if (!profileId) return null;
 
   const query = isMongoId(profileId)
@@ -33,11 +48,14 @@ const loadProfileDocument = async (profileId, { lite = false } = {}) => {
     : { username: profileId };
 
   const findQuery = Profile.findOne(query);
+  const userFields = includePrivateUserFields
+    ? USER_OWN_FIELDS
+    : USER_PUBLIC_FIELDS;
 
   if (lite) {
     findQuery.select(LITE_PROFILE_FIELDS).populate({
       path: "user",
-      select: USER_PUBLIC_FIELDS,
+      select: userFields,
     });
   } else {
     findQuery
@@ -49,7 +67,7 @@ const loadProfileDocument = async (profileId, { lite = false } = {}) => {
       })
       .populate({
         path: "user",
-        select: USER_PUBLIC_FIELDS,
+        select: userFields,
       });
   }
 
@@ -119,7 +137,10 @@ exports.profileGet = async function (req, res, next) {
       return res.status(400).json({ message: "Profile ID is required" });
     }
 
-    const profileData = await loadProfileDocument(profileId, { lite });
+    const profileData = await loadProfileDocument(profileId, {
+      lite,
+      includePrivateUserFields: isOwnProfileRequest(req, profileId),
+    });
     if (!profileData) {
       return res.status(404).json({ message: "Profile Not Found" });
     }
@@ -139,7 +160,10 @@ exports.profilePost = async (req, res, next) => {
     }
 
     const lite = Boolean(req.body.lite);
-    const profileData = await loadProfileDocument(profileId, { lite });
+    const profileData = await loadProfileDocument(profileId, {
+      lite,
+      includePrivateUserFields: isOwnProfileRequest(req, profileId),
+    });
     if (!profileData) {
       return res.status(404).json({ message: "Profile Not Found" });
     }
@@ -242,7 +266,7 @@ exports.updateProfile = async (req, res, next) => {
         ...reqData,
       },
       { new: true },
-    ).populate("user");
+    ).populate({ path: "user", select: USER_OWN_FIELDS });
 
     if (updateProfile) {
       res.json(updateProfile);
@@ -266,7 +290,7 @@ exports.updateBanglaName = async (req, res, next) => {
       { _id: profileId },
       { banglaName: banglaName.trim() },
       { new: true },
-    ).populate("user");
+    ).populate({ path: "user", select: USER_OWN_FIELDS });
 
     if (updatedProfile) {
       return res.status(200).json({
@@ -609,5 +633,111 @@ exports.getNearbyPlaces = async (req, res, next) => {
       message: "Failed to fetch nearby places",
       error: error.message,
     });
+  }
+};
+
+const parseTargetProfileId = (req) =>
+  asId(
+    req.body?.profileId ||
+      req.body?.profile ||
+      req.query?.profileId ||
+      req.query?.profile,
+  );
+
+exports.followProfile = async (req, res, next) => {
+  try {
+    const myId = asId(req.profile?._id);
+    const targetId = parseTargetProfileId(req);
+    if (!myId) return res.status(401).json({ message: "Unauthorized" });
+    if (!targetId) return res.status(400).json({ message: "Invalid profile id" });
+    if (targetId === myId) {
+      return res.status(400).json({ message: "Cannot follow yourself" });
+    }
+
+    const target = await Profile.findById(targetId).select("_id fullName");
+    if (!target) return res.status(404).json({ message: "Profile not found" });
+
+    const me = await Profile.findByIdAndUpdate(
+      myId,
+      { $addToSet: { following: targetId } },
+      { new: true },
+    ).select("following fullName profilePic");
+
+    if (!me) return res.status(401).json({ message: "Unauthorized" });
+
+    await Profile.findByIdAndUpdate(targetId, {
+      $addToSet: { followers: myId },
+    });
+
+    const io = req.app.get("io");
+    if (io && typeof io.to === "function") {
+      try {
+        await saveNotification(io, {
+          receiverId: targetId,
+          text: `${me.fullName || "Someone"} started following you`,
+          link: `/${myId}`,
+          icon: me.profilePic,
+          type: "follow",
+          data: { senderId: myId, senderName: me.fullName },
+        });
+      } catch (_e) {}
+      try {
+        await sendPushToProfile(targetId, {
+          title: "New follower",
+          body: `${me.fullName || "Someone"} started following you`,
+          data: { type: "follow", senderId: myId },
+        });
+      } catch (_e) {}
+    }
+
+    return res.status(200).json({
+      following: true,
+      followingIds: me.following || [],
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.unfollowProfile = async (req, res, next) => {
+  try {
+    const myId = asId(req.profile?._id);
+    const targetId = parseTargetProfileId(req);
+    if (!myId) return res.status(401).json({ message: "Unauthorized" });
+    if (!targetId) return res.status(400).json({ message: "Invalid profile id" });
+
+    const me = await Profile.findByIdAndUpdate(
+      myId,
+      { $pull: { following: targetId } },
+      { new: true },
+    ).select("following");
+
+    await Profile.findByIdAndUpdate(targetId, {
+      $pull: { followers: myId },
+    });
+
+    return res.status(200).json({
+      following: false,
+      followingIds: me?.following || [],
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getFollowStatus = async (req, res, next) => {
+  try {
+    const myId = asId(req.profile?._id);
+    const targetId = parseTargetProfileId(req);
+    if (!myId) return res.status(401).json({ message: "Unauthorized" });
+    if (!targetId) return res.status(400).json({ message: "Invalid profile id" });
+
+    const me = await Profile.findById(myId).select("following");
+    return res.status(200).json({
+      following: listHasId(me?.following, targetId),
+      followingIds: me?.following || [],
+    });
+  } catch (error) {
+    next(error);
   }
 };

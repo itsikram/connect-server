@@ -5,6 +5,7 @@ const checkIsActive = require('../utils/checkIsActive')
 const axios = require('axios')
 const { sendPushToProfile, sendDataPushToProfile } = require('../utils/pushNotifications')
 const { sendWebPushToProfile } = require('../utils/webPush')
+const { getIncomingCallAlertForProfile } = require('../utils/ringtone')
 const config = require('../config/config.json');
 
 const sendEmailNotification = require('../utils/sendEmailNotification')
@@ -18,6 +19,7 @@ async function sendIncomingCallWebPush(to, {
 }) {
     const audio = !!isAudio;
     const name = callerName || 'Someone';
+    const alert = await getIncomingCallAlertForProfile(to);
     return sendWebPushToProfile(to, {
         title: audio ? 'Incoming audio call' : 'Incoming video call',
         body: `${name} is calling`,
@@ -29,7 +31,7 @@ async function sendIncomingCallWebPush(to, {
         urgency: 'high',
         ttl: 120, // ring window — don't deliver stale calls hours later
         silent: false,
-        sound: '/assets/audio/default-ringtone.mp3',
+        sound: alert.webSrc,
         vibrate: [300, 100, 300, 100, 300],
         actions: [
             { action: 'accept_call', title: 'Accept' },
@@ -42,6 +44,8 @@ async function sendIncomingCallWebPush(to, {
             callerName: name,
             callerProfilePic: callerProfilePic || '',
             channelName: channelName || '',
+            ringtoneId: String(alert.id),
+            ringtoneSrc: alert.webSrc,
             url: `/message/${callerId}`,
             link: `/message/${callerId}`,
         },

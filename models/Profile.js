@@ -90,6 +90,13 @@ let profileSchema = new Schema(
     following: [
       {
         type: Schema.Types.ObjectId,
+        ref: "Profile",
+      },
+    ],
+    followers: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "Profile",
       },
     ],
     blockedUsers: [

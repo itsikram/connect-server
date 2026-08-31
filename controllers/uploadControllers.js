@@ -56,11 +56,24 @@ exports.uploadFile = async (req, res, next) => {
             return res.status(400).json({ error: 'No file uploaded' });
         }
 
-        // Upload any file type (audio/video/image/document) using resource_type auto
+        const originalName = String(req.file.originalname || '').toLowerCase();
+        const mime = String(req.file.mimetype || '').toLowerCase();
+        const needsNativeAudio =
+            mime.includes('webm') ||
+            mime.includes('ogg') ||
+            mime.includes('opus') ||
+            originalName.endsWith('.webm') ||
+            originalName.endsWith('.ogg') ||
+            originalName.endsWith('.oga') ||
+            originalName.endsWith('.opus');
+
+        // Web voice notes are webm/opus. Native apps cannot play that, so
+        // transcode those uploads to mp3 while leaving images and m4a alone.
         const uploadStream = cloudinary.uploader.upload_stream(
             {
-                resource_type: 'auto',
-                folder: 'chat-uploads'
+                resource_type: needsNativeAudio ? 'video' : 'auto',
+                folder: 'chat-uploads',
+                ...(needsNativeAudio ? { format: 'mp3' } : {}),
             },
             (error, result) => {
                 if (error) {

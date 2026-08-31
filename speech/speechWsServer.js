@@ -8,12 +8,12 @@ const JWT_SECRET = process.env.JWT_SECRET_KEY;
 const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
 const DEFAULT_DEEPGRAM_MODEL = process.env.DEEPGRAM_MODEL || "nova-3";
 const DEFAULT_BANGLA_MODEL = process.env.DEEPGRAM_BANGLA_MODEL || "nova-3";
-const FINALIZE_GRACE_MS = Number(process.env.SPEECH_FINALIZE_GRACE_MS || 450);
+const FINALIZE_GRACE_MS = Number(process.env.SPEECH_FINALIZE_GRACE_MS || 280);
 const BANGLA_ENDPOINTING_MS = Number(
-  process.env.SPEECH_BANGLA_ENDPOINTING_MS || 250,
+  process.env.SPEECH_BANGLA_ENDPOINTING_MS || 180,
 );
 const ENGLISH_ENDPOINTING_MS = Number(
-  process.env.SPEECH_ENGLISH_ENDPOINTING_MS || 350,
+  process.env.SPEECH_ENGLISH_ENDPOINTING_MS || 200,
 );
 
 const BANGLA_KEYTERMS = [
@@ -40,6 +40,17 @@ const BANGLA_KEYTERMS = [
 ];
 
 const BANGLA_REPLACEMENTS = ["কোল:কল", "পেঠাও:পাঠাও", "সেটিং:সেটিংস"];
+
+const ENGLISH_KEYTERMS = [
+  "call",
+  "video call",
+  "message",
+  "profile",
+  "settings",
+  "friend",
+  "ludo",
+  "chess",
+];
 
 const normalizeText = (text = "") => String(text).replace(/\s+/g, " ").trim();
 
@@ -196,7 +207,7 @@ const looksDisplayableTranscript = (text = "", language = "bn") => {
 
   const normalizedLanguage = String(language || "").toLowerCase();
   if (!normalizedLanguage.startsWith("bn")) {
-    return value.length >= 2;
+    return value.length >= 1;
   }
 
   if (isKnownBadBanglaGuess(value)) return false;
@@ -272,7 +283,10 @@ const resolveInputFormatFromMimeType = (mimeType = "") => {
   const value = String(mimeType || "").toLowerCase();
   if (value.includes("webm")) return "webm";
   if (value.includes("ogg")) return "ogg";
-  if (value.includes("mp4") || value.includes("aac")) return "mp4";
+  if (value.includes("adts") || (value.includes("aac") && !value.includes("mp4"))) {
+    return "aac";
+  }
+  if (value.includes("mp4") || value.includes("m4a")) return "mp4";
   return null;
 };
 
@@ -345,8 +359,10 @@ const createFfmpegArgs = (mimeType = "audio/webm") => {
     "error",
     "-fflags",
     "+genpts+nobuffer+discardcorrupt",
+    "-flags",
+    "low_delay",
     "-probesize",
-    "32768",
+    inputFormat === "aac" ? "8192" : "16384",
     "-analyzeduration",
     "0",
   ];
@@ -407,7 +423,8 @@ class DeepgramBridge {
     const normalized = String(language || "bn")
       .trim()
       .toLowerCase();
-    if (normalized === "bn-bd") return "bn";
+    if (normalized.startsWith("bn")) return "bn";
+    if (normalized.startsWith("en")) return "en-US";
     return normalized || "bn";
   }
 
@@ -472,9 +489,13 @@ class DeepgramBridge {
       options.sample_rate = pcmStream ? sampleRate : 16000;
     }
 
-    if (/^nova-3/i.test(model) && isBangla) {
-      options.keyterm = BANGLA_KEYTERMS;
-      options.replace = BANGLA_REPLACEMENTS;
+    if (/^nova-3/i.test(model)) {
+      if (isBangla) {
+        options.keyterm = BANGLA_KEYTERMS;
+        options.replace = BANGLA_REPLACEMENTS;
+      } else {
+        options.keyterm = ENGLISH_KEYTERMS;
+      }
     }
 
     console.log(

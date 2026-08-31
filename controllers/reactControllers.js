@@ -7,15 +7,51 @@ const checkIsActive = require('../utils/checkIsActive')
 const { sendPushToProfile } = require('../utils/pushNotifications')
 const { normalizeReactType } = require('../utils/reactTypes')
 
+const reactProfileId = (value) => String(value?._id || value || '')
+
+const withoutReactor = (reacts = [], profileId) =>
+    (Array.isArray(reacts) ? reacts : []).filter(
+        (react) => reactProfileId(react?.profile) !== reactProfileId(profileId)
+    )
+
+const uniqueReactsByProfile = (reacts = []) => {
+    const seen = new Set()
+    const next = []
+    for (const react of [...(reacts || [])].reverse()) {
+        const id = reactProfileId(react?.profile)
+        if (!id || seen.has(id)) continue
+        seen.add(id)
+        next.push(react)
+    }
+    return next.reverse()
+}
+
+const replaceReact = async (Model, id, profileId, reactType) => {
+    const doc = await Model.findById(id)
+    if (!doc) return null
+    const cleaned = uniqueReactsByProfile(withoutReactor(doc.reacts, profileId))
+    cleaned.push({ profile: profileId, type: reactType })
+    doc.reacts = cleaned
+    await doc.save()
+    return doc
+}
+
+const removeReact = async (Model, id, profileId) => {
+    const doc = await Model.findById(id)
+    if (!doc) return null
+    doc.reacts = uniqueReactsByProfile(withoutReactor(doc.reacts, profileId))
+    await doc.save()
+    return doc
+}
+
 exports.postAddReact = async (req, res, next) => {
     try {
-
-        let profile = (req.profile._id).toString()
-        let myProfileData = req.profile
+        const profile = req.profile._id
+        const myProfileData = req.profile
         let { reactType, id, postType, watchType } = req.body
         postType = postType || watchType
         reactType = normalizeReactType(reactType)
-        let io = req.app.get('io')
+        const io = req.app.get('io')
 
         if (!reactType) {
             return res.status(400).json({ message: 'Invalid reaction type' })
@@ -27,39 +63,19 @@ exports.postAddReact = async (req, res, next) => {
         let friendProfile = ''
 
         switch (postType) {
-            case 'post':
+            case 'post': {
                 friendProfile = (await Post.findOne({ _id: id }).populate('author')).author
-                await Post.findOneAndUpdate({
-                    _id: id
-                }, {
-                    $pull: {
-                        reacts: {
-                            profile: profile,
-                        }
-                    }
-                }, { new: true })
-
-                let addPostReact = await Post.findOneAndUpdate({
-                    _id: id
-                }, {
-                    $push: {
-                        reacts: {
-                            profile,
-                            type: reactType
-                        }
-                    }
-
-                }, { new: true })
-
-
+                const addPostReact = await replaceReact(Post, id, profile, reactType)
+                if (!addPostReact) {
+                    return res.status(404).json({ message: 'Post not found' })
+                }
 
                 if (String(friendProfile._id) !== String(profile)) {
-                    // Get all active browser IDs for the post author
                     const activeBrowserIds = friendProfile.browserIds
                         ?.filter(browser => browser.isActive)
-                        ?.map(browser => browser.browserId) || [];
+                        ?.map(browser => browser.browserId) || []
 
-                    let postReactNotification = {
+                    saveNotification(io, {
                         receiverId: friendProfile._id,
                         text: `${myProfileData.fullName} Reacted your post`,
                         link: '/post/' + addPostReact._id,
@@ -73,10 +89,8 @@ exports.postAddReact = async (req, res, next) => {
                             postId: addPostReact._id,
                             reactType: reactType
                         }
-                    }
-                    saveNotification(io, postReactNotification)
+                    })
 
-                    // Also emit specific socket event for post reaction
                     io.to(friendProfile._id).emit('postReactNotification', {
                         senderName: myProfileData.fullName,
                         senderPP: myProfileData.profilePic,
@@ -91,42 +105,22 @@ exports.postAddReact = async (req, res, next) => {
                                 title: 'New reaction',
                                 body: `${myProfileData.fullName} reacted to your post`,
                                 data: { type: 'post_react', postId: String(addPostReact._id) }
-                            });
+                            })
                         }
                     } catch (e) {}
                 }
 
-
-                return res.json(addPostReact).status(200)
-                break;
-            case 'story':
-
-            friendProfile = (await Story.findOne({ _id: id }).populate('author')).author
-
-                await Story.findOneAndUpdate({
-                    _id: id
-                }, {
-                    $pull: {
-                        reacts: {
-                            profile: profile,
-                        }
-                    }
-                }, { new: true })
-
-                let addStoryReact = await Story.findOneAndUpdate({
-                    _id: id
-                }, {
-                    $push: {
-                        reacts: {
-                            profile,
-                            type: reactType
-                        }
-                    }
-
-                }, { new: true })
+                return res.status(200).json(addPostReact)
+            }
+            case 'story': {
+                friendProfile = (await Story.findOne({ _id: id }).populate('author')).author
+                const addStoryReact = await replaceReact(Story, id, profile, reactType)
+                if (!addStoryReact) {
+                    return res.status(404).json({ message: 'Story not found' })
+                }
 
                 if (String(friendProfile._id) !== String(profile)) {
-                    let postStoryNotification = {
+                    saveNotification(io, {
                         receiverId: friendProfile._id,
                         text: `${myProfileData.fullName} Reacted your Story`,
                         link: '/story/' + addStoryReact._id,
@@ -139,8 +133,7 @@ exports.postAddReact = async (req, res, next) => {
                             storyId: addStoryReact._id,
                             reactType: reactType
                         }
-                    }
-                    saveNotification(io, postStoryNotification)
+                    })
                     try {
                         const { isActive } = await checkIsActive(friendProfile._id)
                         if (!isActive) {
@@ -148,44 +141,26 @@ exports.postAddReact = async (req, res, next) => {
                                 title: 'New reaction',
                                 body: `${myProfileData.fullName} reacted to your story`,
                                 data: { type: 'story_react', storyId: String(addStoryReact._id) }
-                            });
+                            })
                         }
                     } catch (e) {}
                 }
 
-                return res.json(addStoryReact).status(200)
-                break;
-            case 'watch':
-
+                return res.status(200).json(addStoryReact)
+            }
+            case 'watch': {
                 friendProfile = (await Watch.findOne({ _id: id }).populate('author')).author
-                await Watch.findOneAndUpdate({
-                    _id: id
-                }, {
-                    $pull: {
-                        reacts: {
-                            profile: profile,
-                        }
-                    }
-                }, { new: true })
-
-                let addWatchReact = await Watch.findOneAndUpdate({
-                    _id: id
-                }, {
-                    $push: {
-                        reacts: {
-                            profile,
-                            type: reactType
-                        }
-                    }
-
-                }, { new: true })
+                const addWatchReact = await replaceReact(Watch, id, profile, reactType)
+                if (!addWatchReact) {
+                    return res.status(404).json({ message: 'Video not found' })
+                }
 
                 if (friendProfile && String(friendProfile._id) !== String(profile)) {
                     const activeBrowserIds = friendProfile.browserIds
                         ?.filter(browser => browser.isActive)
-                        ?.map(browser => browser.browserId) || [];
+                        ?.map(browser => browser.browserId) || []
 
-                    let watchReactNotification = {
+                    saveNotification(io, {
                         receiverId: friendProfile._id,
                         text: `${myProfileData.fullName} Reacted your video`,
                         link: '/watch/' + addWatchReact._id,
@@ -199,8 +174,7 @@ exports.postAddReact = async (req, res, next) => {
                             watchId: addWatchReact._id,
                             reactType: reactType
                         }
-                    }
-                    saveNotification(io, watchReactNotification)
+                    })
 
                     io.to(friendProfile._id).emit('postReactNotification', {
                         senderName: myProfileData.fullName,
@@ -216,27 +190,25 @@ exports.postAddReact = async (req, res, next) => {
                                 title: 'New reaction',
                                 body: `${myProfileData.fullName} reacted to your video`,
                                 data: { type: 'watch_react', watchId: String(addWatchReact._id) }
-                            });
+                            })
                         }
                     } catch (e) {}
                 }
 
-                return res.json(addWatchReact).status(200)
-                break;
-
+                return res.status(200).json(addWatchReact)
+            }
             default:
                 return res.status(400).json({ message: 'Invalid reaction target' })
         }
-
-
     } catch (error) {
         console.log(error)
+        return res.status(500).json({ message: 'Failed to add reaction' })
     }
 }
 
 exports.postRemoveReact = async (req, res, next) => {
     try {
-        let profile = req.profile._id
+        const profile = req.profile._id
         let { id, postType, watchType, reactor } = req.body
         postType = postType || watchType
         reactor = reactor || profile
@@ -246,52 +218,21 @@ exports.postRemoveReact = async (req, res, next) => {
         }
 
         switch (postType) {
-            case 'post':
-                let removePostReact = await Post.findByIdAndUpdate({
-                    _id: id
-                }, {
-                    $pull: {
-                        reacts: {
-                            profile: reactor,
-                        }
-                    }
-                }, { new: true })
-
-                return res.json(removePostReact)
-                break;
-            case 'story':
-                let removeStoryReact = await Story.findByIdAndUpdate({
-                    _id: id
-                }, {
-                    $pull: {
-                        reacts: {
-                            profile: profile,
-                        }
-                    }
-                }, { new: true })
-
-                return res.json(removeStoryReact)
-                break;
-            case 'watch':
-                let removeWatchReact = await Watch.findByIdAndUpdate({
-                    _id: id
-                }, {
-                    $pull: {
-                        reacts: {
-                            profile: reactor,
-                        }
-                    }
-                }, { new: true })
-
-                return res.json(removeWatchReact)
-                break;
-
+            case 'post': {
+                const removePostReact = await removeReact(Post, id, reactor)
+                return res.status(200).json(removePostReact)
+            }
+            case 'story': {
+                const removeStoryReact = await removeReact(Story, id, profile)
+                return res.status(200).json(removeStoryReact)
+            }
+            case 'watch': {
+                const removeWatchReact = await removeReact(Watch, id, reactor)
+                return res.status(200).json(removeWatchReact)
+            }
             default:
                 return res.status(400).json({ message: 'Invalid reaction target' })
         }
-
-
-
     } catch (error) {
         next(error)
     }
@@ -303,4 +244,3 @@ exports.addStoryReact = async (req, res, next) => {
 exports.deleteStoryReact = async (req, res, next) => {
 
 }
-

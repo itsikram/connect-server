@@ -14,9 +14,13 @@ let postSchema = new Schema({
         maxLength: 250,
     },
     reacts: [{
-        type: Object,
-        ref: Profile
-
+        profile: {
+            type: Schema.Types.ObjectId,
+            ref: Profile
+        },
+        type: {
+            type: String
+        }
     }],
     comments: [{
         type: Schema.Types.ObjectId,

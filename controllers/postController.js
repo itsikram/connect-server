@@ -7,6 +7,31 @@ const CmntReply = require('../models/CmntReply')
 const mongoose = require('mongoose')
 const { rankPosts } = require('../utils/feedRanking')
 
+const commentPopulate = {
+    path: 'comments',
+    model: Comment,
+    populate: [{
+        path: 'author',
+        select: ['profilePic', 'user', 'fullName', 'displayName'],
+        populate: {
+            path: 'user',
+            select: ['firstName', 'surname']
+        }
+    }, {
+        path: 'replies',
+        model: CmntReply,
+        populate: {
+            path: 'author',
+            model: Profile,
+            select: ['profilePic', 'user', 'fullName', 'displayName'],
+            populate: {
+                path: 'user',
+                select: ['firstName', 'surname']
+            }
+        }
+    }]
+}
+
 
 exports.createPost = async (req, res, next) => {
     try {
@@ -435,6 +460,7 @@ exports.getNewsFeed = async (req, res, next) => {
         })
         const start = (pageNumber - 1) * limit
         const newsFeedPosts = ranked.slice(start, start + limit)
+        await Post.populate(newsFeedPosts, commentPopulate)
         const hasNewPost = start + limit < ranked.length
         res.status(200).json({ posts: newsFeedPosts, hasNewPost })
 

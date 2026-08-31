@@ -7,12 +7,13 @@
 const admin = require('firebase-admin');
 const axios = require('axios');
 const Profile = require('../models/Profile');
+const { getIncomingCallAlertForProfile } = require('./ringtone');
 
 /** Expo / React Native apps using expo-notifications register these — not FCM registration tokens. */
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 
-/** Must match bundled `default_ringtone` in the mobile app (expo-notifications plugin + Android res/raw). */
-const INCOMING_CALL_NOTIFICATION_SOUND = 'default_ringtone';
+/** Bundled mobile sounds: ringtone_1.mp3 … ringtone_5.mp3 via expo-notifications plugin. */
+const INCOMING_CALL_NOTIFICATION_SOUND = 'ringtone_1';
 
 /**
  * Android notification channel id registered in expo-connect-app `configureNotificationsChannel`
@@ -131,14 +132,20 @@ async function sendPushToTokens(tokens = [], notification = {}) {
   );
 
   const isIncomingCall = stringData.type === 'incoming_call';
-  const fcmSound = isIncomingCall ? INCOMING_CALL_NOTIFICATION_SOUND : 'default';
+  const incomingSound =
+    notification.sound ||
+    (isIncomingCall ? `${stringData.soundName || INCOMING_CALL_NOTIFICATION_SOUND}.mp3` : 'default');
+  const incomingChannelId =
+    notification.channelId ||
+    stringData.channelId ||
+    (isIncomingCall ? 'incoming_calls_r1' : EXPO_DEFAULT_ANDROID_CHANNEL_ID);
 
   let successCount = 0;
   let failureCount = 0;
 
   if (expoTokens.length > 0) {
     const channelId = isIncomingCall
-      ? 'incoming_calls'
+      ? incomingChannelId
       : String(notification.channelId || EXPO_DEFAULT_ANDROID_CHANNEL_ID);
     const messages = expoTokens.map((to) => {
       const message = {
@@ -146,7 +153,7 @@ async function sendPushToTokens(tokens = [], notification = {}) {
         title: notification.title || 'Notification',
         body: notificationBody,
         data: stringData,
-        sound: 'default',
+        sound: isIncomingCall ? incomingSound : 'default',
         priority: 'high',
         channelId,
       };
@@ -189,7 +196,7 @@ async function sendPushToTokens(tokens = [], notification = {}) {
           payload: {
             aps: {
               alert: { title: titleStr, body: bodyStr },
-              sound: 'default',
+              sound: incomingSound.replace(/\.mp3$/i, '') + '.mp3',
               'interruption-level': 'time-sensitive',
               category: 'incoming_call',
             },
@@ -230,7 +237,7 @@ async function sendPushToTokens(tokens = [], notification = {}) {
       directBootOk: true,
       notification: {
         channelId: String(notification.channelId || EXPO_DEFAULT_ANDROID_CHANNEL_ID),
-        sound: fcmSound,
+        sound: 'default',
       },
     },
   };
@@ -290,15 +297,32 @@ async function sendPushToProfile(profileId, notification = {}) {
     $or: [{ _id: profileId }, { user: profileId }],
   }).select('deviceTokens');
   const tokens = profile?.deviceTokens || [];
+
+  let nextNotification = notification;
+  if (notification?.data?.type === 'incoming_call') {
+    const alert = await getIncomingCallAlertForProfile(profileId);
+    nextNotification = {
+      ...notification,
+      channelId: alert.channelId,
+      sound: alert.iosSound,
+      data: {
+        ...(notification.data || {}),
+        ringtoneId: String(alert.id),
+        channelId: alert.channelId,
+        soundName: alert.soundName,
+      },
+    };
+  }
+
   console.log('Push tokens for profile', {
     profileId,
     tokensCount: tokens.length,
     tokensPreview: tokens.slice(0, 3).map((t) => String(t).slice(0, 6) + '...' + String(t).slice(-4)),
     profile
   });
-  console.log('sendPushToProfile working', profileId, tokens, notification);
+  console.log('sendPushToProfile working', profileId, tokens, nextNotification);
 
-  return sendPushToTokens(tokens, notification);
+  return sendPushToTokens(tokens, nextNotification);
 }
 
 module.exports = {

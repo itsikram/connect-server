@@ -298,33 +298,63 @@ exports.changePass = async (req, res, next) => {
     }
 }
 exports.changeEmail = async (req, res, next) => {
-    let { email } = req.body
-    let userId = req.profile.user._id || ''
     try {
-        let updatedUser = await User.findOneAndUpdate({ _id: userId }, { email }, { new: true })
+        const email = String(req.body?.email || '').trim().toLowerCase();
+        const userId = req.profile?.user?._id;
 
-        if (updatedUser) {
-
-
-            let accessToken = jwt.sign({ user_id: updatedUser._id }, SECRET_KEY, {
-                expiresIn: '30d'
-            })
-
-            return res.status(200).json({
-                firstName: updatedUser.firstName,
-                user_id: updatedUser._id,
-                surname: updatedUser.surname,
-                profile: updatedUser.profile,
-                accessToken
-            })
-
+        if (!userId) {
+            return res.status(401).json({ message: 'You are not authenticated' });
         }
 
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            return res.status(400).json({ message: 'Please enter a valid email address' });
+        }
 
+        if (email.length < 10 || email.length > 40) {
+            return res.status(400).json({ message: 'Email must be between 10 and 40 characters' });
+        }
+
+        const currentEmail = String(req.profile?.user?.email || '').trim().toLowerCase();
+        if (email === currentEmail) {
+            return res.status(200).json({
+                firstName: req.profile.user.firstName,
+                user_id: userId,
+                surname: req.profile.user.surname,
+                profile: req.profile._id,
+                email,
+            });
+        }
+
+        const existing = await User.findOne({ email, _id: { $ne: userId } }).select('_id');
+        if (existing) {
+            return res.status(409).json({ message: 'An account with that email already exists' });
+        }
+
+        const updatedUser = await User.findOneAndUpdate(
+            { _id: userId },
+            { email },
+            { new: true, runValidators: true }
+        );
+
+        if (!updatedUser) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const accessToken = jwt.sign({ user_id: updatedUser._id }, SECRET_KEY, {
+            expiresIn: '30d'
+        });
+
+        return res.status(200).json({
+            firstName: updatedUser.firstName,
+            user_id: updatedUser._id,
+            surname: updatedUser.surname,
+            profile: updatedUser.profile,
+            email: updatedUser.email,
+            accessToken
+        });
     } catch (e) {
-        next(e)
+        next(e);
     }
-
 }
 
 exports.login = async (req, res, next) => {

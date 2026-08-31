@@ -13,8 +13,13 @@ let storySchema = new Schema({
         maxLength: 250,
     },
     reacts: [{
-        type: Object,
-        ref: Profile
+        profile: {
+            type: Schema.Types.ObjectId,
+            ref: Profile
+        },
+        type: {
+            type: String
+        }
     }],
     bgColor: String,
     seenBy:[{
