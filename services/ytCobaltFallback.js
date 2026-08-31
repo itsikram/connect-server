@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
 const { pipeline } = require("stream/promises");
+const { getCobaltUrl } = require("../utils/cobaltTunnelSync");
 
 /**
  * Cobalt API fallback when yt-dlp is blocked on cloud IPs.
@@ -9,7 +10,7 @@ const { pipeline } = require("stream/promises");
  * Optional: COBALT_API_KEY for Authorization: Api-Key / Bearer.
  */
 const getCobaltInstances = () => {
-  const primary = process.env.COBALT_API_URL;
+  const primary = getCobaltUrl() || process.env.COBALT_API_URL || "";
   const fallback = !primary ? "https://api.cobalt.tools" : null;
   return [
     ...new Set(
@@ -19,7 +20,7 @@ const getCobaltInstances = () => {
 };
 
 const isRemoteHomeCobalt = () => {
-  const u = process.env.COBALT_API_URL || "";
+  const u = getCobaltUrl() || process.env.COBALT_API_URL || "";
   return u.startsWith("http") && !/localhost|127\.0\.0\.1/i.test(u);
 };
 

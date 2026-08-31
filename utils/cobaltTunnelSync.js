@@ -16,16 +16,21 @@ const state = {
 };
 
 const getCobaltUrl = () => {
-  const current = normalizeCobaltUrl(process.env.COBALT_API_URL || state.url || "");
+  const current = normalizeCobaltUrl(
+    process.env.COBALT_API_URL || state.url || "",
+  );
   if (current && !state.url) {
     state.url = current;
-    state.source = "env";
+    state.source = process.env.COBALT_API_URL ? "env" : state.source || "runtime";
     state.updatedAt = new Date().toISOString();
   }
   if (current && state.url !== current) {
     state.url = current;
-    state.source = "env";
+    state.source = process.env.COBALT_API_URL ? "env" : state.source || "runtime";
     state.updatedAt = new Date().toISOString();
+  }
+  if (current && !process.env.COBALT_API_URL) {
+    process.env.COBALT_API_URL = current;
   }
   return current;
 };

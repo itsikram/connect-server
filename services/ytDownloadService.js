@@ -18,6 +18,7 @@ const {
   isFormatUnavailableError,
 } = require("./ytDlpRunner");
 const { downloadViaCobalt } = require("./ytCobaltFallback");
+const { getCobaltUrl } = require("../utils/cobaltTunnelSync");
 
 const DOWNLOAD_DIR = path.join(require("os").tmpdir(), "connect-yt-downloads");
 const JOB_PROGRESS = new Map();
@@ -352,7 +353,8 @@ const downloadViaCobaltBackend = async ({
 const downloadVideo = async ({ progressId, url, height, audioOnly }) => {
   let lastError = null;
   const cobaltEnabled = process.env.YT_DL_DISABLE_COBALT !== "true";
-  const hasCobaltUrl = Boolean(process.env.COBALT_API_URL);
+  const cobaltUrl = getCobaltUrl();
+  const hasCobaltUrl = Boolean(cobaltUrl);
   const onRender = isRenderHost();
   const cobaltOnly = process.env.YT_DL_COBALT_ONLY === "true" || onRender;
 
@@ -410,7 +412,7 @@ const downloadVideo = async ({ progressId, url, height, audioOnly }) => {
         ? "[yt-download] Cobalt-only mode (Render / YT_DL_COBALT_ONLY)"
         : "[yt-download] Prefer Cobalt first",
     );
-    console.log(`[yt-download] Cobalt URL: ${process.env.COBALT_API_URL}`);
+    console.log(`[yt-download] Cobalt URL: ${cobaltUrl}`);
     const cobaltResult = await tryCobalt();
     if (cobaltResult) return cobaltResult;
 
