@@ -6,8 +6,82 @@
  */
 const admin = require('firebase-admin');
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 const Profile = require('../models/Profile');
 const { getIncomingCallAlertForProfile } = require('./ringtone');
+
+function ensureFirebaseAdminInitialized() {
+  if (admin.apps && admin.apps.length > 0) return;
+
+  const projectId = process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
+  const serviceAccountEnv = process.env.FIREBASE_SERVICE_ACCOUNT || process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
+
+  try {
+    if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      const adcPath = process.env.GOOGLE_APPLICATION_CREDENTIALS.trim();
+      if (adcPath.startsWith('{')) {
+        const parsed = JSON.parse(adcPath);
+        if (parsed && parsed.type === 'service_account') {
+          admin.initializeApp({
+            credential: admin.credential.cert(parsed),
+            projectId: projectId || parsed.project_id,
+          });
+          return;
+        }
+      }
+      if (fs.existsSync(adcPath)) {
+        const parsed = JSON.parse(fs.readFileSync(adcPath, 'utf8'));
+        admin.initializeApp({
+          credential: admin.credential.cert(parsed),
+          projectId: projectId || parsed.project_id,
+        });
+        return;
+      }
+    }
+
+    if (serviceAccountEnv) {
+      let parsed;
+      try {
+        parsed = JSON.parse(serviceAccountEnv);
+      } catch (_) {
+        try {
+          parsed = JSON.parse(Buffer.from(serviceAccountEnv, 'base64').toString('utf8'));
+        } catch (_) {
+          parsed = null;
+        }
+      }
+      if (parsed && parsed.type === 'service_account') {
+        admin.initializeApp({
+          credential: admin.credential.cert(parsed),
+          projectId: projectId || parsed.project_id,
+        });
+        return;
+      }
+    }
+
+    const candidateNames = ['serviceAccountKey.json', 'serviceAccountKeys.json'];
+    for (const fileName of candidateNames) {
+      const filePath = path.join(__dirname, '..', fileName);
+      if (fs.existsSync(filePath)) {
+        const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        admin.initializeApp({
+          credential: admin.credential.cert(parsed),
+          projectId: projectId || parsed.project_id,
+        });
+        return;
+      }
+    }
+
+    admin.initializeApp();
+    console.warn('[firebase] Fallback admin.initializeApp() used; set FIREBASE_SERVICE_ACCOUNT or GOOGLE_APPLICATION_CREDENTIALS for live production push delivery.');
+  } catch (err) {
+    console.warn('[firebase] Failed to initialize admin in pushNotifications.js fallback path:', err?.message || err);
+    try {
+      admin.initializeApp();
+    } catch (_) {}
+  }
+}
 
 /** Expo / React Native apps using expo-notifications register these — not FCM registration tokens. */
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
@@ -243,6 +317,8 @@ async function sendPushToTokens(tokens = [], notification = {}) {
    return { successCount, failureCount, invalidTokens };
   }
 
+  ensureFirebaseAdminInitialized();
+
   const titleStr = String(notification.title || 'Notification');
   const bodyStr = String(notificationBody);
 
@@ -421,6 +497,8 @@ async function sendPushToProfile(profileId, notification = {}) {
   }
   return result;
 }
+
+ensureFirebaseAdminInitialized();
 
 module.exports = {
   sendPushToTokens,
