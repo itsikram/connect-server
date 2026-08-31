@@ -1,6 +1,7 @@
 const {
   startDownloadJob,
   getProgress,
+  searchYouTubeVideos,
 } = require("../services/ytDownloadService");
 
 const getPublicBaseUrl = (req) => {
@@ -76,6 +77,27 @@ exports.startDownload = async (req, res) => {
     return res
       .status(500)
       .json({ error: error.message || "Failed to start download" });
+  }
+};
+
+exports.searchVideos = async (req, res) => {
+  try {
+    const query = String(req.query.q || req.query.query || "").trim();
+    if (!query) {
+      return res.status(400).json({ error: "q query parameter is required" });
+    }
+
+    const maxResults = req.query.maxResults;
+    const result = await searchYouTubeVideos(query, maxResults);
+    return res.json(result);
+  } catch (error) {
+    const status = error.status || 500;
+    const payload = { error: error.message || "YouTube search failed" };
+    if (error.code) payload.code = error.code;
+    if (status >= 500) {
+      console.error("YouTube search error:", error.message || error);
+    }
+    return res.status(status).json(payload);
   }
 };
 

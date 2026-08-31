@@ -490,12 +490,7 @@ class DeepgramBridge {
     }
 
     if (/^nova-3/i.test(model)) {
-      if (isBangla) {
-        options.keyterm = BANGLA_KEYTERMS;
-        options.replace = BANGLA_REPLACEMENTS;
-      } else {
-        options.keyterm = ENGLISH_KEYTERMS;
-      }
+      options.keyterm = isBangla ? BANGLA_KEYTERMS : ENGLISH_KEYTERMS;
     }
 
     console.log(
@@ -534,6 +529,7 @@ const createSpeechSession = (ws, transcriber) => {
     finalizeRequested: false,
     deepgramFinalizeSent: false,
     lastTranscriptAt: 0,
+    lastEmittedFinal: "",
   };
 
   const send = (payload) => {
@@ -558,6 +554,7 @@ const createSpeechSession = (ws, transcriber) => {
     state.finalizeRequested = false;
     state.deepgramFinalizeSent = false;
     state.lastTranscriptAt = 0;
+    state.lastEmittedFinal = "";
     state.pendingPcmChunks = [];
     state.pendingPcmBytes = 0;
     state.usePcmStream = isLinear16Audio(state.mimeType, state.encoding);
@@ -620,6 +617,22 @@ const createSpeechSession = (ws, transcriber) => {
     }
   };
 
+  const emitUtteranceFinal = () => {
+    const text = normalizeText(
+      state.lastPartial || state.confirmedTranscript || "",
+    );
+    if (!text) return;
+    if (state.lastEmittedFinal && state.lastEmittedFinal === text) return;
+    state.lastEmittedFinal = text;
+    send({
+      type: "final",
+      text,
+      confidence: 1,
+    });
+    state.confirmedTranscript = "";
+    state.lastPartial = "";
+  };
+
   const finalizeSession = () => {
     if (state.finalSent) return;
 
@@ -633,6 +646,12 @@ const createSpeechSession = (ws, transcriber) => {
     );
 
     if (finalText) {
+      if (state.lastEmittedFinal && state.lastEmittedFinal === finalText) {
+        closeDeepgramConnection();
+        killFfmpegProcess();
+        return;
+      }
+      state.lastEmittedFinal = finalText;
       state.confirmedTranscript = finalText;
       state.lastPartial = finalText;
     }
@@ -797,6 +816,9 @@ const createSpeechSession = (ws, transcriber) => {
           isFinal,
           confidence: picked.confidence,
         });
+        if (speechFinal && !state.isStopping) {
+          emitUtteranceFinal();
+        }
       }
 
       if (state.isStopping) {
@@ -810,8 +832,8 @@ const createSpeechSession = (ws, transcriber) => {
       );
       if (state.isStopping) {
         scheduleFinalizeFlush(80);
-      } else if (state.isRecording && state.lastPartial) {
-        send({ type: "utterance-end" });
+      } else if (state.isRecording) {
+        emitUtteranceFinal();
       }
     });
 

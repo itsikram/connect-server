@@ -94,11 +94,12 @@ const completeOpenAi = async ({
   return text;
 };
 
-const extractGeminiText = (data) =>
-  (data?.candidates?.[0]?.content?.parts || [])
+const extractGeminiText = (data, { trim = true } = {}) => {
+  const text = (data?.candidates?.[0]?.content?.parts || [])
     .map((part) => part?.text || "")
-    .join("")
-    .trim();
+    .join("");
+  return trim ? text.trim() : text;
+};
 
 const parseGeminiKeys = (value = "") =>
   [
@@ -504,7 +505,7 @@ const streamGeminiProvider = async ({
         lastError = new Error(payload.error.message);
         return;
       }
-      const chunk = extractGeminiText(payload);
+      const chunk = extractGeminiText(payload, { trim: false });
       if (!chunk) return;
       text += chunk;
       onDelta(text);

@@ -132,13 +132,16 @@ async function sendPushToTokens(tokens = [], notification = {}) {
   );
 
   const isIncomingCall = stringData.type === 'incoming_call';
-  const incomingSound =
-    notification.sound ||
-    (isIncomingCall ? `${stringData.soundName || INCOMING_CALL_NOTIFICATION_SOUND}.mp3` : 'default');
+  const androidSoundName = isIncomingCall
+    ? String(stringData.soundName || INCOMING_CALL_NOTIFICATION_SOUND)
+    : 'default';
+  const iosSoundName = isIncomingCall
+    ? String(notification.sound || `${androidSoundName}.mp3`)
+    : 'default';
   const incomingChannelId =
     notification.channelId ||
     stringData.channelId ||
-    (isIncomingCall ? 'incoming_calls_r1' : EXPO_DEFAULT_ANDROID_CHANNEL_ID);
+    (isIncomingCall ? 'incoming_calls_r1_v5' : EXPO_DEFAULT_ANDROID_CHANNEL_ID);
 
   let successCount = 0;
   let failureCount = 0;
@@ -153,14 +156,16 @@ async function sendPushToTokens(tokens = [], notification = {}) {
         title: notification.title || 'Notification',
         body: notificationBody,
         data: stringData,
-        sound: isIncomingCall ? incomingSound : 'default',
+        sound: isIncomingCall ? iosSoundName : 'default',
         priority: 'high',
         channelId,
       };
       if (isIncomingCall) {
         message.ttl = 60;
+        message.expiration = Math.floor(Date.now() / 1000) + 60;
         message.interruptionLevel = 'time-sensitive';
         message.categoryId = 'incoming_call';
+        message.mutableContent = false;
       }
       return message;
     });
@@ -176,16 +181,30 @@ async function sendPushToTokens(tokens = [], notification = {}) {
   const titleStr = String(notification.title || 'Notification');
   const bodyStr = String(notificationBody);
 
-  /** Native Android: data-only so RN `setBackgroundMessageHandler` runs when killed; app shows Notifee call UI + actions. */
+  /** Visible + data so Expo/Android still ring when the app is backgrounded or killed. */
   if (isIncomingCall) {
     try {
       const res = await admin.messaging().sendEachForMulticast({
         tokens: fcmTokens,
+        notification: {
+          title: titleStr,
+          body: bodyStr,
+        },
         data: stringData,
         android: {
           priority: 'high',
           ttl: 120 * 1000,
           directBootOk: true,
+          notification: {
+            title: titleStr,
+            body: bodyStr,
+            channelId: incomingChannelId,
+            sound: androidSoundName,
+            defaultSound: false,
+            visibility: 'public',
+            notificationCount: 1,
+            defaultVibrateTimings: true,
+          },
         },
         apns: {
           headers: {
@@ -196,7 +215,7 @@ async function sendPushToTokens(tokens = [], notification = {}) {
           payload: {
             aps: {
               alert: { title: titleStr, body: bodyStr },
-              sound: incomingSound.replace(/\.mp3$/i, '') + '.mp3',
+              sound: iosSoundName,
               'interruption-level': 'time-sensitive',
               category: 'incoming_call',
             },

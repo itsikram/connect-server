@@ -690,9 +690,88 @@ const startDownloadJob = ({
   return progressId;
 };
 
+const decodeYoutubeHtml = (value) =>
+  String(value || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .trim();
+
+const searchYouTubeVideos = async (query, maxResults = 12) => {
+  const apiKey = String(process.env.YOUTUBE_API_KEY || "").trim();
+  if (!apiKey) {
+    const err = new Error("YouTube search is not configured");
+    err.code = "YOUTUBE_API_KEY_MISSING";
+    err.status = 503;
+    throw err;
+  }
+
+  const q = String(query || "").trim();
+  if (!q) {
+    const err = new Error("Search query is required");
+    err.status = 400;
+    throw err;
+  }
+
+  const limit = Math.min(Math.max(Number(maxResults) || 12, 1), 25);
+
+  try {
+    const { data } = await axios.get(
+      "https://www.googleapis.com/youtube/v3/search",
+      {
+        params: {
+          part: "snippet",
+          type: "video",
+          maxResults: limit,
+          q,
+          key: apiKey,
+        },
+        timeout: 15000,
+        headers: { "User-Agent": "Connect-Server/1.0" },
+      },
+    );
+
+    const items = (data?.items || [])
+      .filter((item) => item?.id?.videoId)
+      .map((item) => {
+        const videoId = item.id.videoId;
+        const snippet = item.snippet || {};
+        const thumbs = snippet.thumbnails || {};
+        return {
+          videoId,
+          title: decodeYoutubeHtml(snippet.title) || "Untitled",
+          channelTitle: decodeYoutubeHtml(snippet.channelTitle),
+          thumbnail:
+            thumbs.medium?.url ||
+            thumbs.high?.url ||
+            thumbs.default?.url ||
+            `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+          url: `https://www.youtube.com/watch?v=${videoId}`,
+        };
+      });
+
+    return { items };
+  } catch (err) {
+    if (err.code === "YOUTUBE_API_KEY_MISSING" || err.status === 400) {
+      throw err;
+    }
+    const ytMessage =
+      err.response?.data?.error?.message ||
+      err.message ||
+      "YouTube search failed";
+    const wrapped = new Error(ytMessage);
+    wrapped.status = err.response?.status || 500;
+    throw wrapped;
+  }
+};
+
 module.exports = {
   DOWNLOAD_DIR,
   startDownloadJob,
   getProgress,
   isRenderHost,
+  searchYouTubeVideos,
 };
