@@ -22,7 +22,16 @@ const noCacheForLocalhost = (req, res, next) => {
 };
 
 const middilewares = [
-    morgan("dev"),
+    morgan("dev", {
+        skip: (req) => {
+            const url = req.originalUrl || req.url || "";
+            return (
+                url.startsWith("/health") ||
+                url.startsWith("/api/health") ||
+                url.startsWith("/__internal/")
+            );
+        },
+    }),
     noCacheForLocalhost, // Add no-cache headers for localhost before static files
     express.static('public', { 
         setHeaders: (res, path) => {

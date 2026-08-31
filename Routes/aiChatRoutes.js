@@ -8,6 +8,7 @@ const {
 } = require("../controllers/aiChatController");
 const {
   completeAiChat,
+  streamAiChat,
   getAiProviders,
 } = require("../controllers/aiCompleteController");
 
@@ -17,5 +18,6 @@ router.get("/latest", isAuth, getLatestAIChat);
 router.delete("/delete", isAuth, deleteAIChat);
 router.get("/providers", isAuth, getAiProviders);
 router.post("/complete", isAuth, completeAiChat);
+router.post("/complete-stream", isAuth, streamAiChat);
 
 module.exports = router;

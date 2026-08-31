@@ -1,0 +1,18 @@
+# Render Blueprint — Docker web service with in-container CPU load balancer.
+# Create/update from this file, or set the same env vars on an existing service.
+services:
+  - type: web
+    name: connect-server
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LB_BACKENDS
+        value: "2"
+      - key: LB_BACKEND_START_PORT
+        value: "4001"
+      # PORT is injected by Render — do not hardcode it.
+      # Add Mongo/Firebase/SMTP secrets in the Render dashboard.

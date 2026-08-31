@@ -1,5 +1,6 @@
-# Dockerfile for Connect Server
-# Node 22+ required: yt-dlp needs a JS runtime to extract YouTube formats
+# Connect Server — one container for Render and local Docker.
+# Render injects PORT. The CPU load balancer binds that port and
+# proxies /api to the lowest-CPU Node worker (internal 4001+).
 FROM node:22-bookworm
 
 WORKDIR /app
@@ -18,14 +19,12 @@ RUN apt-get update && apt-get install -y \
     make \
     g++ \
     unzip \
+    dumb-init \
     && rm -rf /var/lib/apt/lists/*
 
 # Deno (yt-dlp recommended JS runtime for YouTube EJS challenges)
 RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh \
     && deno --version
-
-# Standalone yt-dlp binary is installed later via scripts/install-yt-dlp.js
-# (pip install is blocked on Debian bookworm / PEP 668)
 
 COPY package*.json ./
 COPY scripts/install-yt-dlp.js scripts/postinstall.js ./scripts/
@@ -39,9 +38,16 @@ RUN node scripts/install-yt-dlp.js || true
 
 RUN mkdir -p /var/log/nginx
 
+# Public port for local docker. Render overwrites PORT at runtime.
+ENV NODE_ENV=production \
+    PORT=4000 \
+    LB_BACKENDS=2 \
+    LB_BACKEND_START_PORT=4001
+
 EXPOSE 4000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:4000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
+  CMD node -e "const p=process.env.PORT||4000; require('http').get('http://127.0.0.1:'+p+'/health',(r)=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
 
-CMD ["node", "index.js"]
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "load-balancer/start-cluster.js"]

@@ -301,7 +301,7 @@ const cursorStreamGet = async (apiKey, url) => {
   return response;
 };
 
-const waitForRunViaPoll = async ({ apiKey, agentId, runId }) => {
+const waitForRunViaPoll = async ({ apiKey, agentId, runId, onDelta }) => {
   const started = Date.now();
   let lastStatus = "CREATING";
   let delay = POLL_MS;
@@ -328,6 +328,7 @@ const waitForRunViaPoll = async ({ apiKey, agentId, runId }) => {
       if (!text) {
         throw new Error("Cursor agent finished without a text result");
       }
+      if (typeof onDelta === "function") onDelta(text);
       return text;
     }
 
@@ -354,6 +355,7 @@ const waitForRunViaStream = async ({
   agentId,
   runId,
   json = false,
+  onDelta,
 }) => {
   const url = `${CURSOR_API_BASE}/agents/${encodeURIComponent(agentId)}/runs/${encodeURIComponent(runId)}/stream`;
   const response = await cursorStreamGet(apiKey, url);
@@ -420,6 +422,7 @@ const waitForRunViaStream = async ({
       const { event, data } = parseSseBlock(block);
       if (event === "assistant" && data?.text) {
         assistant += String(data.text);
+        if (!json && typeof onDelta === "function") onDelta(assistant);
         if (json) {
           const jsonText = extractCompleteJson(assistant);
           if (jsonText) {
@@ -745,14 +748,17 @@ const runIdFrom = (payload = {}) =>
 
 const agentIdFrom = (payload = {}) => payload.agent?.id || payload.id;
 
-const waitCreatedRun = async ({ apiKey, created, json }) => {
+const waitCreatedRun = async ({ apiKey, created, json, onDelta }) => {
   const payload = created.data || {};
   const agentId = agentIdFrom(payload);
   const runId = runIdFrom(payload);
   const run = payload.run || {};
   if (String(run.status || "").toUpperCase() === "FINISHED") {
     const text = extractRunText(run);
-    if (text) return { agentId, text };
+    if (text) {
+      if (typeof onDelta === "function") onDelta(text);
+      return { agentId, text };
+    }
   }
   if (!agentId || !runId) {
     throw new Error("Cursor did not return an agent id and run id");
@@ -762,6 +768,7 @@ const waitCreatedRun = async ({ apiKey, created, json }) => {
     agentId,
     runId,
     json,
+    onDelta,
   });
   return { agentId, text };
 };
@@ -773,6 +780,7 @@ exports.completeCursorAgent = async ({
   json,
   userId,
   apiKey: apiKeyOverride,
+  onDelta,
 } = {}) => {
   const apiKey = String(apiKeyOverride || "").trim() || (await getCursorApiKey());
   if (!apiKey) {
@@ -807,6 +815,7 @@ exports.completeCursorAgent = async ({
               agentId: live.agentId,
               runId,
               json,
+              onDelta,
             });
           } catch (_) {
             forgetSession(sessionKey);
@@ -837,6 +846,7 @@ exports.completeCursorAgent = async ({
       apiKey,
       created,
       json,
+      onDelta,
     });
     rememberSession(sessionKey, agentId, 1);
     return text;

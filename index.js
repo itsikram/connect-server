@@ -34,6 +34,11 @@ const admin = require("firebase-admin");
 const fs = require("fs");
 const { startUnseenMessageReminderWorker } = require("./utils/unseenMessageReminderWorker");
 const { startDailyPromptWorker } = require("./utils/dailyPromptWorker");
+const { startCpuSampler, getMetrics } = require("./utils/cpuMetrics");
+const {
+  attachPeerAdapter,
+  attachPeerRelayRoute,
+} = require("./utils/peerSocketAdapter");
 const isAuth = require("./middlewares/isAuth");
 const { sendBump } = require("./controllers/messageController");
 
@@ -483,9 +488,19 @@ const io = socketIo(httpServer, {
 
 socketHandler(io);
 initializeSpeechWebSocketServer(httpServer);
+startCpuSampler();
+attachPeerAdapter(io);
 
 // Setting up middilewares
 middilewares(app);
+
+app.get("/health", (req, res) => {
+  res.json(getMetrics({ io }));
+});
+app.get("/api/health", (req, res) => {
+  res.json(getMetrics({ io }));
+});
+attachPeerRelayRoute(app, io);
 
 // setting up routes
 routes(app);
@@ -640,8 +655,17 @@ mongoose
   })
   .then(() => {
     console.log("MongoDB connected");
-    startUnseenMessageReminderWorker();
-    startDailyPromptWorker();
+    const runWorkers =
+      process.env.RUN_WORKERS !== "0" &&
+      process.env.RUN_WORKERS !== "false" &&
+      process.env.DISABLE_WORKERS !== "1" &&
+      process.env.DISABLE_WORKERS !== "true";
+    if (runWorkers) {
+      startUnseenMessageReminderWorker();
+      startDailyPromptWorker();
+    } else {
+      console.log("Background workers skipped on this instance");
+    }
   })
   .catch((e) => {
     console.error(
@@ -656,4 +680,7 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(
     `Cursor Cloud Agents: ${isCursorConfigured() ? "key loaded from server/.env" : "CURSOR_API_KEY missing"}`,
   );
+  if (typeof process.send === "function") {
+    process.send("ready");
+  }
 });

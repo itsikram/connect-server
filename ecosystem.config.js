@@ -1,47 +1,51 @@
-// PM2 Ecosystem File for Load Balancing with Cluster Mode
-// This uses Node.js cluster module for load balancing across CPU cores
+// PM2: CPU load balancer on :4000 plus forked API backends on :4001+
+const backendCount = Math.max(1, Number(process.env.LB_BACKENDS || 3));
+const lbPort = Number(process.env.LB_PORT || 4000);
+const backendStartPort = Number(process.env.LB_BACKEND_START_PORT || 4001);
+const backendUrls = Array.from(
+  { length: backendCount },
+  (_, i) => `http://127.0.0.1:${backendStartPort + i}`,
+);
+const peerServers = backendUrls.join(",");
 
-module.exports = {
-  apps: [{
-    name: 'connect-server',
-    script: './index.js',
-    instances: 'max', // Use all available CPU cores, or specify a number like 4
-    exec_mode: 'cluster', // Enable cluster mode for load balancing
+const apps = backendUrls.map((url, index) => {
+  const port = backendStartPort + index;
+  return {
+    name: `connect-api-${port}`,
+    script: "./index.js",
+    instances: 1,
+    exec_mode: "fork",
     watch: false,
-    max_memory_restart: '1G',
-    env: {
-      NODE_ENV: 'production',
-      PORT: 4000
-    },
-    env_production: {
-      NODE_ENV: 'production',
-      PORT: 4000
-    },
-    // Logging
-    error_file: './logs/pm2-error.log',
-    out_file: './logs/pm2-out.log',
-    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-    merge_logs: true,
-    
-    // Auto restart on crash
+    max_memory_restart: "1G",
     autorestart: true,
     max_restarts: 10,
-    min_uptime: '10s',
-    
-    // Graceful shutdown
-    kill_timeout: 5000,
-    wait_ready: true,
-    listen_timeout: 10000,
-    
-    // Advanced settings
-    instance_var: 'INSTANCE_ID',
-    increment_var: 'PORT',
-    
-    // Health check
-    health_check_grace_period: 3000,
-    
-    // Socket.IO sticky session support
-    // Note: When using PM2 cluster mode with Socket.IO, you may need Redis adapter
-    // See: https://socket.io/docs/v4/using-multiple-nodes/
-  }]
-};
+    min_uptime: "10s",
+    kill_timeout: 10000,
+    env: {
+      NODE_ENV: "production",
+      PORT: port,
+      RUN_WORKERS: index === 0 ? "1" : "0",
+      INSTANCE_URL: url,
+      PEER_SERVERS: peerServers,
+    },
+  };
+});
+
+apps.push({
+  name: "connect-lb",
+  script: "./load-balancer/index.js",
+  instances: 1,
+  exec_mode: "fork",
+  watch: false,
+  autorestart: true,
+  max_restarts: 10,
+  min_uptime: "10s",
+  kill_timeout: 5000,
+  env: {
+    NODE_ENV: "production",
+    LB_PORT: lbPort,
+    BACKEND_SERVERS: peerServers,
+  },
+});
+
+module.exports = { apps };
