@@ -1,4 +1,5 @@
 const AIChat = require("../models/AIChat");
+const { resetCursorSessionsForUser } = require("../utils/cursorAgentClient");
 
 const getProfileId = (req) => req.profile?._id;
 
@@ -89,6 +90,8 @@ exports.deleteAIChat = async (req, res) => {
     if (chatId && result.deletedCount === 0) {
       return res.status(404).json({ message: "AI chat not found" });
     }
+
+    await resetCursorSessionsForUser(profileId).catch(() => 0);
 
     return res.status(200).json({
       message: "AI chat deleted successfully",

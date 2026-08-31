@@ -14,7 +14,7 @@ const defaultDoc = () => ({
   models: {
     gemini: "gemini-3.5-flash",
     openai: "gpt-4o-mini",
-    cursor: "default",
+    cursor: "composer-2.5",
   },
   keys: { gemini: "", openai: "", cursor: "" },
   cursorRepoUrl: "",

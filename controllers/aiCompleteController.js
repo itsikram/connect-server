@@ -1,9 +1,13 @@
 const axios = require("axios");
 const {
   completeCursorAgent,
-  isCursorConfigured,
   listCursorModels,
 } = require("../utils/cursorAgentClient");
+const {
+  publicAiStatus,
+  getProviderKey,
+  isProviderEnabled,
+} = require("../utils/aiSettingsStore");
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 
@@ -69,9 +73,10 @@ const completeOpenAi = async ({
     body.max_tokens = maxTokens;
   }
 
+  const timeout = json ? 25000 : 45000;
   const response = await axios.post(OPENAI_URL, body, {
     headers,
-    timeout: 60000,
+    timeout,
     validateStatus: () => true,
   });
 
@@ -88,7 +93,106 @@ const completeOpenAi = async ({
   return text;
 };
 
+const extractGeminiText = (data) =>
+  (data?.candidates?.[0]?.content?.parts || [])
+    .map((part) => part?.text || "")
+    .join("")
+    .trim();
+
+const parseGeminiKeys = (value = "") =>
+  [
+    ...new Set(
+      String(value)
+        .split(",")
+        .map((key) => key.trim())
+        .filter(Boolean),
+    ),
+  ];
+
+const isGeminiQuotaError = (status, data) => {
+  const apiStatus = String(data?.error?.status || "").toUpperCase();
+  const message = String(data?.error?.message || "").toLowerCase();
+  return (
+    status === 429 ||
+    apiStatus === "RESOURCE_EXHAUSTED" ||
+    message.includes("quota") ||
+    message.includes("rate limit") ||
+    message.includes("resource exhausted")
+  );
+};
+
+const completeGemini = async ({
+  apiKey,
+  model,
+  system,
+  messages,
+  json,
+  temperature,
+  maxTokens,
+}) => {
+  const keys = parseGeminiKeys(apiKey);
+  if (!keys.length) {
+    const error = new Error(
+      "No Gemini API key is configured. Add it in Connect Admin → Settings → AI.",
+    );
+    error.status = 400;
+    throw error;
+  }
+
+  const contents = [];
+  let foundFirstUser = false;
+  for (const msg of messages || []) {
+    const role = msg.role === "assistant" ? "model" : "user";
+    if (!foundFirstUser && role !== "user") continue;
+    foundFirstUser = true;
+    const text = String(msg.content || "");
+    if (!text.trim()) continue;
+    contents.push({ role, parts: [{ text }] });
+  }
+
+  const requestBody = {
+    systemInstruction: system ? { parts: [{ text: system }] } : undefined,
+    contents,
+    generationConfig: {
+      temperature,
+      topK: 20,
+      topP: 0.85,
+      maxOutputTokens: maxTokens,
+      ...(json ? { responseMimeType: "application/json" } : {}),
+      ...(/gemini-(2\.5|3)/i.test(String(model))
+        ? { thinkingConfig: { thinkingBudget: 0 } }
+        : {}),
+    },
+  };
+
+  let lastError = null;
+  for (let i = 0; i < keys.length; i += 1) {
+    const response = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+        model,
+      )}:generateContent?key=${encodeURIComponent(keys[i])}`,
+      requestBody,
+      { timeout: json ? 25000 : 45000, validateStatus: () => true },
+    );
+    if (response.status < 400) {
+      const text = extractGeminiText(response.data);
+      if (!text) throw new Error("Gemini returned an empty reply");
+      return text;
+    }
+    lastError = new Error(
+      response.data?.error?.message ||
+        `Gemini failed with HTTP ${response.status}`,
+    );
+    lastError.status = response.status;
+    if (!isGeminiQuotaError(response.status, response.data)) {
+      throw lastError;
+    }
+  }
+  throw lastError || new Error("Gemini request failed");
+};
+
 exports.getAiProviders = async (req, res) => {
+  const status = await publicAiStatus();
   let models = [];
   try {
     models = await listCursorModels();
@@ -96,12 +200,15 @@ exports.getAiProviders = async (req, res) => {
     models = [];
   }
   return res.status(200).json({
+    defaultProvider: status.defaultProvider,
+    enabled: status.enabled,
+    models: status.models,
+    configured: status.configured,
+    gemini: { configured: status.configured.gemini },
+    openai: { configured: status.configured.openai },
     cursor: {
-      configured: isCursorConfigured(),
+      configured: status.configured.cursor,
       models,
-    },
-    openai: {
-      configured: Boolean(String(process.env.OPENAI_API_KEY || "").trim()),
     },
   });
 };
@@ -119,9 +226,16 @@ exports.completeAiChat = async (req, res) => {
     const maxTokens = Number(req.body?.maxTokens) || 1024;
     const userId = String(req.profile?._id || req.profile?.user?._id || "");
 
-    if (!["openai", "cursor"].includes(provider)) {
+    if (!["gemini", "openai", "cursor"].includes(provider)) {
       return res.status(400).json({
-        message: "Provider must be openai or cursor for this endpoint",
+        message: "Provider must be gemini, openai, or cursor",
+      });
+    }
+
+    const enabled = await isProviderEnabled(provider);
+    if (!enabled) {
+      return res.status(400).json({
+        message: `${provider} is disabled in Connect Admin AI settings`,
       });
     }
 
@@ -136,29 +250,42 @@ exports.completeAiChat = async (req, res) => {
       return res.status(200).json({
         text,
         provider,
-        model: model || "auto",
+        model: model || "default",
       });
     }
 
-    const apiKey = String(
-      req.body?.apiKey || process.env.OPENAI_API_KEY || "",
-    ).trim();
+    const bodyKey =
+      provider === "cursor" ? "" : String(req.body?.apiKey || "").trim();
+    const apiKey = bodyKey || (await getProviderKey(provider));
     if (!apiKey) {
-      return res.status(400).json({ message: "OpenAI API key is required" });
+      return res.status(400).json({
+        message: `No API key configured for ${provider}. Add it in Connect Admin → Settings → AI.`,
+      });
     }
     if (!model) {
       return res.status(400).json({ message: "Model is required" });
     }
 
-    const text = await completeOpenAi({
-      apiKey,
-      model,
-      system,
-      messages,
-      json,
-      temperature,
-      maxTokens,
-    });
+    const text =
+      provider === "gemini"
+        ? await completeGemini({
+            apiKey,
+            model,
+            system,
+            messages,
+            json,
+            temperature,
+            maxTokens,
+          })
+        : await completeOpenAi({
+            apiKey,
+            model,
+            system,
+            messages,
+            json,
+            temperature,
+            maxTokens,
+          });
 
     return res.status(200).json({ text, provider, model });
   } catch (error) {

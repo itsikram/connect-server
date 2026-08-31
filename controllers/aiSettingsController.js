@@ -8,6 +8,7 @@ const {
 const {
   listCursorModels,
   completeCursorAgent,
+  clearCursorModelsCache,
 } = require("../utils/cursorAgentClient");
 
 const axios = require("axios");
@@ -25,11 +26,7 @@ const publicError = (error) => {
 exports.getAdminAiSettings = async (req, res) => {
   try {
     const payload = await toAdminPayload();
-    let cursorModels = [];
-    try {
-      cursorModels = await listCursorModels();
-    } catch (_) {}
-    return res.status(200).json({ ...payload, cursorModels });
+    return res.status(200).json({ ...payload, cursorModels: [] });
   } catch (error) {
     return res.status(500).json({ message: publicError(error) });
   }
@@ -38,12 +35,9 @@ exports.getAdminAiSettings = async (req, res) => {
 exports.updateAdminAiSettings = async (req, res) => {
   try {
     await updateAiSettings(req.body || {});
+    clearCursorModelsCache();
     const payload = await toAdminPayload();
-    let cursorModels = [];
-    try {
-      cursorModels = await listCursorModels();
-    } catch (_) {}
-    return res.status(200).json({ ...payload, cursorModels });
+    return res.status(200).json({ ...payload, cursorModels: [] });
   } catch (error) {
     return res.status(500).json({ message: publicError(error) });
   }
@@ -93,6 +87,7 @@ exports.testAdminAiProvider = async (req, res) => {
         messages: [{ role: "user", content: "ping" }],
         json: false,
         userId: `admin-test-${req.admin?._id || "settings"}`,
+        apiKey,
       });
       return res.status(200).json({
         ok: true,

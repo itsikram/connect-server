@@ -32,4 +32,17 @@ Router.get('/reports/posts', getReportedPosts)
 Router.get('/reports/profiles', getReportedProfiles)
 Router.put('/reports/:id/status', updateReportStatus)
 
+const isAdminAuth = require('../middlewares/isAdminAuth');
+const {
+  getAdminAiSettings,
+  updateAdminAiSettings,
+  listAdminCursorModels,
+  testAdminAiProvider,
+} = require('../controllers/aiSettingsController');
+
+Router.get('/ai-settings', isAdminAuth, getAdminAiSettings);
+Router.put('/ai-settings', isAdminAuth, updateAdminAiSettings);
+Router.get('/ai-settings/models', isAdminAuth, listAdminCursorModels);
+Router.post('/ai-settings/test', isAdminAuth, testAdminAiProvider);
+
 module.exports = Router;
