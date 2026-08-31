@@ -12,7 +12,7 @@ const defaultDoc = () => ({
   defaultProvider: "gemini",
   enabled: { gemini: true, openai: true, cursor: true },
   models: {
-    gemini: "gemini-3.5-flash",
+    gemini: "gemini-2.0-flash",
     openai: "gpt-4o-mini",
     cursor: "composer-2.5",
   },

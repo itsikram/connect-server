@@ -20,7 +20,7 @@ const aiSettingsSchema = new Schema(
       cursor: { type: Boolean, default: true },
     },
     models: {
-      gemini: { type: String, default: "gemini-3.5-flash" },
+      gemini: { type: String, default: "gemini-2.0-flash" },
       openai: { type: String, default: "gpt-4o-mini" },
       cursor: { type: String, default: "default" },
     },

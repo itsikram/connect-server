@@ -19,7 +19,7 @@ function getIncomingCallAlertConfig(ringtoneId) {
   const id = normalizeRingtoneId(ringtoneId);
   return {
     id,
-    channelId: `incoming_calls_r${id}_v5`,
+    channelId: `incoming_calls_r${id}_v6`,
     soundName: `ringtone_${id}`,
     iosSound: `ringtone_${id}.mp3`,
     webSrc: RINGTONE_WEB_SRC[id],

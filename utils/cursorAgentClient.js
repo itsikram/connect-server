@@ -3,10 +3,10 @@ const fs = require("fs");
 const path = require("path");
 
 const CURSOR_API_BASE = "https://api.cursor.com/v1";
-const POLL_MS = 150;
-const POLL_MAX_MS = 600;
-const MAX_WAIT_MS = 180000;
-const CREATE_TIMEOUT_MS = 120000;
+const POLL_MS = 80;
+const POLL_MAX_MS = 250;
+const MAX_WAIT_MS = 90000;
+const CREATE_TIMEOUT_MS = 45000;
 const SESSION_TTL_MS = 90 * 60 * 1000;
 const MAX_SESSION_TURNS = 48;
 const MAX_PROMPT_CHARS = 4000;
@@ -476,25 +476,17 @@ const waitForRunViaStream = async ({
 };
 
 const waitForRunResult = async (opts) => {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      return await waitForRunViaStream(opts);
-    } catch (error) {
-      const unavailable =
-        error?.code === "STREAM_UNAVAILABLE" ||
-        error?.status === 404 ||
-        error?.status === 410;
-      if (unavailable && attempt < 2) {
-        await sleep(120 * (attempt + 1));
-        continue;
-      }
-      if (unavailable || error?.code === "ECONNRESET") {
-        return waitForRunViaPoll(opts);
-      }
-      throw error;
-    }
+  try {
+    return await waitForRunViaStream(opts);
+  } catch (error) {
+    const unavailable =
+      error?.code === "STREAM_UNAVAILABLE" ||
+      error?.status === 404 ||
+      error?.status === 410 ||
+      error?.code === "ECONNRESET";
+    if (unavailable) return waitForRunViaPoll(opts);
+    throw error;
   }
-  return waitForRunViaPoll(opts);
 };
 
 const archiveAgent = async (apiKey, agentId) => {
@@ -683,8 +675,8 @@ const findReusableChatAgent = async (apiKey) => {
     const response = await cursorRequest({
       apiKey,
       method: "get",
-      url: `${CURSOR_API_BASE}/agents?limit=20&includeArchived=false`,
-      timeout: 12000,
+      url: `${CURSOR_API_BASE}/agents?limit=10&includeArchived=false`,
+      timeout: 2500,
     });
     if (response.status >= 400) return null;
     const items = Array.isArray(response.data?.items) ? response.data.items : [];
@@ -823,7 +815,7 @@ const followUpRun = async ({ apiKey, agentId, promptText, model }) => {
     method: "post",
     url: `${CURSOR_API_BASE}/agents/${encodeURIComponent(agentId)}/runs`,
     data,
-    timeout: 30000,
+    timeout: 20000,
   });
 };
 
@@ -964,9 +956,6 @@ exports.completeCursorAgent = async ({
 
     const claimed = await claimWarmAgent(resolvedModel, apiKey);
     if (claimed?.agentId) {
-      if (claimed.waitReady && !claimed.ready) {
-        await claimed.waitReady.catch(() => {});
-      }
       const follow = await followUpRun({
         apiKey,
         agentId: claimed.agentId,

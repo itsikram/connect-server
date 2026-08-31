@@ -784,11 +784,15 @@ module.exports = function messageSocket(io, socket, profileId) {
         );
         callerName = myProfileData?.fullName || "Friend";
       } catch (_e) {}
-      io.to(String(to)).emit("live-voice-start", {
-        from: profileId,
-        channelName,
+      const payload = {
+        from: String(profileId),
+        channelName: String(channelName),
         callerName,
-      });
+      };
+      io.to(String(to)).emit("live-voice-start", payload);
+      // Also notify the 1:1 chat room so a peer that is in the conversation
+      // still auto-joins if they are not currently addressed by profile id.
+      io.to(String(channelName)).emit("live-voice-start", payload);
     } catch (e) {
       console.error("live-voice-start relay failed:", e?.message || e);
     }

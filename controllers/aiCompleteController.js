@@ -74,7 +74,7 @@ const completeOpenAi = async ({
     body.max_tokens = maxTokens;
   }
 
-  const timeout = json ? 18000 : 28000;
+  const timeout = json ? 12000 : 20000;
   const response = await axios.post(OPENAI_URL, body, {
     headers,
     timeout,
@@ -157,9 +157,9 @@ const completeGemini = async ({
     contents,
     generationConfig: {
       temperature,
-      topK: json ? 8 : 16,
-      topP: json ? 0.7 : 0.85,
-      maxOutputTokens: json ? Math.min(maxTokens, 256) : Math.min(maxTokens, 320),
+      topK: json ? 4 : 12,
+      topP: json ? 0.6 : 0.8,
+      maxOutputTokens: json ? Math.min(maxTokens, 160) : Math.min(maxTokens, 220),
       candidateCount: 1,
       ...(json ? { responseMimeType: "application/json" } : {}),
       ...(/gemini-(2\.5|3)/i.test(String(model))
@@ -175,7 +175,7 @@ const completeGemini = async ({
         model,
       )}:generateContent?key=${encodeURIComponent(keys[i])}`,
       requestBody,
-      { timeout: json ? 18000 : 25000, validateStatus: () => true },
+      { timeout: json ? 8000 : 16000, validateStatus: () => true },
     );
     if (response.status < 400) {
       const text = extractGeminiText(response.data);
@@ -375,7 +375,7 @@ const streamOpenAi = async ({
 
   const response = await axios.post(OPENAI_URL, body, {
     headers,
-    timeout: json ? 18000 : 28000,
+    timeout: json ? 12000 : 20000,
     responseType: "stream",
     validateStatus: () => true,
     signal,
@@ -451,9 +451,9 @@ const streamGeminiProvider = async ({
     contents,
     generationConfig: {
       temperature,
-      topK: json ? 8 : 16,
-      topP: json ? 0.7 : 0.85,
-      maxOutputTokens: json ? Math.min(maxTokens, 256) : Math.min(maxTokens, 320),
+      topK: json ? 4 : 12,
+      topP: json ? 0.6 : 0.8,
+      maxOutputTokens: json ? Math.min(maxTokens, 160) : Math.min(maxTokens, 220),
       candidateCount: 1,
       ...(json ? { responseMimeType: "application/json" } : {}),
       ...(/gemini-(2\.5|3)/i.test(String(model))
@@ -468,7 +468,7 @@ const streamGeminiProvider = async ({
       model,
     )}:streamGenerateContent?alt=sse&key=${encodeURIComponent(keys[i])}`;
     const response = await axios.post(url, requestBody, {
-      timeout: json ? 18000 : 25000,
+      timeout: json ? 8000 : 16000,
       responseType: "stream",
       validateStatus: () => true,
       signal,

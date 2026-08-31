@@ -141,7 +141,7 @@ async function sendPushToTokens(tokens = [], notification = {}) {
   const incomingChannelId =
     notification.channelId ||
     stringData.channelId ||
-    (isIncomingCall ? 'incoming_calls_r1_v5' : EXPO_DEFAULT_ANDROID_CHANNEL_ID);
+    (isIncomingCall ? 'incoming_calls_r1_v6' : EXPO_DEFAULT_ANDROID_CHANNEL_ID);
 
   let successCount = 0;
   let failureCount = 0;
@@ -156,16 +156,19 @@ async function sendPushToTokens(tokens = [], notification = {}) {
         title: notification.title || 'Notification',
         body: notificationBody,
         data: stringData,
-        sound: isIncomingCall ? iosSoundName : 'default',
+        sound: 'default',
         priority: 'high',
         channelId,
       };
       if (isIncomingCall) {
+        // Expo Go iOS has no custom ringtone files; `default` is the sound that actually plays.
+        message.sound = 'default';
         message.ttl = 60;
         message.expiration = Math.floor(Date.now() / 1000) + 60;
         message.interruptionLevel = 'time-sensitive';
         message.categoryId = 'incoming_call';
         message.mutableContent = false;
+        message.badge = 1;
       }
       return message;
     });
@@ -181,30 +184,22 @@ async function sendPushToTokens(tokens = [], notification = {}) {
   const titleStr = String(notification.title || 'Notification');
   const bodyStr = String(notificationBody);
 
-  /** Visible + data so Expo/Android still ring when the app is backgrounded or killed. */
+  /** Data-only on Android so a killed app still receives FCM in our MessagingService,
+   *  which posts Accept/Decline. A `notification` payload would be shown by the OS
+   *  with no action buttons and would skip onMessageReceived. */
   if (isIncomingCall) {
     try {
       const res = await admin.messaging().sendEachForMulticast({
         tokens: fcmTokens,
-        notification: {
+        data: {
+          ...stringData,
           title: titleStr,
           body: bodyStr,
         },
-        data: stringData,
         android: {
           priority: 'high',
           ttl: 120 * 1000,
           directBootOk: true,
-          notification: {
-            title: titleStr,
-            body: bodyStr,
-            channelId: incomingChannelId,
-            sound: androidSoundName,
-            defaultSound: false,
-            visibility: 'public',
-            notificationCount: 1,
-            defaultVibrateTimings: true,
-          },
         },
         apns: {
           headers: {
