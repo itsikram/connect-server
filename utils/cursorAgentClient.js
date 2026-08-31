@@ -7,8 +7,8 @@ const POLL_MS = 150;
 const POLL_MAX_MS = 600;
 const MAX_WAIT_MS = 180000;
 const CREATE_TIMEOUT_MS = 120000;
-const SESSION_TTL_MS = 45 * 60 * 1000;
-const MAX_SESSION_TURNS = 16;
+const SESSION_TTL_MS = 90 * 60 * 1000;
+const MAX_SESSION_TURNS = 48;
 const MAX_PROMPT_CHARS = 4000;
 const MAX_SYSTEM_CHARS = 1600;
 const MAX_FOLLOWUP_CHARS = 2200;
@@ -66,6 +66,8 @@ const FALLBACK_CURSOR_MODELS = [
 
 const CHAT_GUARDRAILS =
   "Connect in-app assistant. No repo, no tools, no files. Reply in text now.";
+const WARM_AGENT_NAME = "Connect AI Chat";
+const WARM_PROMPT = "Reply READY. No tools. No files.";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -663,6 +665,135 @@ const forgetSession = (key) => {
   if (key) agentSessions.delete(key);
 };
 
+const claimedAgentIds = () => {
+  const ids = new Set();
+  for (const session of agentSessions.values()) {
+    if (session?.agentId) ids.add(session.agentId);
+  }
+  for (const warm of warmByModel.values()) {
+    if (warm?.agentId) ids.add(warm.agentId);
+  }
+  return ids;
+};
+
+const warmByModel = new Map();
+
+const findReusableChatAgent = async (apiKey) => {
+  try {
+    const response = await cursorRequest({
+      apiKey,
+      method: "get",
+      url: `${CURSOR_API_BASE}/agents?limit=20&includeArchived=false`,
+      timeout: 12000,
+    });
+    if (response.status >= 400) return null;
+    const items = Array.isArray(response.data?.items) ? response.data.items : [];
+    const claimed = claimedAgentIds();
+    return (
+      items.find((item) => {
+        const status = String(item?.status || "").toUpperCase();
+        return (
+          item?.id &&
+          !claimed.has(item.id) &&
+          item.name === WARM_AGENT_NAME &&
+          (status === "ACTIVE" || status === "IDLE")
+        );
+      }) || null
+    );
+  } catch (_) {
+    return null;
+  }
+};
+
+const ensureWarmAgent = async (model, apiKey) => {
+  const existing = warmByModel.get(model.id);
+  if (existing?.agentId && (existing.expiresAt || 0) > Date.now()) {
+    return existing;
+  }
+  if (existing?.creating) return existing.creating;
+
+  const creating = (async () => {
+    try {
+      const listed = await findReusableChatAgent(apiKey);
+      if (listed?.id) {
+        const record = {
+          agentId: listed.id,
+          ready: true,
+          expiresAt: Date.now() + SESSION_TTL_MS,
+        };
+        warmByModel.set(model.id, record);
+        return record;
+      }
+
+      const created = await createAgent({
+        apiKey,
+        promptText: WARM_PROMPT,
+        model,
+      });
+      if (created.status >= 400) {
+        throw new Error(publicCursorError({ response: created }));
+      }
+      const agentId = agentIdFrom(created.data || {});
+      if (!agentId) {
+        throw new Error("Cursor did not return a warm agent id");
+      }
+      const record = {
+        agentId,
+        ready: false,
+        expiresAt: Date.now() + SESSION_TTL_MS,
+      };
+      record.waitReady = waitCreatedRun({
+        apiKey,
+        created,
+        json: false,
+      })
+        .then(() => {
+          const current = warmByModel.get(model.id);
+          if (current?.agentId === agentId) current.ready = true;
+        })
+        .catch(() => {
+          const current = warmByModel.get(model.id);
+          if (current?.agentId === agentId) warmByModel.delete(model.id);
+        });
+      warmByModel.set(model.id, record);
+      return record;
+    } catch (error) {
+      warmByModel.delete(model.id);
+      throw error;
+    }
+  })();
+
+  warmByModel.set(model.id, {
+    creating,
+    expiresAt: Date.now() + SESSION_TTL_MS,
+  });
+  return creating;
+};
+
+const claimWarmAgent = async (model, apiKey) => {
+  const existing = warmByModel.get(model.id);
+  if (!existing) return null;
+  const record = existing.creating
+    ? await existing.creating.catch(() => null)
+    : existing;
+  if (!record?.agentId) return null;
+  if (warmByModel.get(model.id)?.agentId === record.agentId) {
+    warmByModel.delete(model.id);
+  }
+  setImmediate(() => {
+    ensureWarmAgent(model, apiKey).catch(() => {});
+  });
+  return record;
+};
+
+exports.warmupCursorAgent = async ({ model } = {}) => {
+  const apiKey = await getCursorApiKey();
+  if (!apiKey) return { started: false };
+  const resolved = resolveCursorModel(model, catalogNow(apiKey));
+  ensureWarmAgent(resolved, apiKey).catch(() => {});
+  return { started: true, model: resolved.id };
+};
+
 const withUserLock = async (key, fn) => {
   const lockKey = key || `_anon_${Date.now()}`;
   const previous = userLocks.get(lockKey) || Promise.resolve();
@@ -699,8 +830,9 @@ const followUpRun = async ({ apiKey, agentId, promptText, model }) => {
 const createAgent = async ({ apiKey, promptText, model }) => {
   const body = {
     prompt: { text: promptText },
-    name: "Connect AI Chat",
+    name: WARM_AGENT_NAME,
     autoCreatePR: false,
+    skipReviewerRequest: true,
   };
   if (model && !model.omit) {
     body.model = { id: model.id };
@@ -828,6 +960,36 @@ exports.completeCursorAgent = async ({
     } else if (live) {
       forgetSession(sessionKey);
       archiveAgent(apiKey, live.agentId);
+    }
+
+    const claimed = await claimWarmAgent(resolvedModel, apiKey);
+    if (claimed?.agentId) {
+      if (claimed.waitReady && !claimed.ready) {
+        await claimed.waitReady.catch(() => {});
+      }
+      const follow = await followUpRun({
+        apiKey,
+        agentId: claimed.agentId,
+        promptText: buildAgentPrompt(system, messages, json, true),
+        model: resolvedModel,
+      });
+      if (follow.status < 400) {
+        const runId = runIdFrom(follow.data || {});
+        if (runId) {
+          rememberSession(sessionKey, claimed.agentId, 2);
+          try {
+            return await waitForRunResult({
+              apiKey,
+              agentId: claimed.agentId,
+              runId,
+              json,
+              onDelta,
+            });
+          } catch (_) {
+            forgetSession(sessionKey);
+          }
+        }
+      }
     }
 
     const created = await createAgent({

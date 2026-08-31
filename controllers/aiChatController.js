@@ -32,7 +32,7 @@ exports.saveAIChat = async (req, res) => {
       },
     );
 
-    return res.status(200).json(chat);
+    return res.status(200).json({ success: true });
   } catch (error) {
     console.error("Error saving AI chat:", error);
     return res.status(500).json({ message: "Failed to save AI chat" });

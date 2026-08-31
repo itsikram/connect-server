@@ -41,7 +41,9 @@ exports.notificationSocket = async (io, socket) => {
 };
 
 exports.saveNotification = async (io, data) => {
-  let receiverId = data.receiverId.toString() || "";
+  try {
+  let receiverId = data?.receiverId != null ? String(data.receiverId) : "";
+  if (!receiverId) return null;
   let notificationText = data.text || "";
   let notificationLink = sanitizeNotificationLink(
     data.link || "/",
@@ -67,19 +69,19 @@ exports.saveNotification = async (io, data) => {
   let newNotification = await notification.save();
 
   if (newNotification) {
-    io.to(receiverId).emit("newNotification", newNotification);
+    if (io && typeof io.to === "function") {
+      io.to(receiverId).emit("newNotification", newNotification);
 
-    // If browser IDs are specified, also emit to specific browser channels
-    if (browserIds.length > 0) {
-      browserIds.forEach((browserId) => {
-        io.to(`browser_${browserId}`).emit(
-          "browserNotification",
-          newNotification,
-        );
-      });
+      if (browserIds.length > 0) {
+        browserIds.forEach((browserId) => {
+          io.to(`browser_${browserId}`).emit(
+            "browserNotification",
+            newNotification,
+          );
+        });
+      }
     }
 
-    // Background delivery for iOS Home Screen / PWA (single path — avoid double-send elsewhere)
     const dedupeId =
       data.data?.messageId ||
       newNotification?._id ||
@@ -99,6 +101,10 @@ exports.saveNotification = async (io, data) => {
         err?.message || err,
       );
     });
+  }
+  } catch (err) {
+    console.error("saveNotification failed:", err);
+    return null;
   }
 };
 

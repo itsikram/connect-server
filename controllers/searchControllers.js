@@ -44,8 +44,20 @@ exports.getSearchResult = async (req, res, next) => {
             $options: "i",
           },
         },
+        {
+          username: {
+            $regex: escapedQuery,
+            $options: "i",
+          },
+        },
       ],
-    });
+    })
+      .select(
+        "_id fullName displayName username nickname banglaName profilePic bio user",
+      )
+      .populate({ path: "user", select: "firstName surname username" })
+      .limit(25)
+      .lean();
 
     if (usersFound) {
       searchResponse.users = usersFound;
@@ -56,7 +68,9 @@ exports.getSearchResult = async (req, res, next) => {
         $regex: escapedQuery,
         $options: "i",
       },
-    }).populate("author");
+    })
+      .populate("author")
+      .limit(25);
 
     if (postsFound) {
       searchResponse.posts = postsFound;

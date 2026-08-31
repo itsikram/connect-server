@@ -76,6 +76,19 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
         return true;
     };
 
+    const broadcastCallMessage = async ({ updatedMessage, senderId, otherId, senderProfile }) => {
+        const room = getRoomKey(senderId, otherId);
+        const senderName = (senderProfile?.user?.firstName || '') + ' ' + (senderProfile?.user?.surname || '');
+        const senderPP = senderProfile?.profilePic || config?.defaultProfile;
+        const roomPayload = { updatedMessage, senderName, senderPP, chatPage: true };
+        const userPayload = { updatedMessage, senderName, senderPP, chatPage: false, friendProfile: senderProfile };
+        io.to(room).emit('newMessage', roomPayload);
+        io.to(String(otherId)).emit('newMessage', roomPayload);
+        io.to(String(senderId)).emit('newMessage', roomPayload);
+        io.to(String(otherId)).emit('newMessageToUser', userPayload);
+        io.to(String(senderId)).emit('newMessageToUser', userPayload);
+    };
+
     socket.on("video-call", async ({ to, channelName, isAudio = false }) => {
         if (!to || !channelName) {
             console.warn('video-call: Missing to or channelName', { to, channelName });
@@ -83,7 +96,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
         }
         console.log('call-user', { to, channelName })
         let myProfileData = await Profile.findById(profileId)
-        io.to(String(to)).emit("incoming-video-call", { from: profileId, channelName, isAudio: false, callerName: myProfileData.fullName, callerProfilePic: myProfileData.profilePic });
+        io.to(String(to)).emit("incoming-video-call", { from: String(profileId), channelName, isAudio: false, callerName: myProfileData.fullName, callerProfilePic: myProfileData.profilePic });
         // Visible notification + data (Expo / FCM). Data-only is often silent on iOS.
         try {
             const callerName = myProfileData.fullName || 'Someone';
@@ -216,10 +229,12 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                     const updatedMessage = await Message.findOne({ _id: callMsg._id }).populate('parent');
                     const profileData = await Profile.findById(profileId).populate('user');
                     if (profileData) {
-                        const senderName = (profileData.user?.firstName || '') + ' ' + (profileData.user?.surname || '');
-                        const senderPP = profileData.profilePic || config?.defaultProfile;
-                        io.to(room).emit('newMessage', { updatedMessage, senderName, senderPP, chatPage: true });
-                        io.to(friendId).emit('newMessageToUser', { updatedMessage, senderName, senderPP, chatPage: false, friendProfile: profileData });
+                        await broadcastCallMessage({
+                            updatedMessage,
+                            senderId: String(profileId),
+                            otherId: String(friendId),
+                            senderProfile: profileData,
+                        });
                     }
                 }
             } catch (e) {
@@ -236,7 +251,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
         }
         console.log('incoming-audio-call', { to, channelName })
         let myProfileData = await Profile.findById(profileId)
-        io.to(String(to)).emit("incoming-audio-call", { from: profileId, channelName, isAudio: true, callerName: myProfileData.fullName, callerProfilePic: myProfileData.profilePic });
+        io.to(String(to)).emit("incoming-audio-call", { from: String(profileId), channelName, isAudio: true, callerName: myProfileData.fullName, callerProfilePic: myProfileData.profilePic });
         try {
             const callerName = myProfileData.fullName || 'Someone';
             await sendPushToProfile(to, {
@@ -376,10 +391,12 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                     const updatedMessage = await Message.findOne({ _id: callMsg._id }).populate('parent');
                     const profileData = await Profile.findById(profileId).populate('user');
                     if (profileData) {
-                        const senderName = (profileData.user?.firstName || '') + ' ' + (profileData.user?.surname || '');
-                        const senderPP = profileData.profilePic || config?.defaultProfile;
-                        io.to(room).emit('newMessage', { updatedMessage, senderName, senderPP, chatPage: true });
-                        io.to(friendId).emit('newMessageToUser', { updatedMessage, senderName, senderPP, chatPage: false, friendProfile: profileData });
+                        await broadcastCallMessage({
+                            updatedMessage,
+                            senderId: String(profileId),
+                            otherId: String(friendId),
+                            senderProfile: profileData,
+                        });
                     }
                 }
             } catch (e) {

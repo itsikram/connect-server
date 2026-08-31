@@ -12,14 +12,14 @@ module.exports = async (profileId, userId = null) => {
 
         let user = await User.findById(userId);
 
-        if (user.lastLogin) {
+        if (user?.lastLogin) {
             userLastLogin = user.lastLogin;
         }
 
     } else if (mongoose.isValidObjectId(profileId)) {
         profile = await Profile.findById(profileId).populate('user');
 
-        if (profile.user.lastLogin) {
+        if (profile?.user?.lastLogin) {
             userLastLogin = profile.user.lastLogin;
         }
     }

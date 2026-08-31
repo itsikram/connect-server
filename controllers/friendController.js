@@ -4,9 +4,15 @@ const { saveNotification } = require("./notificationController");
 const { sendPushToProfile } = require("../utils/pushNotifications");
 const sendEmailNotification = require("../utils/sendEmailNotification.js");
 const checkIsActive = require("../utils/checkIsActive.js");
+const { asId, idsMatch, listHasId } = require("../utils/ids");
+
 exports.postFrndReq = async (req, res, next) => {
   try {
     let profile = req.body.profile || req.body.profileId || req.query.profileId;
+    if (profile && typeof profile === "object") {
+      profile = profile._id || profile.id || profile.profileId;
+    }
+    profile = asId(profile);
     if (!profile || !mongoose.Types.ObjectId.isValid(profile)) {
       return res.status(400).json({ message: "Invalid or missing profile id" });
     }
@@ -17,100 +23,107 @@ exports.postFrndReq = async (req, res, next) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    if (myProfile._id.equals(profile)) {
+    if (idsMatch(myProfile._id, profile)) {
       return res
         .status(400)
         .json({ message: "Cannot send friend request to yourself" });
     }
 
-    if (myProfile.friends?.some((id) => id.equals(profile))) {
+    if (listHasId(myProfile.friends, profile)) {
       return res.json({
         message: "Already Friend",
+        alreadyFriend: true,
       });
     }
 
-    let frndProfile = await Profile.findOne({
-      _id: profile,
-      friends: {
-        $ne: myProfile._id,
-      },
-    }).populate("user");
+    let frndProfile = await Profile.findById(profile).populate("user");
 
     if (!frndProfile) {
       return res.status(404).json({ message: "Profile not found" });
     }
 
-    if (frndProfile.friendReqs?.some((id) => id.equals(myProfile._id))) {
+    if (listHasId(frndProfile.friends, myProfile._id)) {
+      return res.json({
+        message: "Already Friend",
+        alreadyFriend: true,
+      });
+    }
+
+    if (listHasId(frndProfile.friendReqs, myProfile._id)) {
       return res.json({
         message: "Already Requested",
+        alreadyRequested: true,
       });
     }
 
-    let frndReq = await Profile.findOneAndUpdate(
-      {
-        _id: frndProfile._id,
-        friendReqs: {
-          $ne: myProfile._id,
-        },
-      },
-      {
-        $push: {
-          friendReqs: myProfile._id,
-        },
-      },
-      { new: true },
+    const updated = await Profile.findByIdAndUpdate(
+      frndProfile._id,
+      { $addToSet: { friendReqs: myProfile._id } },
+      { new: true, select: "_id friendReqs" },
     );
 
-    let { isActive, lastLogin } = await checkIsActive(profile);
+    if (!updated || !listHasId(updated.friendReqs, myProfile._id)) {
+      return res.status(500).json({ message: "Failed to send friend request" });
+    }
 
-    if (String(profile) !== String(myProfile._id)) {
-      // Get all active browser IDs for the receiver
+    const receiverId = asId(frndProfile._id);
+    const senderId = asId(myProfile._id);
+
+    try {
+      let { isActive } = await checkIsActive(profile);
       const activeBrowserIds =
         frndProfile.browserIds
-          ?.filter((browser) => browser.isActive)
-          ?.map((browser) => browser.browserId) || [];
+          ?.filter((browser) => browser?.isActive)
+          ?.map((browser) => browser.browserId)
+          .filter(Boolean) || [];
 
-      let notificationData = {
-        receiverId: profile,
-        text: myProfile.fullName + " Sent you friend Request",
-        link: "/" + myProfile._id,
-        icon: myProfile.profilePic,
-        type: "friendReq",
-        browserIds: activeBrowserIds,
-        data: {
-          senderId: myProfile._id,
-          senderName: myProfile.fullName,
-          senderProfilePic: myProfile.profilePic,
-        },
-      };
-
-      saveNotification(io, notificationData);
-
-      // Also emit specific socket event for friend request
-      io.to(profile).emit("friendRequestNotification", {
-        senderName: myProfile.fullName,
-        senderPP: myProfile.profilePic,
-        senderId: myProfile._id,
-      });
-    }
-
-    if (!isActive && String(profile) !== String(myProfile._id)) {
-      try {
-        await sendPushToProfile(profile, {
-          title: "New friend request",
-          body: `${myProfile.fullName} sent you a friend request`,
-          data: { type: "friend_request", senderId: String(myProfile._id) },
+      if (io && typeof io.to === "function") {
+        await saveNotification(io, {
+          receiverId,
+          text: myProfile.fullName + " Sent you friend Request",
+          link: "/" + senderId,
+          icon: myProfile.profilePic,
+          type: "friendReq",
+          browserIds: activeBrowserIds,
+          data: {
+            senderId,
+            senderName: myProfile.fullName,
+            senderProfilePic: myProfile.profilePic,
+          },
         });
-      } catch (e) {}
-      sendEmailNotification(
-        frndProfile?.user?.email,
-        "You've received a friend requiest",
-        myProfile.fullName + " Sent you friend Request On Connect",
-        myProfile.fullName,
-      );
+        io.to(receiverId).emit("friendRequestNotification", {
+          senderName: myProfile.fullName,
+          senderPP: myProfile.profilePic,
+          senderId,
+        });
+      }
+
+      if (!isActive) {
+        try {
+          await sendPushToProfile(receiverId, {
+            title: "New friend request",
+            body: `${myProfile.fullName} sent you a friend request`,
+            data: { type: "friend_request", senderId },
+          });
+        } catch (e) {}
+        Promise.resolve(
+          sendEmailNotification(
+            frndProfile?.user?.email,
+            "You've received a friend requiest",
+            myProfile.fullName + " Sent you friend Request On Connect",
+            myProfile.fullName,
+          ),
+        ).catch(() => {});
+      }
+    } catch (notifyErr) {
+      console.error("Friend request saved but notify failed:", notifyErr);
     }
 
-    return res.json(frndReq);
+    return res.json({
+      success: true,
+      message: "Friend request sent",
+      _id: asId(updated._id),
+    });
   } catch (error) {
     next(error);
   }
@@ -131,23 +144,54 @@ exports.postBlockFrnd = async (req, res, next) => {
     );
 
     if (updateProfile) {
-      // Emit real-time block to both users (each user's personal room is their profileId)
+      // Emit real-time block to both users (personal rooms + shared chat room)
       try {
         const io = req.app.get("io");
-        io.to(String(profile._id)).emit("userBlocked", {
-          by: String(profile._id),
-          target: String(friendId),
-        });
-        io.to(String(friendId)).emit("blockedByUser", {
-          by: String(profile._id),
-          target: String(friendId),
-        });
+        if (io) {
+          const by = String(profile._id);
+          const target = String(friendId);
+          const payload = { by, target };
+          const chatRoom = [by, target].sort().join("_");
+          io.to(by).emit("userBlocked", payload);
+          io.to(target).emit("blockedByUser", payload);
+          io.to(chatRoom).emit("userBlocked", payload);
+          io.to(chatRoom).emit("blockedByUser", payload);
+        }
       } catch (e) {}
 
       return res.status(200).json({ message: "User Block Successfully" });
     }
 
     return res.status(400).json({ message: "User Cannot Be blocked" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getBlockStatus = async (req, res, next) => {
+  try {
+    const friendId = req.query.friendId || req.body.friendId;
+    const myId = req.profile?._id;
+    if (!friendId || !mongoose.Types.ObjectId.isValid(String(friendId))) {
+      return res.status(400).json({ message: "Invalid or missing friendId" });
+    }
+    if (!myId) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+
+    const [me, friend] = await Promise.all([
+      Profile.findById(myId).select("blockedUsers"),
+      Profile.findById(friendId).select("blockedUsers"),
+    ]);
+
+    if (!friend) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    return res.status(200).json({
+      iBlocked: listHasId(me?.blockedUsers, friendId),
+      blockedMe: listHasId(friend?.blockedUsers, myId),
+    });
   } catch (error) {
     next(error);
   }
@@ -167,17 +211,19 @@ exports.postUnblockFrnd = async (req, res, next) => {
     );
 
     if (updateProfile) {
-      // Emit real-time unblock to both users
+      // Emit real-time unblock to both users (personal rooms + shared chat room)
       try {
         const io = req.app.get("io");
-        io.to(String(profile._id)).emit("userUnblocked", {
-          by: String(profile._id),
-          target: String(friendId),
-        });
-        io.to(String(friendId)).emit("unblockedByUser", {
-          by: String(profile._id),
-          target: String(friendId),
-        });
+        if (io) {
+          const by = String(profile._id);
+          const target = String(friendId);
+          const payload = { by, target };
+          const chatRoom = [by, target].sort().join("_");
+          io.to(by).emit("userUnblocked", payload);
+          io.to(target).emit("unblockedByUser", payload);
+          io.to(chatRoom).emit("userUnblocked", payload);
+          io.to(chatRoom).emit("unblockedByUser", payload);
+        }
       } catch (e) {}
 
       return res.status(200).json({ message: "User Unlock Successfully" });

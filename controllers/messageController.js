@@ -1,6 +1,7 @@
 const Message = require('../models/Message')
 const Profile = require('../models/Profile')
 const { sendChatMessageDataPush } = require('../utils/pushNotifications')
+const { listHasId } = require('../utils/ids')
 
 
 exports.removeMessageReact = async (req, res, next) => {
@@ -317,22 +318,25 @@ exports.getOldMessages = async(req,res,next) => {
 exports.sendMessage = async (req, res, next) => {
     try {
         const io = req.app.get('io');
-        const { room, senderId, receiverId, message, attachment, parent, isAi = false, messageType = 'text', callType, callEvent, tempId } = req.body;
+        const { room, senderId: bodySenderId, receiverId, message, attachment, parent, isAi = false, messageType = 'text', callType, callEvent, tempId } = req.body;
+        const senderId = bodySenderId || req.profile?._id;
 
         // Prevent messaging if either user has blocked the other
-        const [senderProfile, receiverProfile] = await Promise.all([
-            Profile.findById(senderId).select('blockedUsers'),
-            Profile.findById(receiverId).select('blockedUsers'),
-        ]);
-        
-        const senderBlockedReceiver = senderProfile?.blockedUsers?.some(id => String(id) === String(receiverId));
-        const receiverBlockedSender = receiverProfile?.blockedUsers?.some(id => String(id) === String(senderId));
-        
-        if (senderBlockedReceiver || receiverBlockedSender) {
-            return res.status(403).json({
-                message: 'Message blocked',
-                reason: senderBlockedReceiver ? 'You blocked this user' : 'You are blocked by this user'
-            });
+        if (senderId && receiverId && String(senderId) !== String(receiverId)) {
+            const [senderProfile, receiverProfile] = await Promise.all([
+                Profile.findById(senderId).select('blockedUsers'),
+                Profile.findById(receiverId).select('blockedUsers'),
+            ]);
+
+            const senderBlockedReceiver = listHasId(senderProfile?.blockedUsers, receiverId);
+            const receiverBlockedSender = listHasId(receiverProfile?.blockedUsers, senderId);
+
+            if (senderBlockedReceiver || receiverBlockedSender) {
+                return res.status(403).json({
+                    message: 'Message blocked',
+                    reason: senderBlockedReceiver ? 'You blocked this user' : 'You are blocked by this user'
+                });
+            }
         }
 
         let newMessage;

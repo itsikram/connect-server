@@ -10,6 +10,7 @@ const {
   completeAiChat,
   streamAiChat,
   getAiProviders,
+  warmupAiChat,
 } = require("../controllers/aiCompleteController");
 
 router.post("/save", isAuth, saveAIChat);
@@ -17,6 +18,7 @@ router.get("/history", isAuth, getAIChatHistory);
 router.get("/latest", isAuth, getLatestAIChat);
 router.delete("/delete", isAuth, deleteAIChat);
 router.get("/providers", isAuth, getAiProviders);
+router.post("/warmup", isAuth, warmupAiChat);
 router.post("/complete", isAuth, completeAiChat);
 router.post("/complete-stream", isAuth, streamAiChat);
 

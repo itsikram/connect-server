@@ -2,6 +2,7 @@ const axios = require("axios");
 const {
   completeCursorAgent,
   listCursorModels,
+  warmupCursorAgent,
 } = require("../utils/cursorAgentClient");
 const {
   publicAiStatus,
@@ -199,6 +200,9 @@ exports.getAiProviders = async (req, res) => {
     models = await listCursorModels();
   } catch (_) {
     models = [];
+  }
+  if (status.configured?.cursor) {
+    warmupCursorAgent().catch(() => {});
   }
   return res.status(200).json({
     defaultProvider: status.defaultProvider,
@@ -610,5 +614,15 @@ exports.streamAiChat = async (req, res) => {
     closeSse(res, { error: message, done: true });
   } finally {
     req.off("close", onClose);
+  }
+};
+
+exports.warmupAiChat = async (req, res) => {
+  try {
+    const model = String(req.body?.model || "").trim();
+    const result = await warmupCursorAgent({ model });
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(200).json({ started: false });
   }
 };

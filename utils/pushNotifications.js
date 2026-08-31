@@ -131,22 +131,32 @@ async function sendPushToTokens(tokens = [], notification = {}) {
   );
 
   const isIncomingCall = stringData.type === 'incoming_call';
-  const pushSound = isIncomingCall ? INCOMING_CALL_NOTIFICATION_SOUND : 'default';
+  const fcmSound = isIncomingCall ? INCOMING_CALL_NOTIFICATION_SOUND : 'default';
 
   let successCount = 0;
   let failureCount = 0;
 
   if (expoTokens.length > 0) {
-    const channelId = String(notification.channelId || EXPO_DEFAULT_ANDROID_CHANNEL_ID);
-    const messages = expoTokens.map((to) => ({
-      to,
-      title: notification.title || 'Notification',
-      body: notificationBody,
-      data: stringData,
-      sound: pushSound,
-      priority: 'high',
-      channelId,
-    }));
+    const channelId = isIncomingCall
+      ? 'incoming_calls'
+      : String(notification.channelId || EXPO_DEFAULT_ANDROID_CHANNEL_ID);
+    const messages = expoTokens.map((to) => {
+      const message = {
+        to,
+        title: notification.title || 'Notification',
+        body: notificationBody,
+        data: stringData,
+        sound: 'default',
+        priority: 'high',
+        channelId,
+      };
+      if (isIncomingCall) {
+        message.ttl = 60;
+        message.interruptionLevel = 'time-sensitive';
+        message.categoryId = 'incoming_call';
+      }
+      return message;
+    });
     const expoResult = await sendExpoPushBatch(messages);
     successCount += expoResult.successCount;
     failureCount += expoResult.failureCount;
@@ -174,11 +184,14 @@ async function sendPushToTokens(tokens = [], notification = {}) {
           headers: {
             'apns-priority': '10',
             'apns-push-type': 'alert',
+            'apns-expiration': String(Math.floor(Date.now() / 1000) + 60),
           },
           payload: {
             aps: {
               alert: { title: titleStr, body: bodyStr },
               sound: 'default',
+              'interruption-level': 'time-sensitive',
+              category: 'incoming_call',
             },
           },
         },
@@ -217,7 +230,7 @@ async function sendPushToTokens(tokens = [], notification = {}) {
       directBootOk: true,
       notification: {
         channelId: String(notification.channelId || EXPO_DEFAULT_ANDROID_CHANNEL_ID),
-        sound: pushSound,
+        sound: fcmSound,
       },
     },
   };

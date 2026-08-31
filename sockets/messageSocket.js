@@ -4,6 +4,7 @@ const Profile = require("../models/Profile");
 const checkIsActive = require("../utils/checkIsActive");
 const updateLastActive = require("../utils/updateLastActive");
 const axios = require("axios");
+const { listHasId } = require("../utils/ids");
 
 const {
   sendChatMessageDataPush,
@@ -297,7 +298,7 @@ module.exports = function messageSocket(io, socket, profileId) {
   socket.on("sendMessage", async (payload = {}, ack) => {
     const {
       room,
-      senderId,
+      senderId: payloadSenderId,
       receiverId,
       message,
       attachment,
@@ -308,6 +309,7 @@ module.exports = function messageSocket(io, socket, profileId) {
       callEvent,
       tempId,
     } = payload;
+    const senderId = payloadSenderId || profileId;
 
     const reply = (data) => {
       if (typeof ack === "function") {
@@ -363,33 +365,39 @@ module.exports = function messageSocket(io, socket, profileId) {
 
       // Prevent messaging if either user has blocked the other
       try {
-        const [senderProfile, receiverProfile] = await Promise.all([
-          Profile.findById(senderId).select("blockedUsers"),
-          Profile.findById(receiverId).select("blockedUsers"),
-        ]);
-        const senderBlockedReceiver = senderProfile?.blockedUsers?.some(
-          (id) => String(id) === String(receiverId),
-        );
-        const receiverBlockedSender = receiverProfile?.blockedUsers?.some(
-          (id) => String(id) === String(senderId),
-        );
-        if (senderBlockedReceiver || receiverBlockedSender) {
-          const blockedPayload = {
-            room,
-            senderId,
+        if (senderId && receiverId && String(senderId) !== String(receiverId)) {
+          const [senderProfile, receiverProfile] = await Promise.all([
+            Profile.findById(senderId).select("blockedUsers"),
+            Profile.findById(receiverId).select("blockedUsers"),
+          ]);
+          const senderBlockedReceiver = listHasId(
+            senderProfile?.blockedUsers,
             receiverId,
-            tempId,
-            reason: senderBlockedReceiver
-              ? "You blocked this user"
-              : "You are blocked by this user",
-          };
-          io.to(String(senderId)).emit("message_blocked", blockedPayload);
-          reply({ ok: false, blocked: true, ...blockedPayload });
-          return;
+          );
+          const receiverBlockedSender = listHasId(
+            receiverProfile?.blockedUsers,
+            senderId,
+          );
+          if (senderBlockedReceiver || receiverBlockedSender) {
+            const blockedPayload = {
+              room,
+              senderId,
+              receiverId,
+              tempId,
+              reason: senderBlockedReceiver
+                ? "You blocked this user"
+                : "You are blocked by this user",
+            };
+            socket.emit("message_blocked", blockedPayload);
+            io.to(String(senderId)).emit("message_blocked", blockedPayload);
+            reply({ ok: false, blocked: true, ...blockedPayload });
+            return;
+          }
         }
       } catch (e) {
-        // If check fails, proceed to avoid false positives, but log
         console.error("block check failed", e?.message || e);
+        reply({ ok: false, error: "Could not verify block status" });
+        return;
       }
 
       console.log("sendMessage 1");
@@ -709,7 +717,12 @@ module.exports = function messageSocket(io, socket, profileId) {
     async ({ room, isTyping, type, receiverId, senderId }) => {
       console.log("typing", room, isTyping, type, receiverId);
       if (isTyping) {
-        socket.to(room).emit("typing", { receiverId, isTyping: true, type });
+        socket.to(room).emit("typing", {
+          receiverId,
+          senderId: senderId || profileId,
+          isTyping: true,
+          type,
+        });
         // Update last active time for typing activity (only when actively typing)
         // Use senderId from event or fallback to profileId from socket context
         const activeProfileId = senderId || profileId;
@@ -717,7 +730,11 @@ module.exports = function messageSocket(io, socket, profileId) {
           await updateLastActive(activeProfileId);
         }
       } else {
-        socket.to(room).emit("typing", { receiverId, isTyping: false });
+        socket.to(room).emit("typing", {
+          receiverId,
+          senderId: senderId || profileId,
+          isTyping: false,
+        });
       }
       // socket.to(room).emit('typing');
     },

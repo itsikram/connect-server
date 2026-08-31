@@ -23,8 +23,8 @@ module.exports = function socketHandler(io) {
         const profileId = socket.handshake.query?.profile;
         const browserId = socket.handshake.query?.browserId;
 
-        if (profileId !== 'undefined') {
-            socket.join(profileId);
+        if (profileId && profileId !== 'undefined') {
+            socket.join(String(profileId));
             
             // Cancel any pending offline timeout if user reconnects
             if (offlineTimeouts.has(profileId)) {
