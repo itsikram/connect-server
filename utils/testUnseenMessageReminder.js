@@ -40,8 +40,7 @@ function section(title) {
 async function checkConfig() {
   section('Unseen Message Reminder Configuration Check');
 
-  log('Email Provider Settings (SMTP):', 'bright');
-  log(`  EMAIL_PROVIDER: ${process.env.EMAIL_PROVIDER || 'smtp'}`);
+  log('SMTP Settings:', 'bright');
   const smtpUser = process.env.SMTP_USER ? '✓ Set' : '✗ Not set';
   const smtpPass = process.env.SMTP_PASS ? '✓ Set' : '✗ Not set';
   log(`  SMTP_USER: ${smtpUser}`, process.env.SMTP_USER ? 'green' : 'red');

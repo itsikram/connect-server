@@ -16,6 +16,49 @@ const SECRET_KEY = process.env.JWT_SECRET_KEY;
 const deleteUserData = require('../utils/deleteUserData')
 const sendEmailNotification = require('../utils/sendEmailNotification');
 
+const FACE_SERVICE_URL = (process.env.FACE_SERVICE_URL || 'http://localhost:5001').replace(/\/+$/, '');
+const FACE_SERVICE_TIMEOUT_MS = 60000;
+
+const callFaceService = async (path, payload) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FACE_SERVICE_TIMEOUT_MS);
+    const startedAt = Date.now();
+
+    try {
+        console.info('[face-auth] calling face service', {
+            path,
+            frameCount: Array.isArray(payload?.frames) ? payload.frames.length : 0,
+        });
+        const response = await fetch(`${FACE_SERVICE_URL}${path}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+        });
+        const responseText = await response.text();
+        console.info('[face-auth] face service response', {
+            path,
+            status: response.status,
+            contentType: response.headers.get('content-type'),
+            durationMs: Date.now() - startedAt,
+            bodyLength: responseText.length,
+            bodyPreview: responseText.slice(0, 300),
+        });
+        let data;
+        try {
+            data = responseText ? JSON.parse(responseText) : {};
+        } catch (parseError) {
+            const error = new Error(`Face service returned a non-JSON response (${response.status})`);
+            error.status = response.status;
+            error.serviceResponse = responseText.slice(0, 200);
+            throw error;
+        }
+        return { response, data };
+    } finally {
+        clearTimeout(timeout);
+    }
+};
+
 
 // Google OAuth2 Client
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -399,6 +442,138 @@ exports.login = async (req, res, next) => {
 
 
 }
+
+exports.faceRegister = async (req, res, next) => {
+    const startedAt = Date.now();
+    const frames = req.body?.frames;
+    // Usernames belong to the authenticated profile, not the User document.
+    const username = req.profile?.username || req.profile?.user?.email;
+
+    if (!username) {
+        return res.status(400).json({
+            success: false,
+            message: 'Your account needs a username or email before face login can be registered',
+        });
+    }
+
+    if (!Array.isArray(frames) || frames.length < 15) {
+        return res.status(400).json({
+            success: false,
+            message: `At least 15 camera frames are required (received ${Array.isArray(frames) ? frames.length : 0})`,
+        });
+    }
+
+    try {
+        const { response, data } = await callFaceService('/api/face/register', {
+            username,
+            frames,
+        });
+
+        if (!response.ok || !data.success) {
+            // The face service uses 401 for a failed liveness check. That is
+            // not an expired Connect session and must not trigger client
+            // logout/token refresh behavior.
+            const status = response.status >= 500 ? 503 : 400;
+            return res.status(status).json({
+                success: false,
+                message: data.message || (status === 503
+                    ? 'Face verification service failed while processing the camera frames'
+                    : 'Face registration failed'),
+            });
+        }
+
+        await User.findByIdAndUpdate(req.profile.user._id, { faceLoginEnabled: true });
+        return res.status(200).json({
+            success: true,
+            message: data.message || 'Face registered successfully',
+        });
+    } catch (error) {
+        console.error('[face-auth] face registration service error', {
+            name: error.name,
+            message: error.message,
+            code: error.code,
+            durationMs: Date.now() - startedAt,
+        });
+        if (error.name === 'AbortError' || error.cause?.code === 'ECONNREFUSED' || error.code === 'ECONNREFUSED') {
+            return res.status(503).json({
+                success: false,
+                message: 'Face verification service is unavailable. Please try again later.',
+            });
+        }
+        if (error.status >= 500) {
+            return res.status(503).json({
+                success: false,
+                message: 'Face verification service failed while processing the camera frames. Please try again.',
+            });
+        }
+        return next(error);
+    }
+};
+
+exports.faceLogin = async (req, res, next) => {
+    const frames = req.body?.frames;
+
+    if (!Array.isArray(frames) || frames.length < 15) {
+        return res.status(400).json({
+            success: false,
+            message: `At least 15 camera frames are required (received ${Array.isArray(frames) ? frames.length : 0})`,
+        });
+    }
+
+    try {
+        const { response, data } = await callFaceService('/api/face/login', { frames });
+
+        if (!response.ok || !data.success) {
+            const status = response.status >= 500 ? 503 : response.status === 400 ? 400 : 401;
+            return res.status(status).json({
+                success: false,
+                message: data.message || (status === 503
+                    ? 'Face verification service failed while processing the camera frames'
+                    : 'Could not verify your face'),
+            });
+        }
+
+        const profile = await Profile.findOne({ username: data.username }).populate('user');
+        const user = profile?.user;
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'No matching Connect account was found',
+            });
+        }
+
+        const accessToken = jwt.sign({ user_id: user._id }, SECRET_KEY, {
+            expiresIn: '30d',
+        });
+
+        return res.status(202).json({
+            firstName: user.firstName,
+            user_id: user._id,
+            surname: user.surname,
+            profile: user.profile,
+            accessToken,
+        });
+    } catch (error) {
+        console.error('[face-auth] face login service error', {
+            name: error.name,
+            message: error.message,
+            code: error.code,
+        });
+        if (error.name === 'AbortError' || error.cause?.code === 'ECONNREFUSED' || error.code === 'ECONNREFUSED') {
+            return res.status(503).json({
+                success: false,
+                message: 'Face verification service is unavailable. Please try again later.',
+            });
+        }
+        if (error.status >= 500) {
+            return res.status(503).json({
+                success: false,
+                message: 'Face verification service failed while processing the camera frames. Please try again.',
+            });
+        }
+        return next(error);
+    }
+};
 
 exports.googleSignIn = async (req, res, next) => {
     const { googleId, email, name, photo, familyName, givenName, idToken } = req.body;

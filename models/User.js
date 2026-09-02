@@ -27,6 +27,10 @@ let userSchema = new Schema({
         trim: true,
         required: false, // Make password optional for Google users
     },
+    faceLoginEnabled: {
+        type: Boolean,
+        default: false,
+    },
     googleId: {
         type: String,
         trim: true,

@@ -59,8 +59,8 @@ const middilewares = [
             }
         }
     }),
-    bodyParser.urlencoded({extended: true, limit: '10mb'}),
-    bodyParser.json({limit: '10mb'}), // Increased limit for base64 image payloads (emotion detection)
+    bodyParser.urlencoded({extended: true, limit: '25mb'}),
+    bodyParser.json({limit: '25mb'}),
     cors({
         origin: '*',
         

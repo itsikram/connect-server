@@ -14,5 +14,7 @@ services:
         value: "2"
       - key: LB_BACKEND_START_PORT
         value: "4001"
+      - key: SMTP_FORCE_IPV4
+        value: "true"
       # PORT is injected by Render — do not hardcode it.
       # Add Mongo/Firebase/SMTP secrets in the Render dashboard.

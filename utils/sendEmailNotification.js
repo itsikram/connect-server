@@ -24,12 +24,24 @@ function getFromAddress(senderName) {
   return { fromName, fromAddress };
 }
 
-function buildTransportOptions(port, secure) {
+async function resolveSmtpHost(host) {
+  if (process.env.SMTP_FORCE_IPV4 === 'false') return host;
+
+  const addresses = await dns.promises.resolve4(host);
+  if (!addresses.length) {
+    throw new Error(`No IPv4 address found for SMTP host ${host}`);
+  }
+
+  return addresses[0];
+}
+
+async function buildTransportOptions(port, secure) {
   const { user, pass } = getSmtpCredentials();
   const host = (process.env.SMTP_HOST || 'smtp.gmail.com').trim();
+  const connectionHost = await resolveSmtpHost(host);
 
   return {
-    host,
+    host: connectionHost,
     port,
     secure,
     auth: { user, pass },
@@ -77,20 +89,20 @@ async function createWorkingTransporter() {
   const errors = [];
 
   for (const candidate of candidates) {
-    const options = buildTransportOptions(candidate.port, candidate.secure);
+    const options = await buildTransportOptions(candidate.port, candidate.secure);
     const transport = nodemailer.createTransport(options);
 
     try {
       console.log(
-        `SMTP: verifying ${options.host}:${options.port} (secure=${options.secure}, family=4)...`
+        `SMTP: verifying ${options.tls.servername}:${options.port} via ${options.host} (secure=${options.secure}, family=4)...`
       );
       await transport.verify();
-      console.log(`SMTP: connected via ${options.host}:${options.port}`);
-      transporterKey = `${options.host}:${options.port}:${options.secure}`;
+      console.log(`SMTP: connected via ${options.tls.servername}:${options.port} (${options.host})`);
+      transporterKey = `${options.tls.servername}:${options.port}:${options.secure}`;
       return transport;
     } catch (err) {
       const msg = err.message || String(err);
-      console.warn(`SMTP: ${options.host}:${options.port} failed — ${msg}`);
+      console.warn(`SMTP: ${options.tls.servername}:${options.port} via ${options.host} failed — ${msg}`);
       errors.push(`${options.port}: ${msg}`);
       try {
         transport.close();
