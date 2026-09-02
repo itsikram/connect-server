@@ -503,10 +503,9 @@ module.exports = {
 };
 
 /**
- * Chat → native FCM: **data-only** on Android so RN `setBackgroundMessageHandler` runs and Notifee
- * can post on `messages_chat_peek_v1` (HIGH / heads-up). Do not set `android.notification` here:
- * it sets `remoteMessage.notification`, which makes the client skip Notifee and shows a low-importance
- * system notification on `messages_high` (peek=F on some OEMs).
+ * Chat → native FCM: include an Android notification payload so the OS can
+ * display it when the app process has been terminated. The data remains
+ * available for navigation when the user taps the notification.
  * iOS: `apns.payload.aps.alert` for banners when terminated.
  * @param {string[]} fcmTokens
  * @param {{ title: string, body: string, data: Record<string, string> }} opts
@@ -528,8 +527,6 @@ async function sendFcmChatMulticast(fcmTokens, { title, body, data }) {
         priority: 'high',
         ttl: 60 * 60 * 1000,
         directBootOk: true,
-        // Show system notification immediately when app is terminated.
-        // Keep `data` so the client can still navigate on tap.
         notification: {
           title: title || 'Message',
           body: body || ' ',
@@ -552,7 +549,7 @@ async function sendFcmChatMulticast(fcmTokens, { title, body, data }) {
         },
       },
     });
-    console.log('[FCM chat] data-only-android + apns multicast', {
+    console.log('[FCM chat] Android notification + data, APNs alert multicast', {
       tokens: fcmTokens.length,
       successCount: res.successCount,
       failureCount: res.failureCount,

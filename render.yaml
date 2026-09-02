@@ -16,5 +16,8 @@ services:
         value: "4001"
       - key: SMTP_FORCE_IPV4
         value: "true"
+      - key: CHECK_GOOGLE_CLOUD_ON_STARTUP
+        value: "true"
       # PORT is injected by Render — do not hardcode it.
-      # Add Mongo/Firebase/SMTP secrets in the Render dashboard.
+      # Add Mongo/Firebase/SMTP secrets in the Render dashboard. Set
+      # FIREBASE_SERVICE_ACCOUNT_BASE64 to the base64-encoded service-account JSON.
