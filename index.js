@@ -597,6 +597,8 @@ routes(app);
 app.post("/api/bump", isAuth, sendBump);
 
 // YouTube download service (Node.js ytdl-core)
+app.use("/api/yt-download", ytDownloadRoutes);
+app.use("/yt-download", ytDownloadRoutes);
 app.use(ytDownloadRoutes);
 
 // setup Agora routes

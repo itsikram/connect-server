@@ -616,12 +616,24 @@ const runDownloadJob = async ({
         download_title: finalTitle,
       });
       // Caption = YouTube video title
-      const watch = await createWatchFromVideo(fileUrl, finalTitle, profileId, youtubeId);
-      watchPosted = true;
-      watchId = String(watch._id);
-      console.log(
-        `[yt-download] Posted Watch with caption: ${finalTitle.slice(0, 80)}`,
-      );
+      try {
+        const watch = await createWatchFromVideo(fileUrl, finalTitle, profileId, youtubeId);
+        watchPosted = true;
+        watchId = String(watch._id);
+        console.log(
+          `[yt-download] Posted Watch with caption: ${finalTitle.slice(0, 80)}`,
+        );
+      } catch (watchError) {
+        // The Cloudinary upload is already complete, so keep the download usable
+        // even if creating the Watch record fails.
+        console.error("Watch post failed after video upload:", watchError);
+        updateProgress(progressId, {
+          stage: "watch_post_failed",
+          status: "running",
+          pct: 99,
+          watch_error: watchError.message || "Could not post to Watch",
+        });
+      }
     }
 
     // Remove temp file after Cloudinary upload
