@@ -5,6 +5,7 @@ node_modules
 .env.development.local
 .env.test.local
 .env.production.local
+.face-service-url.json
 google-services.json
 google-servicess.json
 serviceAccountKey.json

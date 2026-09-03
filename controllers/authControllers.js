@@ -15,9 +15,10 @@ const crypto = require('crypto');
 const SECRET_KEY = process.env.JWT_SECRET_KEY;
 const deleteUserData = require('../utils/deleteUserData')
 const sendEmailNotification = require('../utils/sendEmailNotification');
+const { getFaceServiceConfig } = require('../utils/faceServiceSync');
 
 const getFaceServiceUrl = () =>
-    (process.env.FACE_SERVICE_URL || 'http://localhost:5001').replace(/\/+$/, '');
+    (getFaceServiceConfig().url || 'http://localhost:5001').replace(/\/+$/, '');
 const FACE_SERVICE_TIMEOUT_MS = 60000;
 
 const callFaceService = async (path, payload) => {
