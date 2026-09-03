@@ -212,7 +212,7 @@ const uploadVideoToCloudinary = (filePath, folder = "yt-downloads") =>
     );
   });
 
-const createWatchFromVideo = async (videoUrl, caption, profileId) => {
+const createWatchFromVideo = async (videoUrl, caption, profileId, youtubeId) => {
   const watchCaption =
     String(caption || "YouTube Video")
       .trim()
@@ -237,6 +237,7 @@ const createWatchFromVideo = async (videoUrl, caption, profileId) => {
     thumbnail,
     feeling: "",
     audience: 3,
+    youtubeId: youtubeId || undefined,
   });
 
   return watch.save();
@@ -525,6 +526,7 @@ const runDownloadJob = async ({
   postAsWatch,
   profileId,
   audioOnly,
+  youtubeId,
 }) => {
   let filePath = null;
   await acquireDownloadSlot();
@@ -607,7 +609,7 @@ const runDownloadJob = async ({
         download_title: finalTitle,
       });
       // Caption = YouTube video title
-      const watch = await createWatchFromVideo(fileUrl, finalTitle, profileId);
+      const watch = await createWatchFromVideo(fileUrl, finalTitle, profileId, youtubeId);
       watchPosted = true;
       watchId = String(watch._id);
       console.log(
@@ -660,6 +662,7 @@ const startDownloadJob = ({
   postAsWatch,
   profileId,
   audioOnly,
+  youtubeId,
 }) => {
   const progressId = uuidv4().replace(/-/g, "");
 
@@ -686,6 +689,7 @@ const startDownloadJob = ({
       postAsWatch,
       profileId,
       audioOnly,
+      youtubeId,
     });
   });
 
@@ -753,6 +757,13 @@ const searchYouTubeVideos = async (query, maxResults = 12) => {
             `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
           url: `https://www.youtube.com/watch?v=${videoId}`,
         };
+
+        const extractYouTubeVideoId = (url) => {
+          const match = String(url || "").match(
+            /(?:youtube\.com\/(?:watch\?.*v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/,
+          );
+          return match ? match[1] : null;
+        };
       });
 
     return { items };
@@ -776,4 +787,5 @@ module.exports = {
   getProgress,
   isRenderHost,
   searchYouTubeVideos,
+  extractYouTubeVideoId,
 };

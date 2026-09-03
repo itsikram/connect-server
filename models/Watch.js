@@ -11,6 +11,11 @@ let watchSchema = new Schema({
     },
     thumbnail: String,
     videoUrl: String,
+    youtubeId: {
+        type: String,
+        index: true,
+        sparse: true,
+    },
     reacts: [{
         profile: {
             type: Schema.Types.ObjectId,

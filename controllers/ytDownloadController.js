@@ -2,7 +2,9 @@ const {
   startDownloadJob,
   getProgress,
   searchYouTubeVideos,
+  extractYouTubeVideoId,
 } = require("../services/ytDownloadService");
+const Watch = require("../models/Watch");
 
 const getPublicBaseUrl = (req) => {
   const fromEnv =
@@ -36,6 +38,7 @@ exports.startDownload = async (req, res) => {
     const audioOnly = req.query.audio_only === "true";
     // Post to Watch after download when requested (requires auth); audio-only downloads never post to Watch
     const postAsWatch = req.query.post_as_watch !== "false" && !audioOnly;
+    const youtubeId = extractYouTubeVideoId(url);
 
     if (!url) {
       return res.status(400).json({ error: "url query parameter is required" });
@@ -51,6 +54,20 @@ exports.startDownload = async (req, res) => {
       });
     }
 
+    if (postAsWatch && youtubeId) {
+      const existingWatch = await Watch.findOne({ author: profileId, youtubeId }).lean();
+      if (existingWatch) {
+        return res.json({
+          status: "completed",
+          already_downloaded: true,
+          watch_id: String(existingWatch._id),
+          youtube_id: youtubeId,
+          file_url: existingWatch.videoUrl,
+          title: existingWatch.caption,
+        });
+      }
+    }
+
     if (!asyncJob) {
       return res.status(400).json({
         error: "Synchronous downloads are not supported. Use async_job=true",
@@ -64,6 +81,7 @@ exports.startDownload = async (req, res) => {
       postAsWatch,
       profileId,
       audioOnly,
+      youtubeId,
     });
 
     return res.status(202).json({
