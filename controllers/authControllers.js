@@ -36,12 +36,21 @@ const callFaceService = async (path, payload) => {
             if (process.env.FACE_SERVICE_API_KEY) {
                 headers['X-Face-Service-Key'] = process.env.FACE_SERVICE_API_KEY;
             }
-            const response = await fetch(`${getFaceServiceUrl()}${path}`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(payload),
-                signal: controller.signal,
-            });
+            let response;
+            try {
+                response = await fetch(`${getFaceServiceUrl()}${path}`, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify(payload),
+                    signal: controller.signal,
+                });
+            } catch (error) {
+                if (attempt === 0) {
+                    await new Promise((resolve) => setTimeout(resolve, 1500));
+                    continue;
+                }
+                throw error;
+            }
             const responseText = await response.text();
             console.info('[face-auth] face service response', {
                 path,
