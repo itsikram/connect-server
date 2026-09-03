@@ -453,6 +453,7 @@ exports.login = async (req, res, next) => {
             user_id: user._id,
             surname: user.surname,
             profile: user.profile,
+            faceLoginEnabled: Boolean(user.faceLoginEnabled),
             accessToken
         })
 
@@ -676,6 +677,7 @@ exports.googleSignIn = async (req, res, next) => {
                 user_id: user._id,
                 surname: user.surname,
                 profile: user.profile,
+                faceLoginEnabled: Boolean(user.faceLoginEnabled),
                 accessToken
             });
         } else {

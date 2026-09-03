@@ -14,7 +14,7 @@ const PROFILE_PRIVATE_EXCLUDE =
 const FRIEND_PUBLIC_FIELDS =
   "_id fullName displayName username nickname profilePic bio isActive lastActive lastLocation user";
 const USER_PUBLIC_FIELDS = "firstName surname";
-const USER_OWN_FIELDS = "firstName surname email";
+const USER_OWN_FIELDS = "firstName surname email faceLoginEnabled";
 const LITE_PROFILE_FIELDS =
   "_id fullName displayName username nickname profilePic coverPic bio isActive lastActive lastLocation blockedUsers friends friendReqs following followers user";
 

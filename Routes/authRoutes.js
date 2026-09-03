@@ -8,33 +8,37 @@ const faceLoginRateLimit = (req, res, next) => {
     const key = req.ip || req.socket.remoteAddress || 'unknown';
     const now = Date.now();
     const windowMs = 15 * 60 * 1000;
-    const maxAttempts = 5;
-    const recent = (faceLoginAttempts.get(key) || []).filter((timestamp) => now - timestamp < windowMs);
-
-    if (recent.length >= maxAttempts) {
-        return res.status(429).json({
-            success: false,
-            message: 'Too many face login attempts. Please try again later.',
-        });
-    }
-
-    recent.push(now);
-    faceLoginAttempts.set(key, recent);
+    const maxAttempts = 10;
     for (const [fingerprint, timestamp] of faceLoginFingerprints) {
         if (now - timestamp >= windowMs) faceLoginFingerprints.delete(fingerprint);
     }
     const frames = req.body?.frames;
-    if (Array.isArray(frames) && frames.length > 0) {
-        const crypto = require("crypto");
-        const fingerprint = crypto.createHash("sha256").update(JSON.stringify(frames)).digest("hex");
+    const crypto = require("crypto");
+    const fingerprint = Array.isArray(frames) && frames.length > 0
+        ? crypto.createHash("sha256").update(JSON.stringify(frames)).digest("hex")
+        : null;
+    if (fingerprint) {
         if (faceLoginFingerprints.has(fingerprint)) {
             return res.status(409).json({
                 success: false,
                 message: "This face capture has already been used. Please capture a new sequence.",
             });
         }
-        faceLoginFingerprints.set(fingerprint, now);
     }
+
+    const recent = (faceLoginAttempts.get(key) || []).filter((timestamp) => now - timestamp < windowMs);
+    if (recent.length >= maxAttempts) {
+        const retryAfterSeconds = Math.max(1, Math.ceil((windowMs - (now - recent[0])) / 1000));
+        res.set('Retry-After', String(retryAfterSeconds));
+        return res.status(429).json({
+            success: false,
+            message: `Too many face login attempts. Please try again in ${Math.ceil(retryAfterSeconds / 60)} minutes.`,
+        });
+    }
+
+    recent.push(now);
+    faceLoginAttempts.set(key, recent);
+    if (fingerprint) faceLoginFingerprints.set(fingerprint, now);
     next();
 };
 
