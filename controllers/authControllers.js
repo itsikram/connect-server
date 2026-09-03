@@ -22,45 +22,51 @@ const getFaceServiceUrl = () =>
 const FACE_SERVICE_TIMEOUT_MS = 60000;
 
 const callFaceService = async (path, payload) => {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), FACE_SERVICE_TIMEOUT_MS);
-    const startedAt = Date.now();
-
-    try {
-        console.info('[face-auth] calling face service', {
-            path,
-            frameCount: Array.isArray(payload?.frames) ? payload.frames.length : 0,
-        });
-        const headers = { 'Content-Type': 'application/json' };
-        if (process.env.FACE_SERVICE_API_KEY) {
-            headers['X-Face-Service-Key'] = process.env.FACE_SERVICE_API_KEY;
-        }
-        const response = await fetch(`${getFaceServiceUrl()}${path}`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(payload),
-            signal: controller.signal,
-        });
-        const responseText = await response.text();
-        console.info('[face-auth] face service response', {
-            path,
-            status: response.status,
-            contentType: response.headers.get('content-type'),
-            durationMs: Date.now() - startedAt,
-            bodyLength: responseText.length,
-        });
-        let data;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), FACE_SERVICE_TIMEOUT_MS);
+        const startedAt = Date.now();
         try {
-            data = responseText ? JSON.parse(responseText) : {};
-        } catch (parseError) {
-            const error = new Error(`Face service returned a non-JSON response (${response.status})`);
-            error.status = response.status;
-            error.serviceResponse = responseText.slice(0, 200);
-            throw error;
+            console.info('[face-auth] calling face service', {
+                path,
+                frameCount: Array.isArray(payload?.frames) ? payload.frames.length : 0,
+                attempt: attempt + 1,
+            });
+            const headers = { 'Content-Type': 'application/json' };
+            if (process.env.FACE_SERVICE_API_KEY) {
+                headers['X-Face-Service-Key'] = process.env.FACE_SERVICE_API_KEY;
+            }
+            const response = await fetch(`${getFaceServiceUrl()}${path}`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(payload),
+                signal: controller.signal,
+            });
+            const responseText = await response.text();
+            console.info('[face-auth] face service response', {
+                path,
+                status: response.status,
+                contentType: response.headers.get('content-type'),
+                durationMs: Date.now() - startedAt,
+                bodyLength: responseText.length,
+                attempt: attempt + 1,
+            });
+            let data;
+            try {
+                data = responseText ? JSON.parse(responseText) : {};
+            } catch (parseError) {
+                if (attempt === 0 && (response.status === 502 || response.status === 503 || response.status === 530)) {
+                    await new Promise((resolve) => setTimeout(resolve, 1500));
+                    continue;
+                }
+                const error = new Error(`Face service returned a non-JSON response (${response.status})`);
+                error.status = response.status;
+                throw error;
+            }
+            return { response, data };
+        } finally {
+            clearTimeout(timeout);
         }
-        return { response, data };
-    } finally {
-        clearTimeout(timeout);
     }
 };
 
