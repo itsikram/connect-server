@@ -178,41 +178,44 @@ module.exports = function messageSocket(io, socket, profileId) {
     }
   });
 
-  socket.on("reactMessage", async ({ messageId, profileId }) => {
-    let reactedMessage = await Message.findOneAndUpdate(
-      {
-        _id: messageId,
-        reacts: {
-          $nin: profileId,
-        },
-      },
-      {
-        $push: {
-          reacts: profileId,
-        },
-      },
-      { new: true },
-    );
-    if (reactedMessage) {
-      io.to(profileId).emit("messageReacted", messageId);
+  const reactionProfileId = (reaction) => String(reaction && reaction.profile ? reaction.profile : reaction || "");
+  const normalizeReactions = (reactions = []) => {
+    const seen = new Set();
+    return (Array.isArray(reactions) ? reactions : []).reduce((result, reaction) => {
+      const profile = reaction && reaction.profile ? reaction.profile : reaction;
+      const id = reactionProfileId(reaction);
+      if (!id || seen.has(id)) return result;
+      seen.add(id);
+      result.push({ profile, type: reaction && reaction.type ? reaction.type : "👍" });
+      return result;
+    }, []);
+  };
+  const updateReaction = async (messageId, reactType, remove, ack) => {
+    try {
+      const message = await Message.findById(messageId);
+      if (!message || ![String(message.senderId), String(message.receiverId)].includes(String(profileId))) {
+        if (typeof ack === "function") ack({ ok: false, error: "Message access denied" });
+        return;
+      }
+      const reactions = normalizeReactions(message.reacts)
+        .filter((reaction) => String(reaction.profile) !== String(profileId));
+      if (!remove) reactions.push({ profile: profileId, type: reactType || "👍" });
+      message.reacts = reactions;
+      await message.save();
+      const payload = { message: message.toObject(), reactions };
+      io.to(message.room).emit("messageReactionUpdated", payload);
+      // Also target both profile rooms so the reaction arrives when the other
+      // participant has not joined the chat room yet.
+      io.to(String(message.senderId)).emit("messageReactionUpdated", payload);
+      io.to(String(message.receiverId)).emit("messageReactionUpdated", payload);
+      if (typeof ack === "function") ack({ ok: true, ...payload });
+    } catch (error) {
+      console.error("Message reaction error:", error);
+      if (typeof ack === "function") ack({ ok: false, error: "Unable to update reaction" });
     }
-  });
-
-  socket.on("removeReactMessage", async ({ messageId, profileId }) => {
-    let removedReactedMessage = await Message.findOneAndUpdate(
-      { _id: messageId },
-      {
-        $pull: {
-          reacts: profileId,
-        },
-      },
-      { new: true },
-    );
-
-    if (removedReactedMessage) {
-      io.to(profileId).emit("messageReactRemoved", messageId);
-    }
-  });
+  };
+  socket.on("reactMessage", (data = {}, ack) => updateReaction(data.messageId, data.reactType, false, ack));
+  socket.on("removeReactMessage", (data = {}, ack) => updateReaction(data.messageId, null, true, ack));
 
   socket.on(
     "speak_message",

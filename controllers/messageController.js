@@ -4,65 +4,57 @@ const { sendChatMessageDataPush } = require('../utils/pushNotifications')
 const { listHasId } = require('../utils/ids')
 
 
+const reactionProfileId = (reaction) => String(reaction && reaction.profile ? reaction.profile : reaction || '');
+const normalizedReactions = (reactions = []) => {
+    const seen = new Set();
+    return (Array.isArray(reactions) ? reactions : []).reduce((result, reaction) => {
+        const profile = reaction && reaction.profile ? reaction.profile : reaction;
+        const id = reactionProfileId(reaction);
+        if (!id || seen.has(id)) return result;
+        seen.add(id);
+        result.push({ profile, type: reaction && reaction.type ? reaction.type : '👍' });
+        return result;
+    }, []);
+};
+
+const canAccessMessage = (message, profileId) =>
+    message && [String(message.senderId), String(message.receiverId)].includes(String(profileId));
+
+const emitReactionUpdate = (io, message) => {
+    if (!io || !message) return;
+    const payload = { message: message.toObject ? message.toObject() : message, reactions: normalizedReactions(message.reacts) };
+    io.to(message.room).emit('messageReactionUpdated', payload);
+    io.to(String(message.senderId)).emit('messageReactionUpdated', payload);
+    io.to(String(message.receiverId)).emit('messageReactionUpdated', payload);
+};
+
 exports.removeMessageReact = async (req, res, next) => {
     try {
-        let io = req.app.get('io')
-        let messageId = req.body.messageId
-        let myId = req.body.myId
-
-        let message = await Message.findOne({ _id: messageId })
-
-        if (message) {
-            let reactRemovedMessage = await Message.findOneAndUpdate({
-                _id: messageId
-            },{
-                $pull: {
-                    reacts: myId
-                }
-            },{new: true})
-
-            if(reactRemovedMessage) {
-                let receverId = message.receiverId == myId ? message.senderId : message.receiverId
-                io.to(receverId).emit('messageReactRemoved', messageId)
-
-                return res.json({message: 'Message React Removed'}).status(200)
-            }
-        }
-        return res.json({message: 'Message React Removing Failed'}).status(400)
-
-    } catch (error) {
-        next(error)
-    }
+        const profileId = req.profile && req.profile._id;
+        const { messageId } = req.body;
+        const message = await Message.findById(messageId);
+        if (!message) return res.status(404).json({ message: 'Message not found' });
+        if (!canAccessMessage(message, profileId)) return res.status(403).json({ message: 'Message access denied' });
+        message.reacts = normalizedReactions(message.reacts).filter((reaction) => String(reaction.profile) !== String(profileId));
+        await message.save();
+        emitReactionUpdate(req.app.get('io'), message);
+        return res.status(200).json({ message: 'Message React Removed', updatedMessage: message, reactions: message.reacts });
+    } catch (error) { next(error); }
 }
 exports.addMessageReact = async (req, res, next) => {
 
     try {
-        let io = req.app.get('io')
-        let messageId = req.body.messageId
-        let myId = req.body.myId
-
-        let message = await Message.findOne({ _id: messageId })
-
-        if (message) {
-            let reactedMessage = await Message.findOneAndUpdate({
-                _id: messageId, reacts: {
-                    $nin: myId
-                }
-            }, {
-                $push: {
-                    reacts: myId
-                }
-            }, { new: true })
-
-
-            if(reactedMessage) {
-                let receverId = message.receiverId == myId ? message.senderId : message.receiverId
-                io.to(receverId).emit('messageReacted', messageId)
-
-                return res.json({message: 'Message React Added'}).status(200)
-            }
-        }
-        return res.json({message: 'Message React Adding Failed'}).status(400)
+        const profileId = req.profile && req.profile._id;
+        const { messageId, reactType = '👍' } = req.body;
+        if (!reactType || typeof reactType !== 'string') return res.status(400).json({ message: 'Invalid reaction type' });
+        const message = await Message.findById(messageId);
+        if (!message) return res.status(404).json({ message: 'Message not found' });
+        if (!canAccessMessage(message, profileId)) return res.status(403).json({ message: 'Message access denied' });
+        message.reacts = normalizedReactions(message.reacts).filter((reaction) => String(reaction.profile) !== String(profileId));
+        message.reacts.push({ profile: profileId, type: reactType });
+        await message.save();
+        emitReactionUpdate(req.app.get('io'), message);
+        return res.status(200).json({ message: 'Message React Added', updatedMessage: message, reactions: message.reacts });
 
     } catch (error) {
         next(error)
@@ -534,9 +526,12 @@ exports.getMessageReactions = async (req, res, next) => {
         if (!message) {
             return res.status(404).json({ reactions: [] });
         }
+        if (!canAccessMessage(message, req.profile && req.profile._id)) {
+            return res.status(403).json({ reactions: [] });
+        }
         
         return res.status(200).json({
-            reactions: message.reacts || []
+            reactions: normalizedReactions(message.reacts)
         });
         
     } catch (error) {
@@ -680,4 +675,3 @@ exports.sendBump = async (req, res, next) => {
         next(error);
     }
 };
-

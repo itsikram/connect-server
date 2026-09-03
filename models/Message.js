@@ -16,11 +16,9 @@ const messageSchema = new Schema({
         ref: 'Message',
     },
     attachment: String,
-    reacts: [{
-        type: Schema.Types.ObjectId,
-        ref: Profile
-
-    }],
+    // Mixed keeps old bare profile ObjectIds readable while allowing
+    // { profile, type } reaction records going forward.
+    reacts: [Schema.Types.Mixed],
     tempId: String,
     isSeen: {
         type: Boolean,
