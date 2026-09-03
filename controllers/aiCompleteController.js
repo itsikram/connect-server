@@ -13,6 +13,13 @@ const {
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const GROK_URL = "https://api.x.ai/v1/chat/completions";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const parseProviderKeys = (value = "") =>
+  [...new Set(String(value || "").split(/[,\r\n]+/).map(key => key.trim()).filter(Boolean))];
+const isRateLimitError = (status, data, error) => {
+  const message = String(data?.error?.message || data?.message || error?.message || "").toLowerCase();
+  return status === 429 ||
+    /rate limit|rate_limit|too many requests|quota|resource exhausted/.test(message);
+};
 
 const logAiResponse = ({ provider, model, response, text, toolCalls = [] }) => {
   if (process.env.NODE_ENV === "production") return;
@@ -89,7 +96,7 @@ const extractOpenAiText = (data) =>
     data?.choices?.[0]?.message?.content || data?.choices?.[0]?.text || "",
   ).trim();
 
-const completeOpenAi = async ({
+const completeOpenAiWithKey = async ({
   apiKey,
   model,
   system,
@@ -104,6 +111,21 @@ const completeOpenAi = async ({
   const headers = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${apiKey}`,
+  };
+
+  const completeOpenAi = async (options) => {
+    const keys = parseProviderKeys(options.apiKey);
+    let lastError;
+    for (const apiKey of keys) {
+      try {
+        return await completeOpenAiWithKey({ ...options, apiKey });
+      } catch (error) {
+        lastError = error;
+        if (!isRateLimitError(error.status || error.response?.status, error.response?.data, error) ||
+            keys.indexOf(apiKey) === keys.length - 1) throw error;
+      }
+    }
+    throw lastError || new Error("AI request failed");
   };
 
   const body = {
@@ -691,7 +713,7 @@ const readAxiosSse = async (stream, onEvent) => {
   if (buffer.trim()) processPart(buffer);
 };
 
-const streamOpenAi = async ({
+const streamOpenAiWithKey = async ({
   apiKey,
   model,
   system,
@@ -708,6 +730,21 @@ const streamOpenAi = async ({
   const headers = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${apiKey}`,
+  };
+
+  const streamOpenAi = async (options) => {
+    const keys = parseProviderKeys(options.apiKey);
+    let lastError;
+    for (const apiKey of keys) {
+      try {
+        return await streamOpenAiWithKey({ ...options, apiKey });
+      } catch (error) {
+        lastError = error;
+        if (!isRateLimitError(error.status || error.response?.status, error.response?.data, error) ||
+            keys.indexOf(apiKey) === keys.length - 1) throw error;
+      }
+    }
+    throw lastError || new Error("AI request failed");
   };
   const body = {
     model,
