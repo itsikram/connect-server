@@ -522,6 +522,13 @@ async function sendFcmChatMulticast(fcmTokens, { title, body, data }) {
   try {
     const res = await admin.messaging().sendEachForMulticast({
       tokens: fcmTokens,
+      // Keep the notification at the top level as well as in the Android
+      // config. This is the canonical FCM display payload and lets Android
+      // render the notification when the app process was swiped away.
+      notification: {
+        title: title || 'Message',
+        body: body || ' ',
+      },
       data,
       android: {
         priority: 'high',
@@ -762,4 +769,3 @@ async function sendChatMessageDataPush(receiverId, payload) {
 module.exports.sendDataPushToTokens = sendDataPushToTokens;
 module.exports.sendDataPushToProfile = sendDataPushToProfile;
 module.exports.sendChatMessageDataPush = sendChatMessageDataPush;
-
