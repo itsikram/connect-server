@@ -16,7 +16,8 @@ const SECRET_KEY = process.env.JWT_SECRET_KEY;
 const deleteUserData = require('../utils/deleteUserData')
 const sendEmailNotification = require('../utils/sendEmailNotification');
 
-const FACE_SERVICE_URL = (process.env.FACE_SERVICE_URL || 'http://localhost:5001').replace(/\/+$/, '');
+const getFaceServiceUrl = () =>
+    (process.env.FACE_SERVICE_URL || 'http://localhost:5001').replace(/\/+$/, '');
 const FACE_SERVICE_TIMEOUT_MS = 60000;
 
 const callFaceService = async (path, payload) => {
@@ -29,9 +30,13 @@ const callFaceService = async (path, payload) => {
             path,
             frameCount: Array.isArray(payload?.frames) ? payload.frames.length : 0,
         });
-        const response = await fetch(`${FACE_SERVICE_URL}${path}`, {
+        const headers = { 'Content-Type': 'application/json' };
+        if (process.env.FACE_SERVICE_API_KEY) {
+            headers['X-Face-Service-Key'] = process.env.FACE_SERVICE_API_KEY;
+        }
+        const response = await fetch(`${getFaceServiceUrl()}${path}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers,
             body: JSON.stringify(payload),
             signal: controller.signal,
         });

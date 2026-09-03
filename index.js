@@ -45,6 +45,10 @@ const {
   getCobaltConfig,
   applyCobaltUrl,
 } = require("./utils/cobaltTunnelSync");
+const {
+  getFaceServiceConfig,
+  applyFaceServiceUrl,
+} = require("./utils/faceServiceSync");
 
 const normalizeMultilineEnv = (value = "") =>
   String(value).replace(/\\n/g, "\n");
@@ -545,6 +549,30 @@ app.post("/api/youtube/cobalt-url", (req, res) => {
   }
 
   return res.json({ ok: true, ...getCobaltConfig() });
+});
+
+app.get("/api/face-service-config", (req, res) => {
+  res.json(getFaceServiceConfig());
+});
+
+app.post("/api/face-service-url", (req, res) => {
+  const expectedSecret = String(
+    process.env.FACE_SYNC_SECRET || process.env.COBALT_SYNC_SECRET || process.env.COBALT_API_KEY || "",
+  ).trim();
+  const incomingSecret = String(
+    req.headers["x-face-sync-secret"] || req.headers.authorization || req.body?.secret || "",
+  )
+    .replace(/^Bearer\s+/i, "")
+    .replace(/^Api-Key\s+/i, "")
+    .trim();
+
+  if (expectedSecret && incomingSecret !== expectedSecret) {
+    return res.status(401).json({ ok: false, error: "Invalid face sync secret" });
+  }
+
+  const result = applyFaceServiceUrl(req.body?.url || req.query?.url, "home-face-sync");
+  if (!result.ok) return res.status(400).json({ ok: false, error: result.error });
+  return res.json(result);
 });
 
 attachPeerRelayRoute(app, io);
