@@ -187,6 +187,13 @@ exports.postBlockFrnd = async (req, res, next) => {
 
 exports.getBlockStatus = async (req, res, next) => {
   try {
+    // Block state is user-specific and must not be served from a cached ETag.
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+    });
+
     const friendId = req.query.friendId || req.body.friendId;
     const myId = req.profile?._id;
     if (!friendId || !mongoose.Types.ObjectId.isValid(String(friendId))) {

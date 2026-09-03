@@ -203,7 +203,7 @@ const GEMINI_AGENT_TOOLS = [
     functionDeclarations: [
       {
         name: "navigate",
-        description: "Navigate to a registered Connect screen.",
+        description: "Navigate to a registered Connect screen. Use exact routes: Home, Friends, Videos, Message, Menu, or Tasks. For messages use Message; for the current user's profile use navigate_profile.",
         parameters: {
           type: "OBJECT",
           properties: {
@@ -245,7 +245,7 @@ const GEMINI_AGENT_TOOLS = [
       },
       {
         name: "send_message",
-        description: "Send a message to a resolved user. This is sensitive.",
+        description: "Send a message to a resolved Connect user. Understand English, Bangla, and Banglish recipient requests (for example, 'message Atik and say call me when available' or 'Atik ke message dao'). Put only the intended message body in messageText; translate it to the user's requested language when they explicitly ask. This is sensitive.",
         parameters: {
           type: "OBJECT",
           properties: {
@@ -324,7 +324,7 @@ const GEMINI_AGENT_TOOLS = [
       },
       {
         name: "search_video",
-        description: "Search registered video sources.",
+        description: "Search registered Connect watch videos by caption. Use this before play_video when the user names a video instead of providing an ID.",
         parameters: {
           type: "OBJECT",
           properties: { query: { type: "STRING" } },
@@ -333,11 +333,50 @@ const GEMINI_AGENT_TOOLS = [
       },
       {
         name: "play_video",
-        description: "Play a selected registered video.",
+        description: "Play a selected registered video by its exact videoId returned by search_video.",
         parameters: {
           type: "OBJECT",
           properties: { videoId: { type: "STRING" } },
           required: ["videoId"],
+        },
+      },
+      {
+        name: "view_tasks",
+        description: "Open the user's Tasks screen to view their tasks.",
+        parameters: { type: "OBJECT", properties: {} },
+      },
+      {
+        name: "create_task",
+        description: "Create a task for the authenticated user.",
+        parameters: {
+          type: "OBJECT",
+          properties: { text: { type: "STRING", description: "Task text." } },
+          required: ["text"],
+        },
+      },
+      {
+        name: "update_task",
+        description: "Edit or complete an existing task. Provide taskId when known, otherwise provide taskQuery matching the task text.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            taskId: { type: "STRING" },
+            taskQuery: { type: "STRING", description: "Unique text fragment identifying the task." },
+            text: { type: "STRING" },
+            completed: { type: "BOOLEAN" },
+          },
+        },
+      },
+      {
+        name: "create_auto_reply_rule",
+        description: "When the user explicitly asks you to remember an automatic reply rule, save it. On a future incoming message from that person, the app will send the specified reply. Understand English, Bangla, and Banglish instructions.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            triggerUserName: { type: "STRING", description: "Friend whose incoming messages trigger the reply." },
+            replyText: { type: "STRING", description: "Exact reply to send." },
+          },
+          required: ["triggerUserName", "replyText"],
         },
       },
     ],

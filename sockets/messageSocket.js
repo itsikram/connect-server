@@ -218,7 +218,15 @@ module.exports = function messageSocket(io, socket, profileId) {
     "speak_message",
     async ({ msgId, friendId, message, attachment, messageType } = {}) => {
       try {
-        if (!friendId) return;
+        const targetProfileId = friendId ? String(friendId) : "";
+        const senderProfileId = profileId ? String(profileId) : "";
+        if (!targetProfileId || !senderProfileId) return;
+        if (targetProfileId === senderProfileId) {
+          console.warn(
+            `Ignoring self-targeted speak_message request from ${senderProfileId}`,
+          );
+          return;
+        }
 
         const isAudioAttachmentUrl = (url) => {
           if (!url || typeof url !== "string") return false;
@@ -274,11 +282,15 @@ module.exports = function messageSocket(io, socket, profileId) {
         };
 
         // Emit over socket for online clients (web/android).
-        io.to(String(friendId)).emit("speak_message", speakPayload);
+        io.to(targetProfileId).emit("speak_message", {
+          ...speakPayload,
+          senderId: senderProfileId,
+          targetProfileId,
+        });
 
         // Also send a data-only FCM push.
         try {
-          await sendDataPushToProfile(String(friendId), {
+          await sendDataPushToProfile(targetProfileId, {
             type: "speak_message",
             messageType: speakPayload.messageType,
             message: speakPayload.message,
