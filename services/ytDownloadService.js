@@ -178,6 +178,13 @@ const isValidYouTubeUrl = (url) =>
   url.includes("youtube.com") ||
   url.includes("youtu.be");
 
+const extractYouTubeVideoId = (url) => {
+  const match = String(url || "").match(
+    /(?:youtube\.com\/(?:watch\?.*v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/,
+  );
+  return match ? match[1] : null;
+};
+
 const downloadToFileYtdlCore = (info, format, filePath, agent, onProgress) =>
   new Promise((resolve, reject) => {
     const stream = ytdl.downloadFromInfo(info, {
@@ -756,13 +763,6 @@ const searchYouTubeVideos = async (query, maxResults = 12) => {
             thumbs.default?.url ||
             `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
           url: `https://www.youtube.com/watch?v=${videoId}`,
-        };
-
-        const extractYouTubeVideoId = (url) => {
-          const match = String(url || "").match(
-            /(?:youtube\.com\/(?:watch\?.*v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/,
-          );
-          return match ? match[1] : null;
         };
       });
 
