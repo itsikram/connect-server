@@ -617,6 +617,48 @@ exports.deleteMessage = async (req, res, next) => {
     }
 };
 
+exports.deleteConversation = async (req, res, next) => {
+    try {
+        const profileId = String(req.profile?._id || '');
+        const friendId = req.body?.friendId;
+
+        if (!profileId || !friendId) {
+            return res.status(400).json({ message: 'Profile ID and friend ID are required' });
+        }
+
+        const conversationQuery = {
+            $or: [
+                { senderId: profileId, receiverId: String(friendId) },
+                { senderId: String(friendId), receiverId: profileId },
+            ],
+        };
+
+        const result = await Message.deleteMany(conversationQuery);
+
+        const io = req.app.get('io');
+        if (io) {
+            io.to(profileId).emit('conversationDeleted', {
+                profileId,
+                friendId: String(friendId),
+                deletedCount: result.deletedCount || 0,
+            });
+            io.to(String(friendId)).emit('conversationDeleted', {
+                profileId: String(friendId),
+                friendId: profileId,
+                deletedCount: result.deletedCount || 0,
+            });
+        }
+
+        return res.status(200).json({
+            message: 'Conversation deleted successfully',
+            deletedCount: result.deletedCount || 0,
+        });
+    } catch (error) {
+        console.error('Error deleting conversation:', error);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
 exports.sendBump = async (req, res, next) => {
     try {
         const io = req.app.get('io');

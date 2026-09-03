@@ -3,6 +3,7 @@ const {signUp,login,googleSignIn,changePass,deleteAccount,changeEmail,forgotPass
 const isAuth = require('../middlewares/isAuth')
 
 const faceLoginAttempts = new Map();
+const faceLoginFingerprints = new Map();
 const faceLoginRateLimit = (req, res, next) => {
     const key = req.ip || req.socket.remoteAddress || 'unknown';
     const now = Date.now();
@@ -19,6 +20,21 @@ const faceLoginRateLimit = (req, res, next) => {
 
     recent.push(now);
     faceLoginAttempts.set(key, recent);
+    for (const [fingerprint, timestamp] of faceLoginFingerprints) {
+        if (now - timestamp >= windowMs) faceLoginFingerprints.delete(fingerprint);
+    }
+    const frames = req.body?.frames;
+    if (Array.isArray(frames) && frames.length > 0) {
+        const crypto = require("crypto");
+        const fingerprint = crypto.createHash("sha256").update(JSON.stringify(frames)).digest("hex");
+        if (faceLoginFingerprints.has(fingerprint)) {
+            return res.status(409).json({
+                success: false,
+                message: "This face capture has already been used. Please capture a new sequence.",
+            });
+        }
+        faceLoginFingerprints.set(fingerprint, now);
+    }
     next();
 };
 

@@ -56,13 +56,30 @@ exports.postFrndReq = async (req, res, next) => {
       });
     }
 
-    const updated = await Profile.findByIdAndUpdate(
-      frndProfile._id,
+    const updated = await Profile.findOneAndUpdate(
+      {
+        _id: frndProfile._id,
+        friendReqs: { $ne: myProfile._id },
+      },
       { $addToSet: { friendReqs: myProfile._id } },
       { new: true, select: "_id friendReqs" },
     );
 
-    if (!updated || !listHasId(updated.friendReqs, myProfile._id)) {
+    if (!updated) {
+      const currentRequest = await Profile.exists({
+        _id: frndProfile._id,
+        friendReqs: myProfile._id,
+      });
+      if (currentRequest) {
+        return res.json({
+          message: "Already Requested",
+          alreadyRequested: true,
+        });
+      }
+      return res.status(500).json({ message: "Failed to send friend request" });
+    }
+
+    if (!listHasId(updated.friendReqs, myProfile._id)) {
       return res.status(500).json({ message: "Failed to send friend request" });
     }
 
@@ -238,8 +255,9 @@ exports.postUnblockFrnd = async (req, res, next) => {
 exports.getFrndReq = async (req, res, next) => {
   try {
     let myProfile = req.profile;
-    let profile = req.query.profile;
-    let myProfileReqsId = myProfile.friendReqs;
+    let myProfileReqsId = [
+      ...new Set((myProfile.friendReqs || []).map((id) => String(id))),
+    ];
     let getFrndReqsInfo = await Profile.find({
       _id: myProfileReqsId,
     })
@@ -289,7 +307,15 @@ exports.getProfileFrnd = async (req, res, next) => {
         },
       });
 
-    let friendsData = friendProfile?.friends || [];
+    const friendsData = [];
+    const seenFriendIds = new Set();
+    for (const friend of friendProfile?.friends || []) {
+      const friendId = String(friend?._id || "");
+      if (friendId && !seenFriendIds.has(friendId)) {
+        seenFriendIds.add(friendId);
+        friendsData.push(friend);
+      }
+    }
     res.json(friendsData);
   } catch (error) {
     next(error);
@@ -320,47 +346,45 @@ exports.postFrndAccept = async (req, res, next) => {
 
     let myProfile = req.profile;
     let io = req.app.get("io");
-    let updateFrndProfile = await Profile.findOneAndUpdate(
+    if (!profile || !mongoose.Types.ObjectId.isValid(profile)) {
+      return res.status(400).json({ message: "Invalid or missing profile id" });
+    }
+
+    const friendProfile = await Profile.findById(profile);
+    if (!friendProfile) {
+      return res.status(404).json({ message: "Profile not found" });
+    }
+
+    const acceptedRequest = await Profile.findOneAndUpdate(
       {
-        _id: profile,
-        friends: {
-          $ne: myProfile._id,
-        },
+        _id: myProfile._id,
+        friendReqs: profile,
       },
+      { $pull: { friendReqs: profile } },
+      { new: true, select: "_id" },
+    );
+    if (!acceptedRequest) {
+      return res.status(409).json({ message: "Friend request is no longer pending" });
+    }
+
+    let updateFrndProfile = await Profile.findOneAndUpdate(
+      { _id: profile },
       {
-        $push: {
+        $addToSet: {
           friends: myProfile._id,
         },
       },
     );
     let updateMyProfile = await Profile.findByIdAndUpdate(
+      { _id: myProfile._id },
       {
-        _id: myProfile._id,
-        friends: {
-          $ne: profile,
-        },
-      },
-      {
-        $push: {
+        $addToSet: {
           friends: profile,
         },
       },
     );
 
-    let updateFrnd = await Profile.findOneAndUpdate(
-      {
-        _id: myProfile._id,
-      },
-      {
-        $pull: {
-          friendReqs: profile,
-        },
-      },
-      { new: true },
-    );
-
     // Get the friend's profile to access browser IDs
-    const friendProfile = await Profile.findById(profile);
     const activeBrowserIds =
       friendProfile?.browserIds
         ?.filter((browser) => browser.isActive)

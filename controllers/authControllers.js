@@ -47,7 +47,6 @@ const callFaceService = async (path, payload) => {
             contentType: response.headers.get('content-type'),
             durationMs: Date.now() - startedAt,
             bodyLength: responseText.length,
-            bodyPreview: responseText.slice(0, 300),
         });
         let data;
         try {
@@ -467,6 +466,12 @@ exports.faceRegister = async (req, res, next) => {
             message: `At least 15 camera frames are required (received ${Array.isArray(frames) ? frames.length : 0})`,
         });
     }
+    if (frames.length > 40 || frames.some((frame) => typeof frame !== "string" || frame.length > 1000000)) {
+        return res.status(400).json({
+            success: false,
+            message: "Face capture is too large or contains an invalid frame.",
+        });
+    }
 
     try {
         const { response, data } = await callFaceService('/api/face/register', {
@@ -522,6 +527,12 @@ exports.faceLogin = async (req, res, next) => {
         return res.status(400).json({
             success: false,
             message: `At least 15 camera frames are required (received ${Array.isArray(frames) ? frames.length : 0})`,
+        });
+    }
+    if (frames.length > 40 || frames.some((frame) => typeof frame !== "string" || frame.length > 1000000)) {
+        return res.status(400).json({
+            success: false,
+            message: "Face capture is too large or contains an invalid frame.",
         });
     }
 

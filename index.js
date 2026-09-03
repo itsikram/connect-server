@@ -559,6 +559,9 @@ app.post("/api/face-service-url", (req, res) => {
   const expectedSecret = String(
     process.env.FACE_SYNC_SECRET || process.env.COBALT_SYNC_SECRET || process.env.COBALT_API_KEY || "",
   ).trim();
+  if (!expectedSecret) {
+    return res.status(503).json({ ok: false, error: "Face sync is not configured" });
+  }
   const incomingSecret = String(
     req.headers["x-face-sync-secret"] || req.headers.authorization || req.body?.secret || "",
   )
@@ -566,11 +569,22 @@ app.post("/api/face-service-url", (req, res) => {
     .replace(/^Api-Key\s+/i, "")
     .trim();
 
-  if (expectedSecret && incomingSecret !== expectedSecret) {
+  if (incomingSecret.length !== expectedSecret.length ||
+      !require("crypto").timingSafeEqual(Buffer.from(incomingSecret), Buffer.from(expectedSecret))) {
     return res.status(401).json({ ok: false, error: "Invalid face sync secret" });
   }
 
-  const result = applyFaceServiceUrl(req.body?.url || req.query?.url, "home-face-sync");
+  const rawUrl = String(req.body?.url || req.query?.url || "").trim();
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(rawUrl);
+  } catch {
+    return res.status(400).json({ ok: false, error: "Face service URL must be a valid HTTPS URL" });
+  }
+  if (parsedUrl.protocol !== "https:") {
+    return res.status(400).json({ ok: false, error: "Face service URL must use HTTPS" });
+  }
+  const result = applyFaceServiceUrl(parsedUrl.toString(), "home-face-sync");
   if (!result.ok) return res.status(400).json({ ok: false, error: result.error });
   return res.json(result);
 });
