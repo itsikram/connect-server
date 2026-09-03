@@ -58,7 +58,7 @@ exports.testAdminAiProvider = async (req, res) => {
     const typedKey = String(req.body?.apiKey || "").trim();
     const model = String(req.body?.model || "").trim();
 
-    if (!["gemini", "openai", "cursor"].includes(provider)) {
+    if (!["gemini", "openai", "cursor", "grok", "groq"].includes(provider)) {
       return res.status(400).json({ message: "Unknown provider" });
     }
 
@@ -97,11 +97,15 @@ exports.testAdminAiProvider = async (req, res) => {
       });
     }
 
-    if (provider === "openai") {
+    if (provider === "openai" || provider === "grok" || provider === "groq") {
       const response = await axios.post(
-        OPENAI_URL,
+        provider === "grok"
+          ? "https://api.x.ai/v1/chat/completions"
+          : provider === "groq"
+            ? "https://api.groq.com/openai/v1/chat/completions"
+            : OPENAI_URL,
         {
-          model: resolvedModel || "gpt-4o-mini",
+          model: resolvedModel || (provider === "groq" ? "openai/gpt-oss-20b" : "gpt-4o-mini"),
           messages: [
             { role: "system", content: "Reply with the single word OK." },
             { role: "user", content: "ping" },
@@ -121,7 +125,7 @@ exports.testAdminAiProvider = async (req, res) => {
       if (response.status >= 400) {
         const message =
           response.data?.error?.message ||
-          `OpenAI failed with HTTP ${response.status}`;
+          `${provider === "grok" ? "Grok" : provider === "groq" ? "Groq" : "OpenAI"} failed with HTTP ${response.status}`;
         return res.status(response.status).json({ message });
       }
       const text = String(

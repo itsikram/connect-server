@@ -570,7 +570,8 @@ async function sendFcmChatMulticast(fcmTokens, { title, body, data }) {
 }
 
 /**
- * New chat message push: Expo tokens get title/body via Expo API; FCM tokens get Android data-only + iOS alert.
+ * New chat message push: Expo tokens get title/body via Expo API; FCM tokens
+ * get a visible Android notification plus data for tap navigation.
  * @param {string[]} tokens
  * @param {{ title: string, body: string, data: Record<string, string> }} opts
  */

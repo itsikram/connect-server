@@ -95,9 +95,10 @@ exports.getMedia = async(req,res,next) => {
 }
 
 exports.getChatList = async(req,res,next) => {
-    // Set a timeout for the entire operation
+    let timedOut = false;
     const timeout = setTimeout(() => {
         if (!res.headersSent) {
+            timedOut = true;
             res.status(408).json({ message: 'Request timeout' });
         }
     }, 8000); // 8 second timeout
@@ -113,13 +114,15 @@ exports.getChatList = async(req,res,next) => {
                 { $match: { senderId: profileIdStr } },
                 { $sort: { timestamp: -1 } },
                 { $group: { _id: '$receiverId', lastMessage: { $first: '$$ROOT' } } },
-            ]),
+            ]).option({ maxTimeMS: 7500 }),
             Message.aggregate([
                 { $match: { receiverId: profileIdStr } },
                 { $sort: { timestamp: -1 } },
                 { $group: { _id: '$senderId', lastMessage: { $first: '$$ROOT' } } },
-            ]),
+            ]).option({ maxTimeMS: 7500 }),
         ]);
+
+        if (timedOut || res.headersSent) return;
 
         const lastMessagesByPeer = new Map();
         const consider = (otherId, msg) => {
@@ -141,6 +144,8 @@ exports.getChatList = async(req,res,next) => {
                 select: '_id fullName displayName username nickname profilePic isActive lastActive user',
                 populate: { path: 'user', select: 'firstName surname' },
             });
+
+        if (timedOut || res.headersSent) return;
         
         if (!myProfile) {
             clearTimeout(timeout);
@@ -187,9 +192,8 @@ exports.getChatList = async(req,res,next) => {
     } catch (error) {
         clearTimeout(timeout);
         console.error('Error in getChatList:', error);
-        if (!res.headersSent) {
-            return next(error);
-        }
+        if (timedOut || res.headersSent) return;
+        return next(error);
     }
 }
 exports.getChatHistory = async(req,res,next) => {
@@ -676,5 +680,4 @@ exports.sendBump = async (req, res, next) => {
         next(error);
     }
 };
-
 

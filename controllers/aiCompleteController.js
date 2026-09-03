@@ -11,6 +11,8 @@ const {
 } = require("../utils/aiSettingsStore");
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+const GROK_URL = "https://api.x.ai/v1/chat/completions";
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 const publicErrorMessage = (error) => {
   const fromApi =
@@ -52,6 +54,9 @@ const completeOpenAi = async ({
   json,
   temperature,
   maxTokens,
+  endpoint = OPENAI_URL,
+  providerLabel = "ChatGPT",
+  useTools = false,
 }) => {
   const headers = {
     "Content-Type": "application/json",
@@ -64,8 +69,12 @@ const completeOpenAi = async ({
     temperature,
   };
 
-  if (json) {
+  if (json && !useTools) {
     body.response_format = { type: "json_object" };
+  }
+  if (useTools) {
+    body.tools = OPENAI_AGENT_TOOLS;
+    body.tool_choice = "auto";
   }
 
   if (usesCompletionTokens(model)) {
@@ -75,7 +84,7 @@ const completeOpenAi = async ({
   }
 
   const timeout = json ? 12000 : 20000;
-  const response = await axios.post(OPENAI_URL, body, {
+  const response = await axios.post(endpoint, body, {
     headers,
     timeout,
     validateStatus: () => true,
@@ -87,9 +96,12 @@ const completeOpenAi = async ({
     throw error;
   }
 
-  const text = extractOpenAiText(response.data);
+  const text =
+    (useTools &&
+      openAiToolCallIntent(response.data?.choices?.[0]?.message?.tool_calls)) ||
+    extractOpenAiText(response.data);
   if (!text) {
-    throw new Error("ChatGPT returned an empty reply");
+    throw new Error(`${providerLabel} returned an empty reply`);
   }
   return text;
 };
@@ -121,6 +133,229 @@ const isGeminiQuotaError = (status, data) => {
     message.includes("rate limit") ||
     message.includes("resource exhausted")
   );
+};
+
+const GEMINI_AGENT_TOOLS = [
+  {
+    functionDeclarations: [
+      {
+        name: "navigate",
+        description: "Navigate to a registered Connect screen.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            route: { type: "STRING", description: "Registered screen route." },
+          },
+          required: ["route"],
+        },
+      },
+      {
+        name: "search_users",
+        description: "Search Connect users by name. Never invent a user ID.",
+        parameters: {
+          type: "OBJECT",
+          properties: { query: { type: "STRING" } },
+          required: ["query"],
+        },
+      },
+      {
+        name: "view_profile",
+        description: "Open a user's profile using a resolved ID or name.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            userId: { type: "STRING" },
+            userName: { type: "STRING" },
+          },
+        },
+      },
+      {
+        name: "open_chat",
+        description: "Open a conversation with a resolved user.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            userId: { type: "STRING" },
+            userName: { type: "STRING" },
+          },
+        },
+      },
+      {
+        name: "send_message",
+        description: "Send a message to a resolved user. This is sensitive.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            userId: { type: "STRING" },
+            userName: { type: "STRING" },
+            messageText: { type: "STRING" },
+          },
+          required: ["messageText"],
+        },
+      },
+      {
+        name: "start_audio_call",
+        description: "Start an audio call with a resolved user. This is sensitive.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            userId: { type: "STRING" },
+            userName: { type: "STRING" },
+          },
+        },
+      },
+      {
+        name: "start_video_call",
+        description: "Start a video call with a resolved user. This is sensitive.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            userId: { type: "STRING" },
+            userName: { type: "STRING" },
+          },
+        },
+      },
+      {
+        name: "follow_user",
+        description: "Follow a resolved Connect user. This is sensitive.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            userId: { type: "STRING" },
+            userName: { type: "STRING" },
+          },
+        },
+      },
+      {
+        name: "unfollow_user",
+        description: "Unfollow a resolved Connect user. This is sensitive.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            userId: { type: "STRING" },
+            userName: { type: "STRING" },
+          },
+        },
+      },
+      {
+        name: "block_user",
+        description: "Block a resolved Connect user. This is sensitive.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            userId: { type: "STRING" },
+            userName: { type: "STRING" },
+          },
+        },
+      },
+      {
+        name: "unblock_user",
+        description: "Unblock a resolved Connect user. This is sensitive.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            userId: { type: "STRING" },
+            userName: { type: "STRING" },
+          },
+        },
+      },
+      {
+        name: "search_video",
+        description: "Search registered video sources.",
+        parameters: {
+          type: "OBJECT",
+          properties: { query: { type: "STRING" } },
+          required: ["query"],
+        },
+      },
+      {
+        name: "play_video",
+        description: "Play a selected registered video.",
+        parameters: {
+          type: "OBJECT",
+          properties: { videoId: { type: "STRING" } },
+          required: ["videoId"],
+        },
+      },
+    ],
+  },
+];
+
+const functionCallIntent = (parts) => {
+  const actions = (parts || [])
+    .map((part) => part?.functionCall)
+    .filter(Boolean)
+    .map((call, index) => {
+      const parameters =
+        call.args && typeof call.args === "object" ? { ...call.args } : {};
+      if (parameters.messageText && !parameters.message) {
+        parameters.message = parameters.messageText;
+      }
+      return {
+        id: `gemini-${index + 1}`,
+        action: String(call.name || "").toUpperCase(),
+        status: "pending",
+        parameters,
+      };
+    });
+  return actions.length
+    ? JSON.stringify({
+        type: "action",
+        message: "ঠিক আছে, কাজটি করছি।",
+        speak: true,
+        requires_confirmation: false,
+        actions,
+      })
+    : "";
+};
+
+const OPENAI_AGENT_TOOLS = GEMINI_AGENT_TOOLS[0].functionDeclarations.map(
+  (declaration) => ({
+    type: "function",
+    function: {
+      name: declaration.name,
+      description: declaration.description,
+      parameters: {
+        type: "object",
+        properties: Object.fromEntries(
+          Object.entries(declaration.parameters?.properties || {}).map(
+            ([name, value]) => [name, { ...value, type: String(value.type).toLowerCase() }],
+          ),
+        ),
+        ...(declaration.parameters?.required
+          ? { required: declaration.parameters.required }
+          : {}),
+      },
+    },
+  }),
+);
+
+const openAiToolCallIntent = (toolCalls = []) => {
+  const actions = toolCalls.filter((call) => call?.function?.name).map((call, index) => {
+    let parameters = {};
+    try {
+      const parsed = JSON.parse(call.function.arguments || "{}");
+      if (parsed && typeof parsed === "object") parameters = parsed;
+    } catch (_) {}
+    if (parameters.messageText && !parameters.message) {
+      parameters.message = parameters.messageText;
+    }
+    return {
+      id: `groq-${index + 1}`,
+      action: String(call.function.name).toUpperCase(),
+      status: "pending",
+      parameters,
+    };
+  });
+  return actions.length
+    ? JSON.stringify({
+        type: "action",
+        message: "Okay, I’m working on that.",
+        speak: true,
+        requires_confirmation: false,
+        actions,
+      })
+    : "";
 };
 
 const completeGemini = async ({
@@ -155,13 +390,14 @@ const completeGemini = async ({
   const requestBody = {
     systemInstruction: system ? { parts: [{ text: system }] } : undefined,
     contents,
+    tools: GEMINI_AGENT_TOOLS,
     generationConfig: {
       temperature,
       topK: json ? 4 : 12,
       topP: json ? 0.6 : 0.8,
       maxOutputTokens: json ? Math.min(maxTokens, 160) : Math.min(maxTokens, 220),
       candidateCount: 1,
-      ...(json ? { responseMimeType: "application/json" } : {}),
+      ...(!json ? {} : {}),
       ...(/gemini-(2\.5|3)/i.test(String(model))
         ? { thinkingConfig: { thinkingBudget: 0 } }
         : {}),
@@ -178,7 +414,8 @@ const completeGemini = async ({
       { timeout: json ? 8000 : 16000, validateStatus: () => true },
     );
     if (response.status < 400) {
-      const text = extractGeminiText(response.data);
+      const parts = response.data?.candidates?.[0]?.content?.parts || [];
+      const text = functionCallIntent(parts) || extractGeminiText(response.data);
       if (!text) throw new Error("Gemini returned an empty reply");
       return text;
     }
@@ -216,6 +453,8 @@ exports.getAiProviders = async (req, res) => {
       configured: status.configured.cursor,
       models,
     },
+    grok: { configured: status.configured.grok },
+    groq: { configured: status.configured.groq },
   });
 };
 
@@ -232,9 +471,9 @@ exports.completeAiChat = async (req, res) => {
     const maxTokens = Number(req.body?.maxTokens) || 1024;
     const userId = String(req.profile?._id || req.profile?.user?._id || "");
 
-    if (!["gemini", "openai", "cursor"].includes(provider)) {
+    if (!["gemini", "openai", "cursor", "grok", "groq"].includes(provider)) {
       return res.status(400).json({
-        message: "Provider must be gemini, openai, or cursor",
+        message: "Provider must be gemini, openai, cursor, grok, or groq",
       });
     }
 
@@ -291,6 +530,9 @@ exports.completeAiChat = async (req, res) => {
             json,
             temperature,
             maxTokens,
+            endpoint: provider === "grok" ? GROK_URL : provider === "groq" ? GROQ_URL : OPENAI_URL,
+            providerLabel: provider === "grok" ? "Grok" : provider === "groq" ? "Groq" : "ChatGPT",
+            useTools: provider === "groq",
           });
 
     return res.status(200).json({ text, provider, model });
@@ -355,6 +597,9 @@ const streamOpenAi = async ({
   maxTokens,
   onDelta,
   signal,
+  endpoint = OPENAI_URL,
+  providerLabel = "ChatGPT",
+  useTools = false,
 }) => {
   const headers = {
     "Content-Type": "application/json",
@@ -366,14 +611,18 @@ const streamOpenAi = async ({
     temperature,
     stream: true,
   };
-  if (json) body.response_format = { type: "json_object" };
+  if (json && !useTools) body.response_format = { type: "json_object" };
+  if (useTools) {
+    body.tools = OPENAI_AGENT_TOOLS;
+    body.tool_choice = "auto";
+  }
   if (usesCompletionTokens(model)) {
     body.max_completion_tokens = maxTokens;
   } else {
     body.max_tokens = maxTokens;
   }
 
-  const response = await axios.post(OPENAI_URL, body, {
+  const response = await axios.post(endpoint, body, {
     headers,
     timeout: json ? 12000 : 20000,
     responseType: "stream",
@@ -403,14 +652,32 @@ const streamOpenAi = async ({
   }
 
   let text = "";
+  const toolCalls = new Map();
   await readAxiosSse(response.data, (payload) => {
-    const delta = payload?.choices?.[0]?.delta?.content;
-    if (!delta) return;
-    text += delta;
+    const delta = payload?.choices?.[0]?.delta;
+    if (useTools && delta?.tool_calls) {
+      delta.tool_calls.forEach((call) => {
+        const index = call.index || 0;
+        const current = toolCalls.get(index) || {
+          id: call.id,
+          type: "function",
+          function: { name: "", arguments: "" },
+        };
+        current.function.name += call.function?.name || "";
+        current.function.arguments += call.function?.arguments || "";
+        toolCalls.set(index, current);
+      });
+      return;
+    }
+    if (!delta?.content) return;
+    const content = delta.content;
+    text += content;
     onDelta(text);
   });
+  const toolIntent = useTools ? openAiToolCallIntent([...toolCalls.values()]) : "";
+  if (toolIntent) return toolIntent;
   if (!text.trim()) {
-    throw new Error("ChatGPT returned an empty reply");
+    throw new Error(`${providerLabel} returned an empty reply`);
   }
   return text;
 };
@@ -449,6 +716,7 @@ const streamGeminiProvider = async ({
   const requestBody = {
     systemInstruction: system ? { parts: [{ text: system }] } : undefined,
     contents,
+    tools: GEMINI_AGENT_TOOLS,
     generationConfig: {
       temperature,
       topK: json ? 4 : 12,
@@ -500,16 +768,23 @@ const streamGeminiProvider = async ({
     }
 
     let text = "";
+    const functionCalls = [];
     await readAxiosSse(response.data, (payload) => {
       if (payload?.error?.message) {
         lastError = new Error(payload.error.message);
         return;
       }
+      const parts = payload?.candidates?.[0]?.content?.parts || [];
+      parts.forEach((part) => {
+        if (part?.functionCall) functionCalls.push(part);
+      });
       const chunk = extractGeminiText(payload, { trim: false });
       if (!chunk) return;
       text += chunk;
       onDelta(text);
     });
+    const calledIntent = functionCallIntent(functionCalls);
+    if (calledIntent) return calledIntent;
     if (!text.trim()) {
       throw lastError || new Error("Gemini returned an empty reply");
     }
@@ -535,9 +810,9 @@ exports.streamAiChat = async (req, res) => {
     const maxTokens = Number(req.body?.maxTokens) || 1024;
     const userId = String(req.profile?._id || req.profile?.user?._id || "");
 
-    if (!["gemini", "openai", "cursor"].includes(provider)) {
+    if (!["gemini", "openai", "cursor", "grok", "groq"].includes(provider)) {
       return res.status(400).json({
-        message: "Provider must be gemini, openai, or cursor",
+        message: "Provider must be gemini, openai, cursor, grok, or groq",
       });
     }
 
@@ -603,6 +878,9 @@ exports.streamAiChat = async (req, res) => {
             maxTokens,
             onDelta,
             signal: abort.signal,
+            endpoint: provider === "grok" ? GROK_URL : provider === "groq" ? GROQ_URL : OPENAI_URL,
+            providerLabel: provider === "grok" ? "Grok" : provider === "groq" ? "Groq" : "ChatGPT",
+           useTools: provider === "groq",
           });
 
     closeSse(res, { text, done: true, provider, model });

@@ -5,18 +5,20 @@ const AiSettings = require("../models/AiSettings");
 const CACHE_TTL_MS = 15000;
 let cache = { at: 0, doc: null };
 
-const PROVIDERS = ["gemini", "openai", "cursor"];
+const PROVIDERS = ["gemini", "openai", "cursor", "grok", "groq"];
 
 const defaultDoc = () => ({
   singletonKey: "default",
   defaultProvider: "gemini",
-  enabled: { gemini: true, openai: true, cursor: true },
+  enabled: { gemini: true, openai: true, cursor: true, grok: true, groq: true },
   models: {
     gemini: "gemini-2.0-flash",
     openai: "gpt-4o-mini",
     cursor: "composer-2.5",
+    grok: "grok-3-mini",
+    groq: "openai/gpt-oss-20b",
   },
-  keys: { gemini: "", openai: "", cursor: "" },
+  keys: { gemini: "", openai: "", cursor: "", grok: "", groq: "" },
   cursorRepoUrl: "",
 });
 
@@ -59,6 +61,12 @@ const envFallbackFor = (provider) => {
   }
   if (provider === "openai") {
     return stripEnvValue(process.env.OPENAI_API_KEY);
+  }
+  if (provider === "grok") {
+    return stripEnvValue(process.env.XAI_API_KEY);
+  }
+  if (provider === "groq") {
+    return stripEnvValue(process.env.GROQ_API_KEY);
   }
   return (
     stripEnvValue(process.env.GEMINI_API_KEY) ||
@@ -136,7 +144,7 @@ exports.toAdminPayload = async () => {
   const doc = await exports.loadAiSettings({ force: true });
   const configured = {};
   for (const provider of PROVIDERS) {
-    configured[provider] = Boolean(stripEnvValue(doc.keys?.[provider]));
+    configured[provider] = Boolean(await exports.getProviderKey(provider));
   }
   return {
     defaultProvider: doc.defaultProvider,

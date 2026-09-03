@@ -9,6 +9,7 @@ try {
 }
 
 let transporter = null;
+let transporterPromise = null;
 let transporterKey = '';
 
 function getSmtpCredentials() {
@@ -89,10 +90,11 @@ async function createWorkingTransporter() {
   const errors = [];
 
   for (const candidate of candidates) {
-    const options = await buildTransportOptions(candidate.port, candidate.secure);
-    const transport = nodemailer.createTransport(options);
-
+    let options;
+    let transport;
     try {
+      options = await buildTransportOptions(candidate.port, candidate.secure);
+      transport = nodemailer.createTransport(options);
       console.log(
         `SMTP: verifying ${options.tls.servername}:${options.port} via ${options.host} (secure=${options.secure}, family=4)...`
       );
@@ -102,13 +104,12 @@ async function createWorkingTransporter() {
       return transport;
     } catch (err) {
       const msg = err.message || String(err);
-      console.warn(`SMTP: ${options.tls.servername}:${options.port} via ${options.host} failed — ${msg}`);
-      errors.push(`${options.port}: ${msg}`);
-      try {
-        transport.close();
-      } catch {
-        /* ignore */
-      }
+      const endpoint = options
+        ? `${options.tls.servername}:${options.port} via ${options.host}`
+        : `port ${candidate.port}`;
+      console.warn(`SMTP: ${endpoint} failed — ${msg}`);
+      errors.push(`${candidate.port}: ${msg}`);
+      if (transport) transport.close();
     }
   }
 
@@ -117,8 +118,17 @@ async function createWorkingTransporter() {
 
 async function getTransporter() {
   if (transporter) return transporter;
-  transporter = await createWorkingTransporter();
-  return transporter;
+  if (!transporterPromise) {
+    transporterPromise = createWorkingTransporter()
+      .then((workingTransporter) => {
+        transporter = workingTransporter;
+        return workingTransporter;
+      })
+      .finally(() => {
+        transporterPromise = null;
+      });
+  }
+  return transporterPromise;
 }
 
 function resetTransporter() {
@@ -130,6 +140,7 @@ function resetTransporter() {
     }
   }
   transporter = null;
+  transporterPromise = null;
   transporterKey = '';
 }
 

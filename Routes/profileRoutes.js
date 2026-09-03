@@ -30,6 +30,7 @@ Router.get("/getImages", getProfileImages);
 Router.get("/nearby", isAuth, getNearbyProfiles); // Get nearby profiles endpoint
 Router.get("/nearby-places", isAuth, getNearbyPlaces); // Get nearby places from OpenStreetMap endpoint
 Router.get("/online-status", isAuth, getOnlineStatus); // Check online status endpoint
+Router.get("/online", isAuth, getOnlineStatus); // Backwards-compatible online status endpoint
 Router.post("/", isAuth, profilePost);
 Router.post(
   "/update/coverPic",
