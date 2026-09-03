@@ -169,6 +169,13 @@ exports.notificationViewAll = async (req, res, next) => {
 };
 
 exports.getNotifications = async (req, res, next) => {
+  // Notification feeds are user-specific and must always be revalidated.
+  res.set({
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+    Pragma: "no-cache",
+    Expires: "0",
+  });
+
   let receverId = req.query.receverId || req.query.profileId || req.profile._id;
   let limit = Math.min(Number(req.query.limit) || 50, 100);
   let notifications = await Notification.find({
@@ -188,6 +195,12 @@ exports.getNotifications = async (req, res, next) => {
 // HTTP-based new notifications polling
 exports.getNewNotifications = async (req, res, next) => {
   try {
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+    });
+
     const { profileId } = req.query;
 
     if (!profileId) {

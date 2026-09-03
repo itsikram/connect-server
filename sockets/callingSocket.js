@@ -98,7 +98,6 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             console.warn('video-call: Missing to or channelName', { to, channelName });
             return;
         }
-        console.log('call-user', { to, channelName })
         let myProfileData = await Profile.findById(profileId)
         io.to(String(to)).emit("incoming-video-call", { from: String(profileId), channelName, isAudio: false, callerName: myProfileData.fullName, callerProfilePic: myProfileData.profilePic });
         // Visible notification + data (Expo / FCM). Data-only is often silent on iOS.
@@ -163,7 +162,6 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             console.warn('video-call-cancel: Missing to or channelName', { to, channelName });
             return;
         }
-        console.log('call-cancelled', { to, channelName })
         callTimeouts.delete(`agora:${channelName}`);
         io.to(String(to)).emit('video-call-cancelled', { to, friendId: profileId, channelName });
     });
@@ -173,19 +171,16 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             console.warn('video-call-reject: Missing to or channelName', { to, channelName });
             return;
         }
-        console.log('call-rejected', { to, channelName })
         callTimeouts.delete(`agora:${channelName}`);
         io.to(String(to)).emit('video-call-rejected', { to, friendId: profileId, channelName });
     });
 
     socket.on("video-call-end", async ({ to, channelName }) => {
-        console.log('video-call-ended', { to, channelName })
         callTimeouts.delete(`agora:${channelName}`);
 
         let friendId = to;
 
         try {
-            console.log(`Server: Received leaveVideoCall from ${profileId} for friend ${friendId}`);
 
             // Emit to the friend's profile room (all tabs), not a single socket id
             if (friendId) {
@@ -253,7 +248,6 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             console.warn('audio-call: Missing to or channelName', { to, channelName });
             return;
         }
-        console.log('incoming-audio-call', { to, channelName })
         let myProfileData = await Profile.findById(profileId)
         io.to(String(to)).emit("incoming-audio-call", { from: String(profileId), channelName, isAudio: true, callerName: myProfileData.fullName, callerProfilePic: myProfileData.profilePic });
         try {
@@ -313,7 +307,6 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
 
     const relayCallStatus = async ({ to, status }) => {
         if (!to) return;
-        console.log('update-call-status', { to, status, from: profileId });
         io.to(String(to)).emit('updated-call-status', {
             from: String(profileId),
             status: status || '',
@@ -328,7 +321,6 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             console.warn('audio-call-cancel: Missing to or channelName', { to, channelName });
             return;
         }
-        console.log('call-cancelled', { to, channelName })
         callTimeouts.delete(`agora:${channelName}`);
         io.to(String(to)).emit('audio-call-cancelled', { to, friendId: profileId, channelName });
     });
@@ -338,7 +330,6 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             console.warn('audio-call-reject: Missing to or channelName', { to, channelName });
             return;
         }
-        console.log('call-rejected', { to, channelName })
         callTimeouts.delete(`agora:${channelName}`);
         io.to(String(to)).emit('audio-call-rejected', { to, friendId: profileId, channelName });
     });
@@ -346,7 +337,6 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
     // End audio call
     socket.on('audio-call-end', async ({to: friendId, channelName}) => {
         try {
-            console.log(`Server: Received audio-call-end from ${profileId} for friend ${friendId}`);
 
             // Emit to the friend's profile room (all tabs)
             if (friendId) {
@@ -412,13 +402,6 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
 
 
     socket.on("answer-call", async ({ to, channelName, isAudio = false }) => {
-        console.log('Server: Received answer-call event:', { 
-            from: profileId, 
-            to, 
-            channelName, 
-            isAudio,
-            socketId: socket.id 
-        });
         try {
             // Clear any pending missed-call timer for this channel
             try {
@@ -435,24 +418,15 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             // caller = the 'to' user (person who initiated the call)
             const callerProfileData = await Profile.findById(to);
 
-            console.log('Server: Profile data retrieved:', {
-                callee: calleeProfileData?._id,
-                caller: callerProfileData?._id
-            });
-
             // Notify the caller that the callee accepted (show callee info on caller's phone)
-            console.log('Server: Emitting call-accepted to caller (to):', to);
-            const callerEmitResult = io.to(String(to)).emit("call-accepted", {
+            io.to(String(to)).emit("call-accepted", {
                 channelName,
                 isAudio,
                 callerName: calleeProfileData?.fullName,
                 callerProfilePic: calleeProfileData?.profilePic,
                 callerId: String(profileId)
             });
-            console.log('Server: call-accepted emit to caller returned:', callerEmitResult);
-
             // Also notify the callee (echo) so their app can open the call UI with caller info
-            console.log('Server: Emitting call-accepted to callee (echo)');
             socket.emit("call-accepted", {
                 channelName,
                 isAudio,
@@ -465,7 +439,6 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             try {
                 const roomKey = getRoomKey(profileId, to);
                 markAccepted(roomKey);
-                console.log('Server: Marked room as accepted:', roomKey);
             } catch (e) { }
         } catch (err) {
             console.error('Error handling agora-answer-call:', err, { to, channelName, isAudio });

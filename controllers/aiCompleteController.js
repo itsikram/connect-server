@@ -14,6 +14,26 @@ const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const GROK_URL = "https://api.x.ai/v1/chat/completions";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
+const logAiResponse = ({ provider, model, response, text, toolCalls = [] }) => {
+  if (process.env.NODE_ENV === "production") return;
+  const choice = response?.choices?.[0];
+  console.log("[AI] Response", {
+    provider,
+    model,
+    finishReason: choice?.finish_reason || null,
+    textLength: String(text || "").length,
+    textPreview: String(text || "").slice(0, 500),
+    toolCalls: toolCalls.map((call) => call?.function?.name || call?.name).filter(Boolean),
+    usage: response?.usage
+      ? {
+          promptTokens: response.usage.prompt_tokens,
+          completionTokens: response.usage.completion_tokens,
+          totalTokens: response.usage.total_tokens,
+        }
+      : undefined,
+  });
+};
+
 const publicErrorMessage = (error) => {
   const fromApi =
     error?.response?.data?.error?.message ||
@@ -24,6 +44,18 @@ const publicErrorMessage = (error) => {
       ? fromApi
       : error?.message || (fromApi ? JSON.stringify(fromApi) : "");
   return String(raw || "AI request failed").slice(0, 400);
+};
+
+const openAiTextFromChoice = (choice) => {
+  const content = choice?.message?.content;
+  if (typeof content === "string" && content.trim()) return content.trim();
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => (typeof part === "string" ? part : part?.text || ""))
+      .join("")
+      .trim();
+  }
+  return "";
 };
 
 const usesCompletionTokens = (model = "") =>
@@ -40,6 +72,17 @@ const toOpenAiMessages = (system, messages = []) => {
   }
   return out;
 };
+
+const toGroqSystem = (system = "") =>
+  `${String(system)
+    .replace(/Always return ONLY strict JSON with this shape:[\s\S]*?Use an empty actions array for questions and normal responses\.\s*/i, "")
+    .trim()}\nUse the registered functions for app actions. Never call a function named "json"; return a concise JSON response only when no function is needed.`;
+
+const toOpenAiRequestMessages = (system, messages, useTools) =>
+  toOpenAiMessages(
+    useTools ? toGroqSystem(system) : system,
+    useTools ? messages.slice(-4) : messages,
+  );
 
 const extractOpenAiText = (data) =>
   String(
@@ -65,7 +108,7 @@ const completeOpenAi = async ({
 
   const body = {
     model,
-    messages: toOpenAiMessages(system, messages),
+    messages: toOpenAiRequestMessages(system, messages, useTools),
     temperature,
   };
 
@@ -75,9 +118,15 @@ const completeOpenAi = async ({
   if (useTools) {
     body.tools = OPENAI_AGENT_TOOLS;
     body.tool_choice = "auto";
+    body.parallel_tool_calls = true;
   }
 
-  if (usesCompletionTokens(model)) {
+  if (useTools) {
+    // Groq's GPT-OSS models may spend completion tokens on hidden reasoning
+    // before emitting a tool call; a small 220-token cap can end the stream
+    // with neither content nor a callable action.
+    body.max_completion_tokens = Math.max(maxTokens, 512);
+  } else if (usesCompletionTokens(model)) {
     body.max_completion_tokens = maxTokens;
   } else {
     body.max_tokens = maxTokens;
@@ -92,14 +141,28 @@ const completeOpenAi = async ({
 
   if (response.status >= 400) {
     const error = new Error(publicErrorMessage({ response }));
+    if (providerLabel === "Groq" && process.env.NODE_ENV !== "production") {
+      console.warn("[AI] Groq error", {
+        status: response.status,
+        error: response.data?.error || response.data?.message || null,
+      });
+    }
     error.status = response.status;
     throw error;
   }
 
+  const choice = response.data?.choices?.[0];
   const text =
-    (useTools &&
-      openAiToolCallIntent(response.data?.choices?.[0]?.message?.tool_calls)) ||
+    (useTools && openAiToolCallIntent(choice?.message?.tool_calls)) ||
+    openAiTextFromChoice(choice) ||
     extractOpenAiText(response.data);
+  logAiResponse({
+    provider: providerLabel,
+    model,
+    response: response.data,
+    text,
+    toolCalls: choice?.message?.tool_calls || [],
+  });
   if (!text) {
     throw new Error(`${providerLabel} returned an empty reply`);
   }
@@ -567,24 +630,26 @@ const closeSse = (res, payload) => {
 const readAxiosSse = async (stream, onEvent) => {
   if (!stream) return;
   let buffer = "";
+  const processPart = (part) => {
+    const dataLines = [];
+    for (const line of String(part).split(/\r?\n/)) {
+      if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+    }
+    const raw = dataLines.join("\n");
+    if (!raw || raw === "[DONE]") return;
+    try {
+      onEvent(JSON.parse(raw));
+    } catch {
+      onEvent({ text: raw });
+    }
+  };
   for await (const chunk of stream) {
     buffer += Buffer.from(chunk).toString("utf8");
     const parts = buffer.split(/\r?\n\r?\n/);
     buffer = parts.pop() || "";
-    for (const part of parts) {
-      const dataLines = [];
-      for (const line of String(part).split(/\r?\n/)) {
-        if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
-      }
-      const raw = dataLines.join("\n");
-      if (!raw || raw === "[DONE]") continue;
-      try {
-        onEvent(JSON.parse(raw));
-      } catch {
-        onEvent({ text: raw });
-      }
-    }
+    parts.forEach(processPart);
   }
+  if (buffer.trim()) processPart(buffer);
 };
 
 const streamOpenAi = async ({
@@ -607,7 +672,7 @@ const streamOpenAi = async ({
   };
   const body = {
     model,
-    messages: toOpenAiMessages(system, messages),
+    messages: toOpenAiRequestMessages(system, messages, useTools),
     temperature,
     stream: true,
   };
@@ -615,8 +680,11 @@ const streamOpenAi = async ({
   if (useTools) {
     body.tools = OPENAI_AGENT_TOOLS;
     body.tool_choice = "auto";
+    body.parallel_tool_calls = true;
   }
-  if (usesCompletionTokens(model)) {
+  if (useTools) {
+    body.max_completion_tokens = Math.max(maxTokens, 512);
+  } else if (usesCompletionTokens(model)) {
     body.max_completion_tokens = maxTokens;
   } else {
     body.max_tokens = maxTokens;
@@ -648,15 +716,28 @@ const streamOpenAi = async ({
     }
     const error = new Error(publicErrorMessage({ response: { data: parsed, status: response.status } }));
     error.status = response.status;
+    if (providerLabel === "Groq" && process.env.NODE_ENV !== "production") {
+      console.warn("[AI] Groq stream error", {
+        status: response.status,
+        error: parsed?.error || parsed?.message || null,
+      });
+    }
     throw error;
   }
 
   let text = "";
   const toolCalls = new Map();
+  let finalChoice = null;
   await readAxiosSse(response.data, (payload) => {
-    const delta = payload?.choices?.[0]?.delta;
-    if (useTools && delta?.tool_calls) {
-      delta.tool_calls.forEach((call) => {
+    finalChoice = payload?.choices?.[0] || finalChoice;
+    const delta = finalChoice?.delta;
+    const streamedToolCalls = delta?.tool_calls || (
+      useTools && delta?.function_call
+        ? [{ index: 0, function: delta.function_call }]
+        : []
+    );
+    if (useTools && streamedToolCalls.length) {
+      streamedToolCalls.forEach((call) => {
         const index = call.index || 0;
         const current = toolCalls.get(index) || {
           id: call.id,
@@ -670,13 +751,60 @@ const streamOpenAi = async ({
       return;
     }
     if (!delta?.content) return;
-    const content = delta.content;
+    const content = Array.isArray(delta.content)
+      ? delta.content.map((part) => part?.text || "").join("")
+      : String(delta.content);
     text += content;
     onDelta(text);
   });
   const toolIntent = useTools ? openAiToolCallIntent([...toolCalls.values()]) : "";
-  if (toolIntent) return toolIntent;
+  if (toolIntent) {
+    logAiResponse({
+      provider: providerLabel,
+      model,
+      response: { choices: [finalChoice] },
+      text: toolIntent,
+      toolCalls: [...toolCalls.values()],
+    });
+    return toolIntent;
+  }
+  const finalText = openAiTextFromChoice(finalChoice);
+  if (finalText) {
+    logAiResponse({
+      provider: providerLabel,
+      model,
+      response: { choices: [finalChoice] },
+      text: finalText,
+      toolCalls: [...toolCalls.values()],
+    });
+    onDelta(finalText);
+    return finalText;
+  }
   if (!text.trim()) {
+    logAiResponse({
+      provider: providerLabel,
+      model,
+      response: { choices: [finalChoice] },
+      text,
+      toolCalls: [...toolCalls.values()],
+    });
+    if (useTools) {
+      // Some Groq models occasionally close an SSE response after emitting
+      // only metadata. Retry once without streaming so the normal response
+      // parser can recover a text reply or complete tool call.
+      return completeOpenAi({
+        apiKey,
+        model,
+        system,
+        messages,
+        json,
+        temperature,
+        maxTokens,
+        endpoint,
+        providerLabel,
+        useTools: true,
+      });
+    }
     throw new Error(`${providerLabel} returned an empty reply`);
   }
   return text;

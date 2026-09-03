@@ -228,7 +228,6 @@ async function sendExpoPushBatch(messages) {
  * @returns {Promise<{ successCount: number, failureCount: number }>}
  */
 async function sendPushToTokens(tokens = [], notification = {}) {
-  console.log('tokens', tokens, 'notification', notification);
   if (!Array.isArray(tokens) || tokens.length === 0) {
     console.warn('Push send skipped: no device tokens');
     return { successCount: 0, failureCount: 0 };
@@ -238,7 +237,6 @@ async function sendPushToTokens(tokens = [], notification = {}) {
     .map((t) => (t == null ? '' : String(t)))
     .map((t) => t.trim())
     .filter((t) => t.length > 0);
-  console.log('sanitizedTokens', tokens, tokens.length, sanitizedTokens);
 
   if (sanitizedTokens.length === 0) {
     console.warn('Push send skipped: no valid (non-empty) device tokens');
@@ -479,14 +477,6 @@ async function sendPushToProfile(profileId, notification = {}) {
       },
     };
   }
-
-  console.log('Push tokens for profile', {
-    profileId,
-    tokensCount: tokens.length,
-    tokensPreview: tokens.slice(0, 3).map((t) => String(t).slice(0, 6) + '...' + String(t).slice(-4)),
-    profile
-  });
-  console.log('sendPushToProfile working', profileId, tokens, nextNotification);
 
   const result = await sendPushToTokens(tokens, nextNotification);
   if (Array.isArray(result?.invalidTokens) && result.invalidTokens.length > 0) {
