@@ -499,7 +499,7 @@ exports.faceRegister = async (req, res, next) => {
             // The face service uses 401 for a failed liveness check. That is
             // not an expired Connect session and must not trigger client
             // logout/token refresh behavior.
-            const status = response.status >= 500 ? 503 : 400;
+            const status = response.status >= 500 ? 503 : response.status === 409 ? 409 : 400;
             return res.status(status).json({
                 success: false,
                 message: data.message || (status === 503
@@ -532,6 +532,28 @@ exports.faceRegister = async (req, res, next) => {
                 message: 'Face verification service failed while processing the camera frames. Please try again.',
             });
         }
+        return next(error);
+    }
+};
+
+exports.faceRemove = async (req, res, next) => {
+    const username = req.profile?.username || req.profile?.user?.email;
+    if (!username) {
+        return res.status(400).json({ success: false, message: 'Your account has no username or email' });
+    }
+
+    try {
+        const { response, data } = await callFaceService('/api/face/remove', { username });
+        if (!response.ok || !data.success) {
+            return res.status(response.status >= 500 ? 503 : 400).json({
+                success: false,
+                message: data.message || 'Could not remove face login',
+            });
+        }
+        await User.findByIdAndUpdate(req.profile.user._id, { faceLoginEnabled: false });
+        return res.status(200).json({ success: true, message: 'Face login removed successfully' });
+    } catch (error) {
+        console.error('[face-auth] face removal service error', error);
         return next(error);
     }
 };

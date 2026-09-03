@@ -4,7 +4,7 @@ const Profile = require('./Profile')
   
 const FaceEncodingSchema = new Schema({
     name: { type: String, required: true },
-    email: { type: String, unique: true },
+    email: { type: String, unique: true, sparse: true },
     faceEncoding: {
       type: [Number], // Array of 128 floats
       required: true,
