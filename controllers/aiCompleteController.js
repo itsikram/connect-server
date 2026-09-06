@@ -113,21 +113,6 @@ const completeOpenAiWithKey = async ({
     Authorization: `Bearer ${apiKey}`,
   };
 
-  const completeOpenAi = async (options) => {
-    const keys = parseProviderKeys(options.apiKey);
-    let lastError;
-    for (const apiKey of keys) {
-      try {
-        return await completeOpenAiWithKey({ ...options, apiKey });
-      } catch (error) {
-        lastError = error;
-        if (!isRateLimitError(error.status || error.response?.status, error.response?.data, error) ||
-            keys.indexOf(apiKey) === keys.length - 1) throw error;
-      }
-    }
-    throw lastError || new Error("AI request failed");
-  };
-
   const body = {
     model,
     messages: toOpenAiRequestMessages(system, messages, useTools),
@@ -189,6 +174,21 @@ const completeOpenAiWithKey = async ({
     throw new Error(`${providerLabel} returned an empty reply`);
   }
   return text;
+};
+
+const completeOpenAi = async (options) => {
+  const keys = parseProviderKeys(options.apiKey);
+  let lastError;
+  for (const apiKey of keys) {
+    try {
+      return await completeOpenAiWithKey({ ...options, apiKey });
+    } catch (error) {
+      lastError = error;
+      if (!isRateLimitError(error.status || error.response?.status, error.response?.data, error) ||
+          keys.indexOf(apiKey) === keys.length - 1) throw error;
+    }
+  }
+  throw lastError || new Error("AI request failed");
 };
 
 const extractGeminiText = (data, { trim = true } = {}) => {
@@ -732,20 +732,6 @@ const streamOpenAiWithKey = async ({
     Authorization: `Bearer ${apiKey}`,
   };
 
-  const streamOpenAi = async (options) => {
-    const keys = parseProviderKeys(options.apiKey);
-    let lastError;
-    for (const apiKey of keys) {
-      try {
-        return await streamOpenAiWithKey({ ...options, apiKey });
-      } catch (error) {
-        lastError = error;
-        if (!isRateLimitError(error.status || error.response?.status, error.response?.data, error) ||
-            keys.indexOf(apiKey) === keys.length - 1) throw error;
-      }
-    }
-    throw lastError || new Error("AI request failed");
-  };
   const body = {
     model,
     messages: toOpenAiRequestMessages(system, messages, useTools),
@@ -884,6 +870,21 @@ const streamOpenAiWithKey = async ({
     throw new Error(`${providerLabel} returned an empty reply`);
   }
   return text;
+};
+
+const streamOpenAi = async (options) => {
+  const keys = parseProviderKeys(options.apiKey);
+  let lastError;
+  for (const apiKey of keys) {
+    try {
+      return await streamOpenAiWithKey({ ...options, apiKey });
+    } catch (error) {
+      lastError = error;
+      if (!isRateLimitError(error.status || error.response?.status, error.response?.data, error) ||
+          keys.indexOf(apiKey) === keys.length - 1) throw error;
+    }
+  }
+  throw lastError || new Error("AI request failed");
 };
 
 const streamGeminiProvider = async ({
