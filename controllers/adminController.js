@@ -235,6 +235,7 @@ exports.updateProfile = async (req, res, next) => {
         if (updateData.presentAddress !== undefined) profile.presentAddress = updateData.presentAddress;
         if (updateData.permanentAddress !== undefined) profile.permanentAddress = updateData.permanentAddress;
         if (updateData.isActive !== undefined) profile.isActive = updateData.isActive;
+        if (updateData.isVerified !== undefined) profile.isVerified = updateData.isVerified;
 
         // Update user fields
         if (profile.user) {
@@ -799,4 +800,3 @@ exports.resetPassword = async (req, res, next) => {
         next(error);
     }
 };
-

@@ -112,6 +112,11 @@ let profileSchema = new Schema(
       default: false,
       index: true,
     },
+    isVerified: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     lastWeeklyRecapAt: {
       type: Date,
       default: null,

@@ -437,7 +437,7 @@ exports.getNewsFeed = async (req, res, next) => {
         const friendIds = new Set((friendsList || []).map((id) => String(id)))
         const authorLite = {
             path: 'author',
-            select: 'fullName displayName username nickname profilePic isOfficial isActive lastActive user',
+            select: 'fullName displayName username nickname profilePic isOfficial isVerified isActive lastActive user',
             populate: {
                 path: 'user',
                 select: 'firstName surname',
@@ -469,6 +469,5 @@ exports.getNewsFeed = async (req, res, next) => {
         next(error)
     }
 }
-
 
 
