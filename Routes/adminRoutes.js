@@ -1,6 +1,8 @@
 const Router = require("express").Router();
 const {signUp,login,deleteAccount,getProfiles,getProfile,updateProfile,deleteProfile,getPosts,getPost,updatePost,deletePost,getWatches,getWatch,updateWatch,deleteWatch,setUserPassword,getStats,getReportedPosts,getReportedProfiles,updateReportStatus,forgotPassword,resetPassword} = require('../controllers/adminController')
 const {uploadImage} = require('../controllers/uploadControllers')
+const {listResources} = require('../controllers/cloudinaryController')
+const isAdminAuth = require('../middlewares/isAdminAuth');
 const multer = require('multer');
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -27,12 +29,12 @@ Router.delete('/watches/:id',deleteWatch)
 Router.post('/upload',upload.single('image'),uploadImage)
 // Admin summary stats and recent activities
 Router.get('/stats', getStats)
+Router.get('/cloudinary/resources', isAdminAuth, listResources)
 // Reports
 Router.get('/reports/posts', getReportedPosts)
 Router.get('/reports/profiles', getReportedProfiles)
 Router.put('/reports/:id/status', updateReportStatus)
 
-const isAdminAuth = require('../middlewares/isAdminAuth');
 const {
   getAdminAiSettings,
   updateAdminAiSettings,
