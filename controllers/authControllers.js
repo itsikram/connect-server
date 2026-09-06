@@ -17,6 +17,11 @@ const deleteUserData = require('../utils/deleteUserData')
 const sendEmailNotification = require('../utils/sendEmailNotification');
 const { getFaceServiceConfig } = require('../utils/faceServiceSync');
 
+// JWTs are stateless; clearing the client token completes logout.
+exports.logout = async (req, res) => {
+    return res.status(200).json({ success: true, message: 'Logged out successfully' });
+};
+
 const getFaceServiceUrl = () =>
     (getFaceServiceConfig().url || 'http://localhost:5001').replace(/\/+$/, '');
 const FACE_SERVICE_TIMEOUT_MS = 60000;

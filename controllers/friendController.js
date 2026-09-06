@@ -6,6 +6,25 @@ const sendEmailNotification = require("../utils/sendEmailNotification.js");
 const checkIsActive = require("../utils/checkIsActive.js");
 const { asId, idsMatch, listHasId } = require("../utils/ids");
 
+const emitFriendCacheUpdate = (io, profileId, list, action, targetProfileId) => {
+  if (!io || !profileId) return;
+  io.to(String(profileId)).emit("friendCacheUpdate", {
+    profileId: String(profileId),
+    list,
+    action,
+    targetProfileId: targetProfileId ? String(targetProfileId) : undefined,
+  });
+};
+
+const emitRelationshipUpdate = (io, profileId, actorId, targetId, status) => {
+  if (!io || !profileId) return;
+  io.to(String(profileId)).emit("friendRelationshipUpdate", {
+    actorId: String(actorId),
+    targetId: String(targetId),
+    status,
+  });
+};
+
 exports.postFrndReq = async (req, res, next) => {
   try {
     let profile = req.body.profile || req.body.profileId || req.query.profileId;
@@ -85,6 +104,11 @@ exports.postFrndReq = async (req, res, next) => {
 
     const receiverId = asId(frndProfile._id);
     const senderId = asId(myProfile._id);
+
+    emitFriendCacheUpdate(io, receiverId, "requests", "refresh");
+    emitFriendCacheUpdate(io, senderId, "suggestions", "remove", receiverId);
+    emitRelationshipUpdate(io, receiverId, senderId, receiverId, "incoming");
+    emitRelationshipUpdate(io, senderId, senderId, receiverId, "incoming");
 
     try {
       let { isActive } = await checkIsActive(profile);
@@ -419,6 +443,11 @@ exports.postFrndAccept = async (req, res, next) => {
       senderPP: myProfile.profilePic,
       senderId: myProfile._id,
     });
+    emitFriendCacheUpdate(io, myProfile._id, "requests", "remove", profile);
+    emitFriendCacheUpdate(io, myProfile._id, "suggestions", "remove", profile);
+    emitFriendCacheUpdate(io, profile, "suggestions", "remove", myProfile._id);
+    emitRelationshipUpdate(io, myProfile._id, myProfile._id, profile, "friends");
+    emitRelationshipUpdate(io, profile, myProfile._id, profile, "friends");
 
     try {
       const { isActive } = await checkIsActive(profile);
@@ -456,6 +485,13 @@ exports.postFrndDelete = async (req, res, next) => {
       { new: true },
     );
 
+    if (updateMyProfile) {
+      const io = req.app.get("io");
+      emitFriendCacheUpdate(io, myProfile._id, "requests", "remove", friendProfileId);
+      emitFriendCacheUpdate(io, friendProfileId, "suggestions", "refresh");
+      emitRelationshipUpdate(io, myProfile._id, myProfile._id, friendProfileId, "none");
+      emitRelationshipUpdate(io, friendProfileId, myProfile._id, friendProfileId, "none");
+    }
     res.json(updateMyProfile);
   } catch (error) {
     next(error);
@@ -478,6 +514,13 @@ exports.postRemoveFrndReq = async (req, res, next) => {
       },
       { new: true },
     );
+    if (updateFrnd) {
+      const io = req.app.get("io");
+      emitFriendCacheUpdate(io, frndProfileId, "suggestions", "refresh");
+      emitFriendCacheUpdate(io, myProfile._id, "suggestions", "refresh");
+      emitRelationshipUpdate(io, frndProfileId, myProfile._id, frndProfileId, "none");
+      emitRelationshipUpdate(io, myProfile._id, myProfile._id, frndProfileId, "none");
+    }
     res.json(updateFrnd);
   } catch (e) {
     next(e);

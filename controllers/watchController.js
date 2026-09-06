@@ -269,12 +269,19 @@ exports.updateWatch = async (req, res, next) => {
 
 
 exports.getProfileWatch = async (req, res, next) => {
-    let profile = req.profile
-    let pageNumber = req.query.pageNumber
-    let limit = 3
+    const profileId = req.query.profile
+    const pageNumber = Math.max(parseInt(req.query.pageNumber, 10) || 1, 1)
+    const limit = 3
     try {
+        const filter = {}
+        if (profileId) {
+            if (!mongoose.isValidObjectId(profileId)) {
+                return res.status(400).json({ message: 'Valid profile is required' })
+            }
+            filter.author = profileId
+        }
 
-        let newsFeedWatchs = await Watch.find().populate([
+        const newsFeedWatchs = await Watch.find(filter).populate([
             {
                 path: 'author',
                 model: Profile,
@@ -304,7 +311,7 @@ exports.getProfileWatch = async (req, res, next) => {
 
         ]).skip((pageNumber - 1) * limit).limit(limit).sort({ 'createdAt': -1 })
 
-        let nextWatchs = await Watch.find().skip((pageNumber) * limit).limit(limit).sort({ 'createdAt': -1 })
+        const nextWatchs = await Watch.find(filter).skip(pageNumber * limit).limit(limit).sort({ 'createdAt': -1 })
 
         let hasNewWatch = nextWatchs.length == 0 ? false : true
         res.json({ watchs: newsFeedWatchs, hasNewWatch }).status(200)
@@ -387,5 +394,4 @@ exports.shareWatch = async (req, res, next) => {
         next(error)
     }
 }
-
 
