@@ -108,7 +108,7 @@ exports.testAdminAiProvider = async (req, res) => {
               ? OLLAMA_URL
             : OPENAI_URL,
         {
-          model: resolvedModel || (provider === "groq" ? "openai/gpt-oss-20b" : provider === "ollama" ? "llama3.2" : "gpt-4o-mini"),
+          model: resolvedModel || (provider === "groq" ? "openai/gpt-oss-20b" : provider === "ollama" ? "qwen3:4b" : "gpt-4o-mini"),
           messages: [
             { role: "system", content: "Reply with the single word OK." },
             { role: "user", content: "ping" },

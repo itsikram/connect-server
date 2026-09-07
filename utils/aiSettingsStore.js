@@ -10,14 +10,21 @@ const PROVIDERS = ["gemini", "openai", "cursor", "grok", "groq", "ollama"];
 const defaultDoc = () => ({
   singletonKey: "default",
   defaultProvider: "gemini",
-  enabled: { gemini: true, openai: true, cursor: true, grok: true, groq: true, ollama: true },
+  enabled: {
+    gemini: true,
+    openai: true,
+    cursor: true,
+    grok: true,
+    groq: true,
+    ollama: true,
+  },
   models: {
     gemini: "gemini-2.0-flash",
     openai: "gpt-4o-mini",
     cursor: "composer-2.5",
     grok: "grok-3-mini",
     groq: "openai/gpt-oss-20b",
-    ollama: "llama3.2",
+    ollama: "qwen3:4b",
   },
   keys: { gemini: "", openai: "", cursor: "", grok: "", groq: "", ollama: "" },
   cursorRepoUrl: "",
@@ -81,11 +88,15 @@ const envFallbackFor = (provider) => {
 
 const normalizeDoc = (doc = {}) => {
   const base = defaultDoc();
+  const configuredModels = { ...base.models, ...(doc.models || {}) };
+  if (!doc.models?.ollama || doc.models.ollama === "llama3.2") {
+    configuredModels.ollama = base.models.ollama;
+  }
   return {
     ...base,
     ...doc,
     enabled: { ...base.enabled, ...(doc.enabled || {}) },
-    models: { ...base.models, ...(doc.models || {}) },
+    models: configuredModels,
     keys: { ...base.keys, ...(doc.keys || {}) },
     defaultProvider: PROVIDERS.includes(doc.defaultProvider)
       ? doc.defaultProvider

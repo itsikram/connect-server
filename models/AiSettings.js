@@ -28,7 +28,7 @@ const aiSettingsSchema = new Schema(
       cursor: { type: String, default: "default" },
       grok: { type: String, default: "grok-3-mini" },
       groq: { type: String, default: "openai/gpt-oss-20b" },
-      ollama: { type: String, default: "llama3.2" },
+      ollama: { type: String, default: "qwen3:4b" },
     },
     keys: {
       gemini: { type: String, default: "" },

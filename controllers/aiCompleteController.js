@@ -14,7 +14,9 @@ const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const GROK_URL = "https://api.x.ai/v1/chat/completions";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const OLLAMA_URL = `${String(process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434/v1").replace(/\/+$/, "")}/chat/completions`;
-const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS) || 120000;
+const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS) || 180000;
+const OLLAMA_MAX_TOKENS = Number(process.env.OLLAMA_MAX_TOKENS) || 220;
+const OLLAMA_NUM_CTX = Number(process.env.OLLAMA_NUM_CTX) || 2048;
 const parseProviderKeys = (value = "") =>
   [...new Set(String(value || "").split(/[,\r\n]+/).map(key => key.trim()).filter(Boolean))];
 const isRateLimitError = (status, data, error) => {
@@ -24,7 +26,7 @@ const isRateLimitError = (status, data, error) => {
 };
 
 const logAiResponse = ({ provider, model, response, text, toolCalls = [] }) => {
-  if (process.env.NODE_ENV === "production") return;
+  if (process.env.AI_CALL_LOGGING === "false") return;
   const choice = response?.choices?.[0];
   console.log("[AI] Response", {
     provider,
@@ -40,6 +42,46 @@ const logAiResponse = ({ provider, model, response, text, toolCalls = [] }) => {
           totalTokens: response.usage.total_tokens,
         }
       : undefined,
+  });
+};
+
+const logAiRequest = ({ callId, transport, provider, model, userId, messages, json, temperature, maxTokens }) => {
+  if (process.env.AI_CALL_LOGGING === "false") return;
+  const lastMessage = messages?.[messages.length - 1];
+  console.log("[AI] Request", {
+    callId,
+    transport,
+    provider,
+    model,
+    userId,
+    messageCount: Array.isArray(messages) ? messages.length : 0,
+    lastMessagePreview: String(lastMessage?.content || "").slice(0, 240),
+    json,
+    temperature,
+    maxTokens,
+  });
+};
+
+const logAiCall = ({ callId, provider, model, userId, startedAt, text, error }) => {
+  if (process.env.AI_CALL_LOGGING === "false") return;
+  if (error) {
+    console.warn("[AI] Error", {
+      callId,
+      provider,
+      model,
+      userId,
+      durationMs: Date.now() - startedAt,
+      error: publicErrorMessage(error),
+    });
+    return;
+  }
+  console.log("[AI] Complete", {
+    callId,
+    provider,
+    model,
+    userId,
+    durationMs: Date.now() - startedAt,
+    textLength: String(text || "").length,
   });
 };
 
@@ -70,14 +112,33 @@ const openAiTextFromChoice = (choice) => {
 const usesCompletionTokens = (model = "") =>
   /^(gpt-5|o[1-4]|gpt-4\.1)/i.test(String(model));
 
-const toOpenAiMessages = (system, messages = []) => {
+const toOpenAiMessages = (system, messages = [], providerLabel = "") => {
   const out = [];
   if (system) out.push({ role: "system", content: system });
   for (const msg of messages) {
     const role = msg.role === "assistant" ? "assistant" : "user";
+    if (Array.isArray(msg.content)) {
+      const text = msg.content
+        .filter((part) => part?.type === "text")
+        .map((part) => String(part.text || ""))
+        .join("");
+      const images = msg.content
+        .filter((part) => part?.type === "image_url" && part.image_url?.url)
+        .map((part) => String(part.image_url.url).replace(/^data:image\/[^;]+;base64,/, ""));
+      if (providerLabel === "Ollama") {
+        if (!text.trim() && !images.length) continue;
+        out.push({ role, content: text, ...(images.length ? { images } : {}) });
+      } else {
+        if (!text.trim() && !images.length) continue;
+        out.push({
+          role,
+          content: msg.content.filter((part) => part?.type === "text" || part?.type === "image_url"),
+        });
+      }
+      continue;
+    }
     const content = String(msg.content || "");
-    if (!content.trim()) continue;
-    out.push({ role, content });
+    if (content.trim()) out.push({ role, content });
   }
   return out;
 };
@@ -87,10 +148,11 @@ const toGroqSystem = (system = "") =>
     .replace(/Always return ONLY strict JSON with this shape:[\s\S]*?Use an empty actions array for questions and normal responses\.\s*/i, "")
     .trim()}\nUse the registered functions for app actions. Never call a function named "json"; return a concise JSON response only when no function is needed.`;
 
-const toOpenAiRequestMessages = (system, messages, useTools) =>
+const toOpenAiRequestMessages = (system, messages, useTools, providerLabel = "") =>
   toOpenAiMessages(
     useTools ? toGroqSystem(system) : system,
     useTools ? messages.slice(-4) : messages,
+    providerLabel,
   );
 
 const extractOpenAiText = (data) =>
@@ -232,11 +294,12 @@ const GEMINI_AGENT_TOOLS = [
     functionDeclarations: [
       {
         name: "navigate",
-        description: "Navigate to a registered Connect screen. Use exact routes: Home, Friends, Videos, Message, Menu, or Tasks. For messages use Message; for the current user's profile use navigate_profile.",
+        description: "Navigate anywhere in Connect. Use exact routes: Home, Friends, Videos, Message, Menu, Tasks, FriendProfile, or VpnBrowser. For nested screens, include params such as {screen:'Camera'}, {screen:'Gallery'}, {screen:'MediaPlayer'}, {screen:'Downloads'}, {screen:'Facebook'}, {screen:'YouTube'}, {screen:'Cricbuzz'}, {screen:'GoogleMaps'}, or {screen:'GoogleContacts'}. For the current user's profile use route Menu with params {screen:'MyProfile'}.",
         parameters: {
           type: "OBJECT",
           properties: {
             route: { type: "STRING", description: "Registered screen route." },
+            params: { type: "OBJECT", description: "Optional nested screen parameters." },
           },
           required: ["route"],
         },
@@ -433,6 +496,50 @@ const GEMINI_AGENT_TOOLS = [
           required: ["triggerUserName", "replyText"],
         },
       },
+      {
+        name: "start_ludo",
+        description: "Open and start a Ludo game in Connect.",
+        parameters: { type: "OBJECT", properties: {} },
+      },
+      {
+        name: "start_chess",
+        description: "Open and start a Chess game in Connect.",
+        parameters: { type: "OBJECT", properties: {} },
+      },
+      {
+        name: "start_voice_input",
+        description: "Start hands-free voice input for the Connect AI Agent.",
+        parameters: { type: "OBJECT", properties: {} },
+      },
+      {
+        name: "stop_voice_input",
+        description: "Stop hands-free voice input for the Connect AI Agent.",
+        parameters: { type: "OBJECT", properties: {} },
+      },
+      {
+        name: "speak_text",
+        description: "Read a short piece of text aloud using the device voice.",
+        parameters: {
+          type: "OBJECT",
+          properties: { messageText: { type: "STRING" } },
+          required: ["messageText"],
+        },
+      },
+      {
+        name: "stop_speaking",
+        description: "Stop the Connect AI Agent from speaking.",
+        parameters: { type: "OBJECT", properties: {} },
+      },
+      {
+        name: "logout",
+        description: "Log the authenticated user out of Connect. This is sensitive.",
+        parameters: { type: "OBJECT", properties: {} },
+      },
+      {
+        name: "clear_agent_chat",
+        description: "Delete the saved Connect AI Agent conversation. This is sensitive.",
+        parameters: { type: "OBJECT", properties: {} },
+      },
     ],
   },
 ];
@@ -611,13 +718,19 @@ exports.getAiProviders = async (req, res) => {
     },
     grok: { configured: status.configured.grok },
     groq: { configured: status.configured.groq },
+    ollama: { configured: status.configured.ollama },
   });
 };
 
 exports.completeAiChat = async (req, res) => {
+  const callId = `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const startedAt = Date.now();
+  let provider = "";
+  let model = "";
+  let userId = "";
   try {
-    const provider = String(req.body?.provider || "").toLowerCase();
-    const model = String(req.body?.model || "").trim();
+    provider = String(req.body?.provider || "").toLowerCase();
+    model = String(req.body?.model || "").trim();
     const system = String(req.body?.system || "");
     const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
     const json = Boolean(req.body?.json);
@@ -625,7 +738,18 @@ exports.completeAiChat = async (req, res) => {
       ? Number(req.body.temperature)
       : 0.7;
     const maxTokens = Number(req.body?.maxTokens) || 1024;
-    const userId = String(req.profile?._id || req.profile?.user?._id || "");
+    userId = String(req.profile?._id || req.profile?.user?._id || "");
+    logAiRequest({
+      callId,
+      transport: "complete",
+      provider,
+      model,
+      userId,
+      messages,
+      json,
+      temperature,
+      maxTokens,
+    });
 
     if (!["gemini", "openai", "cursor", "grok", "groq", "ollama"].includes(provider)) {
       return res.status(400).json({
@@ -648,6 +772,7 @@ exports.completeAiChat = async (req, res) => {
         json,
         userId,
       });
+      logAiCall({ callId, provider, model, userId, startedAt, text });
       return res.status(200).json({
         text,
         provider,
@@ -691,8 +816,10 @@ exports.completeAiChat = async (req, res) => {
             useTools: provider === "groq",
           });
 
+    logAiCall({ callId, provider, model, userId, startedAt, text });
     return res.status(200).json({ text, provider, model });
   } catch (error) {
+    logAiCall({ callId, provider, model, userId, startedAt, error });
     const status = error.status || error.response?.status || 502;
     return res.status(status).json({
       message: publicErrorMessage(error),
@@ -764,9 +891,22 @@ const streamOpenAiWithKey = async ({
     Authorization: `Bearer ${apiKey}`,
   };
 
+  const requestMessages = providerLabel === "Ollama" ? messages.slice(-4) : messages;
+  const requestSystem = providerLabel === "Ollama"
+    ? String(system).slice(0, 5000)
+    : system;
+  const boundedMessages = providerLabel === "Ollama"
+    ? requestMessages.map((message) => ({
+        ...message,
+        content: String(message.content || "").slice(-1200),
+      }))
+    : requestMessages;
+  const requestMaxTokens = providerLabel === "Ollama"
+    ? Math.min(maxTokens, OLLAMA_MAX_TOKENS)
+    : maxTokens;
   const body = {
     model,
-    messages: toOpenAiRequestMessages(system, messages, useTools),
+    messages: toOpenAiRequestMessages(requestSystem, boundedMessages, useTools, providerLabel),
     temperature,
     stream: true,
   };
@@ -777,11 +917,28 @@ const streamOpenAiWithKey = async ({
     body.parallel_tool_calls = true;
   }
   if (useTools) {
-    body.max_completion_tokens = Math.max(maxTokens, 512);
+    body.max_completion_tokens = Math.max(requestMaxTokens, 512);
   } else if (usesCompletionTokens(model)) {
-    body.max_completion_tokens = maxTokens;
+    body.max_completion_tokens = requestMaxTokens;
   } else {
-    body.max_tokens = maxTokens;
+    body.max_tokens = requestMaxTokens;
+  }
+  if (providerLabel === "Ollama") {
+    body.options = {
+      num_ctx: OLLAMA_NUM_CTX,
+      num_predict: requestMaxTokens,
+    };
+    console.log("[AI] Ollama upstream", {
+      model,
+      systemChars: requestSystem.length,
+      messageCount: boundedMessages.length,
+      messageChars: boundedMessages.reduce(
+        (total, message) => total + String(message.content || "").length,
+        0,
+      ),
+      maxTokens: requestMaxTokens,
+      numCtx: OLLAMA_NUM_CTX,
+    });
   }
 
   const response = await axios.post(endpoint, body, {
@@ -950,9 +1107,26 @@ const streamGeminiProvider = async ({
     const role = msg.role === "assistant" ? "model" : "user";
     if (!foundFirstUser && role !== "user") continue;
     foundFirstUser = true;
-    const text = String(msg.content || "");
-    if (!text.trim()) continue;
-    contents.push({ role, parts: [{ text }] });
+    const parts = Array.isArray(msg.content)
+      ? msg.content.flatMap((part) => {
+          if (part?.type === "text" && String(part.text || "").trim()) {
+            return [{ text: String(part.text) }];
+          }
+          if (part?.type === "image_url" && part.image_url?.url) {
+            const match = String(part.image_url.url).match(
+              /^data:(image\/[^;]+);base64,(.+)$/s,
+            );
+            return match
+              ? [{ inlineData: { mimeType: match[1], data: match[2] } }]
+              : [];
+          }
+          return [];
+        })
+      : String(msg.content || "").trim()
+        ? [{ text: String(msg.content) }]
+        : [];
+    if (!parts.length) continue;
+    contents.push({ role, parts });
   }
 
   const requestBody = {
@@ -1036,9 +1210,13 @@ const streamGeminiProvider = async ({
 };
 
 exports.streamAiChat = async (req, res) => {
+  const callId = `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const startedAt = Date.now();
   const abort = new AbortController();
-  const onClose = () => abort.abort();
-  req.on("close", onClose);
+  const onClose = () => {
+    if (!res.writableEnded) abort.abort();
+  };
+  res.on("close", onClose);
 
   try {
     const provider = String(req.body?.provider || "").toLowerCase();
@@ -1051,6 +1229,17 @@ exports.streamAiChat = async (req, res) => {
       : 0.7;
     const maxTokens = Number(req.body?.maxTokens) || 1024;
     const userId = String(req.profile?._id || req.profile?.user?._id || "");
+    logAiRequest({
+      callId,
+      transport: "stream",
+      provider,
+      model,
+      userId,
+      messages,
+      json,
+      temperature,
+      maxTokens,
+    });
 
     if (!["gemini", "openai", "cursor", "grok", "groq", "ollama"].includes(provider)) {
       return res.status(400).json({
@@ -1081,6 +1270,7 @@ exports.streamAiChat = async (req, res) => {
         userId,
         onDelta,
       });
+      logAiCall({ callId, provider, model, userId, startedAt, text });
       closeSse(res, { text, done: true, provider, model: model || "default" });
       return;
     }
@@ -1125,8 +1315,17 @@ exports.streamAiChat = async (req, res) => {
            useTools: provider === "groq",
           });
 
+    logAiCall({ callId, provider, model, userId, startedAt, text });
     closeSse(res, { text, done: true, provider, model });
   } catch (error) {
+    logAiCall({
+      callId,
+      provider: String(req.body?.provider || "").toLowerCase(),
+      model: String(req.body?.model || "").trim(),
+      userId: String(req.profile?._id || req.profile?.user?._id || ""),
+      startedAt,
+      error,
+    });
     const message = publicErrorMessage(error);
     if (!res.headersSent) {
       const status = error.status || error.response?.status || 502;
@@ -1134,7 +1333,7 @@ exports.streamAiChat = async (req, res) => {
     }
     closeSse(res, { error: message, done: true });
   } finally {
-    req.off("close", onClose);
+    res.off("close", onClose);
   }
 };
 
