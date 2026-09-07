@@ -65,7 +65,7 @@ const FALLBACK_CURSOR_MODELS = [
 ];
 
 const CHAT_GUARDRAILS =
-  "Connect in-app assistant. No repo, no tools, no files. Reply in text now.";
+  "Connect in-app assistant. No repo, no tools, no files. This request has no callable tools. Never emit a tool call or function call, including search_youtube or download_youtube. Return the requested Connect action only as JSON with an actions array, using action names SEARCH_YOUTUBE or DOWNLOAD_YOUTUBE and parameters.query/url/videoId.";
 const WARM_AGENT_NAME = "Connect AI Chat";
 const WARM_PROMPT = "Reply READY. No tools. No files.";
 

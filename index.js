@@ -461,7 +461,11 @@ app.use(
 
 // Additional headers for CORS
 app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
+  const requestOrigin = req.get("Origin");
+  if (requestOrigin) {
+    res.header("Access-Control-Allow-Origin", requestOrigin);
+    res.header("Vary", "Origin");
+  }
   res.header("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS");
   res.header(
     "Access-Control-Allow-Headers",

@@ -13,6 +13,8 @@ const {
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const GROK_URL = "https://api.x.ai/v1/chat/completions";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const OLLAMA_URL = `${String(process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434/v1").replace(/\/+$/, "")}/chat/completions`;
+const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS) || 120000;
 const parseProviderKeys = (value = "") =>
   [...new Set(String(value || "").split(/[,\r\n]+/).map(key => key.trim()).filter(Boolean))];
 const isRateLimitError = (status, data, error) => {
@@ -139,7 +141,12 @@ const completeOpenAiWithKey = async ({
     body.max_tokens = maxTokens;
   }
 
-  const timeout = json ? 12000 : 20000;
+  const timeout =
+    providerLabel === "Ollama"
+      ? OLLAMA_TIMEOUT_MS
+      : json
+        ? 12000
+        : 20000;
   const response = await axios.post(endpoint, body, {
     headers,
     timeout,
@@ -360,6 +367,31 @@ const GEMINI_AGENT_TOOLS = [
           type: "OBJECT",
           properties: { videoId: { type: "STRING" } },
           required: ["videoId"],
+        },
+      },
+      {
+        name: "search_youtube",
+        description: "Search YouTube for a video by title or keywords. Use this when the user asks to find a YouTube video.",
+        parameters: {
+          type: "OBJECT",
+          properties: { query: { type: "STRING" } },
+          required: ["query"],
+        },
+      },
+      {
+        name: "download_youtube",
+        description: "Start downloading a YouTube video in the background and open it in Connect's Media Player. Use a query, URL, or YouTube video ID. This is sensitive.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            query: { type: "STRING", description: "YouTube title or search keywords." },
+            url: { type: "STRING", description: "A YouTube watch, shorts, live, embed, or youtu.be URL." },
+            videoId: { type: "STRING", description: "The YouTube video ID." },
+            title: { type: "STRING" },
+            thumbnail: { type: "STRING" },
+            quality: { type: "NUMBER", description: "Requested video height, such as 720 or 1080." },
+            audioOnly: { type: "BOOLEAN" },
+          },
         },
       },
       {
@@ -595,9 +627,9 @@ exports.completeAiChat = async (req, res) => {
     const maxTokens = Number(req.body?.maxTokens) || 1024;
     const userId = String(req.profile?._id || req.profile?.user?._id || "");
 
-    if (!["gemini", "openai", "cursor", "grok", "groq"].includes(provider)) {
+    if (!["gemini", "openai", "cursor", "grok", "groq", "ollama"].includes(provider)) {
       return res.status(400).json({
-        message: "Provider must be gemini, openai, cursor, grok, or groq",
+        message: "Provider must be gemini, openai, cursor, grok, groq, or ollama",
       });
     }
 
@@ -654,8 +686,8 @@ exports.completeAiChat = async (req, res) => {
             json,
             temperature,
             maxTokens,
-            endpoint: provider === "grok" ? GROK_URL : provider === "groq" ? GROQ_URL : OPENAI_URL,
-            providerLabel: provider === "grok" ? "Grok" : provider === "groq" ? "Groq" : "ChatGPT",
+            endpoint: provider === "grok" ? GROK_URL : provider === "groq" ? GROQ_URL : provider === "ollama" ? OLLAMA_URL : OPENAI_URL,
+            providerLabel: provider === "grok" ? "Grok" : provider === "groq" ? "Groq" : provider === "ollama" ? "Ollama" : "ChatGPT",
             useTools: provider === "groq",
           });
 
@@ -754,7 +786,12 @@ const streamOpenAiWithKey = async ({
 
   const response = await axios.post(endpoint, body, {
     headers,
-    timeout: json ? 12000 : 20000,
+    timeout:
+      providerLabel === "Ollama"
+        ? OLLAMA_TIMEOUT_MS
+        : json
+          ? 12000
+          : 20000,
     responseType: "stream",
     validateStatus: () => true,
     signal,
@@ -1015,9 +1052,9 @@ exports.streamAiChat = async (req, res) => {
     const maxTokens = Number(req.body?.maxTokens) || 1024;
     const userId = String(req.profile?._id || req.profile?.user?._id || "");
 
-    if (!["gemini", "openai", "cursor", "grok", "groq"].includes(provider)) {
+    if (!["gemini", "openai", "cursor", "grok", "groq", "ollama"].includes(provider)) {
       return res.status(400).json({
-        message: "Provider must be gemini, openai, cursor, grok, or groq",
+        message: "Provider must be gemini, openai, cursor, grok, groq, or ollama",
       });
     }
 
@@ -1083,8 +1120,8 @@ exports.streamAiChat = async (req, res) => {
             maxTokens,
             onDelta,
             signal: abort.signal,
-            endpoint: provider === "grok" ? GROK_URL : provider === "groq" ? GROQ_URL : OPENAI_URL,
-            providerLabel: provider === "grok" ? "Grok" : provider === "groq" ? "Groq" : "ChatGPT",
+            endpoint: provider === "grok" ? GROK_URL : provider === "groq" ? GROQ_URL : provider === "ollama" ? OLLAMA_URL : OPENAI_URL,
+            providerLabel: provider === "grok" ? "Grok" : provider === "groq" ? "Groq" : provider === "ollama" ? "Ollama" : "ChatGPT",
            useTools: provider === "groq",
           });
 

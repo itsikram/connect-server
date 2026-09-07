@@ -5,20 +5,21 @@ const AiSettings = require("../models/AiSettings");
 const CACHE_TTL_MS = 15000;
 let cache = { at: 0, doc: null };
 
-const PROVIDERS = ["gemini", "openai", "cursor", "grok", "groq"];
+const PROVIDERS = ["gemini", "openai", "cursor", "grok", "groq", "ollama"];
 
 const defaultDoc = () => ({
   singletonKey: "default",
   defaultProvider: "gemini",
-  enabled: { gemini: true, openai: true, cursor: true, grok: true, groq: true },
+  enabled: { gemini: true, openai: true, cursor: true, grok: true, groq: true, ollama: true },
   models: {
     gemini: "gemini-2.0-flash",
     openai: "gpt-4o-mini",
     cursor: "composer-2.5",
     grok: "grok-3-mini",
     groq: "openai/gpt-oss-20b",
+    ollama: "llama3.2",
   },
-  keys: { gemini: "", openai: "", cursor: "", grok: "", groq: "" },
+  keys: { gemini: "", openai: "", cursor: "", grok: "", groq: "", ollama: "" },
   cursorRepoUrl: "",
 });
 
@@ -67,6 +68,10 @@ const envFallbackFor = (provider) => {
   }
   if (provider === "groq") {
     return stripEnvValue(process.env.GROQ_API_KEY);
+  }
+  if (provider === "ollama") {
+    // Ollama is local by default and does not require an API key.
+    return "ollama-local";
   }
   return (
     stripEnvValue(process.env.GEMINI_API_KEY) ||
