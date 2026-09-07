@@ -320,6 +320,7 @@ module.exports = function messageSocket(io, socket, profileId) {
       parent,
       isAi = false,
       messageType = "text",
+      duration,
       callType,
       callEvent,
       tempId,
@@ -426,6 +427,7 @@ module.exports = function messageSocket(io, socket, profileId) {
           message,
           attachment,
           messageType,
+          duration,
           callType,
           callEvent,
           tempId,
@@ -439,6 +441,7 @@ module.exports = function messageSocket(io, socket, profileId) {
           attachment,
           parent,
           messageType,
+          duration,
           callType,
           callEvent,
           tempId,
@@ -609,7 +612,8 @@ module.exports = function messageSocket(io, socket, profileId) {
   });
 
   // Unified handler to emit emotion change to one, many, or all friends
-  async function handleEmotionChange(payload) {
+  async function handleEmotionChange(payload, ack) {
+    const receivedAt = Date.now();
     const {
       profileId,
       emotion,
@@ -625,24 +629,29 @@ module.exports = function messageSocket(io, socket, profileId) {
       detectedExpressions,
       emotionScores,
     } = payload || {};
-    console.log(
-      "emotion_change",
-      profileId,
+    const targetDescription =
+      friendId || friendIds || (broadcast ? "broadcast" : null);
+
+    console.info("[realtime_detection_received]", {
+      socketId: socket.id,
+      senderProfileId: profileId,
       emotion,
-      friendId || friendIds || (broadcast ? "broadcast" : null),
       emotionText,
-      emoji,
+      expression,
       confidence,
       quality,
-      expression,
-    );
+      targets: targetDescription,
+      receivedAt: new Date(receivedAt).toISOString(),
+    });
 
     try {
       if (!profileId || !emotion) {
-        console.error("Missing required parameters for emotion_change:", {
+        const error = "Missing required parameters for emotion_change";
+        console.error(error, {
           profileId,
           emotion,
         });
+        if (typeof ack === "function") ack({ ok: false, error });
         return;
       }
 
@@ -663,8 +672,18 @@ module.exports = function messageSocket(io, socket, profileId) {
           "Failed to update profile for emotion_change:",
           profileId,
         );
+        if (typeof ack === "function") {
+          ack({ ok: false, error: "Profile not found" });
+        }
         return;
       }
+
+      console.info("[realtime_detection_persisted]", {
+        senderProfileId: String(updateProfile._id),
+        emotion: updateProfile.lastEmotion,
+        confidence: updateProfile.lastEmotionConfidence,
+        processingMs: Date.now() - receivedAt,
+      });
 
       // Resolve target recipients
       let targets = [];
@@ -682,7 +701,14 @@ module.exports = function messageSocket(io, socket, profileId) {
       }
 
       if (!targets || targets.length === 0) {
-        console.warn("No targets resolved for emotion_change");
+        console.warn("[realtime_detection_no_targets]", {
+          senderProfileId: String(updateProfile._id),
+          emotion: updateProfile.lastEmotion,
+          processingMs: Date.now() - receivedAt,
+        });
+        if (typeof ack === "function") {
+          ack({ ok: false, error: "No target friends resolved", recipients: 0 });
+        }
         return;
       }
 
@@ -702,6 +728,11 @@ module.exports = function messageSocket(io, socket, profileId) {
       };
 
       // Emit to each target room (friend profileId is used as room)
+      const recipients = targets.map((toId) => ({
+        profileId: toId,
+        connectedSockets: io.sockets.adapter.rooms.get(toId)?.size || 0,
+      }));
+
       targets.forEach((toId) => {
         try {
           io.to(toId).emit("emotion_change", data);
@@ -714,12 +745,28 @@ module.exports = function messageSocket(io, socket, profileId) {
         }
       });
 
-      console.log(
-        `Emotion change emitted to ${targets.length} friend(s):`,
-        updateProfile.lastEmotion,
-      );
+      console.info("[realtime_detection_broadcast]", {
+        senderProfileId: String(updateProfile._id),
+        emotion: updateProfile.lastEmotion,
+        expression: data.expression,
+        confidence: data.confidence,
+        recipients,
+        processingMs: Date.now() - receivedAt,
+      });
+      if (typeof ack === "function") {
+        ack({
+          ok: true,
+          recipients: recipients.length,
+          connectedRecipients: recipients.filter(
+            ({ connectedSockets }) => connectedSockets > 0,
+          ).length,
+        });
+      }
     } catch (error) {
       console.error("Error in emotion_change handler:", error);
+      if (typeof ack === "function") {
+        ack({ ok: false, error: error?.message || "Emotion broadcast failed" });
+      }
     }
   }
 

@@ -552,7 +552,10 @@ app.post("/api/youtube/cobalt-url", (req, res) => {
 });
 
 app.get("/api/face-service-config", (req, res) => {
-  res.json(getFaceServiceConfig());
+  res.json({
+    ...getFaceServiceConfig(),
+    socketToken: String(process.env.FACE_SERVICE_API_KEY || "").trim(),
+  });
 });
 
 app.post("/api/face-service-url", (req, res) => {
