@@ -552,8 +552,12 @@ app.post("/api/youtube/cobalt-url", (req, res) => {
 });
 
 app.get("/api/face-service-config", (req, res) => {
+  const config = getFaceServiceConfig();
+  const url = config.url || "http://localhost:5001";
   res.json({
-    ...getFaceServiceConfig(),
+    ...config,
+    url,
+    source: config.source === "unset" ? "default" : config.source,
     socketToken: String(process.env.FACE_SERVICE_API_KEY || "").trim(),
   });
 });
