@@ -27,6 +27,7 @@ const portfolioRoutes = require("./portfolioRoutes");
 const locationRoutes = require("./locationRoutes");
 const aiChatRoutes = require("./aiChatRoutes");
 const savedVideoRoutes = require("./savedVideoRoutes");
+const videoPlaylistRoutes = require("./videoPlaylistRoutes");
 const contentRoutes = require("./contentRoutes");
 const reportRoutes = require("./reportRoutes");
 
@@ -145,6 +146,10 @@ const routes = [
   {
     path: "/api/saved-videos",
     handler: savedVideoRoutes,
+  },
+  {
+    path: "/api/video-playlists",
+    handler: videoPlaylistRoutes,
   },
   {
     path: "/api/content",

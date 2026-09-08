@@ -106,7 +106,7 @@ const getClientAppUrl = () => {
     ) {
         console.warn(
             `CLIENT_URL is "${url}" in production. ` +
-                'Set CLIENT_URL to your live web app URL (e.g. https://connect-zfgx.onrender.com) in Render env vars.'
+                'Set CLIENT_URL to your live web app URL (e.g. https://connect-bd.online) in Render env vars.'
         );
     }
 

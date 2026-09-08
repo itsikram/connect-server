@@ -741,7 +741,7 @@ const decodeYoutubeHtml = (value) =>
     .replace(/&gt;/g, ">")
     .trim();
 
-const searchYouTubeVideos = async (query, maxResults = 12) => {
+const searchYouTubeVideos = async (query, maxResults = 12, profileId = null) => {
   const apiKey = String(process.env.YOUTUBE_API_KEY || "").trim();
   if (!apiKey) {
     const err = new Error("YouTube search is not configured");
@@ -793,6 +793,39 @@ const searchYouTubeVideos = async (query, maxResults = 12) => {
           url: `https://www.youtube.com/watch?v=${videoId}`,
         };
       });
+
+    if (profileId && items.length && mongoose.isValidObjectId(profileId)) {
+      const youtubeIds = items.map((item) => item.videoId);
+      const watches = await Watch.find({
+        author: profileId,
+        youtubeId: { $in: youtubeIds },
+      })
+        .select("_id caption thumbnail videoUrl youtubeId createdAt")
+        .sort({ createdAt: -1 })
+        .lean();
+      const watchByYoutubeId = new Map(
+        watches.map((watch) => [String(watch.youtubeId), watch]),
+      );
+
+      return {
+        items: items.map((item) => {
+          const watch = watchByYoutubeId.get(item.videoId);
+          return watch
+            ? {
+                ...item,
+                localWatch: {
+                  _id: String(watch._id),
+                  caption: watch.caption || item.title,
+                  thumbnail: watch.thumbnail || item.thumbnail,
+                  videoUrl: watch.videoUrl,
+                  youtubeId: watch.youtubeId,
+                  createdAt: watch.createdAt,
+                },
+              }
+            : item;
+        }),
+      };
+    }
 
     return { items };
   } catch (err) {

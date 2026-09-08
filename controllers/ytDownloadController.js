@@ -106,7 +106,7 @@ exports.searchVideos = async (req, res) => {
     }
 
     const maxResults = req.query.maxResults;
-    const result = await searchYouTubeVideos(query, maxResults);
+    const result = await searchYouTubeVideos(query, maxResults, req.profile?._id);
     return res.json(result);
   } catch (error) {
     const status = error.status || 500;

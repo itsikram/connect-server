@@ -115,7 +115,7 @@ exports.getRelatedWatchs = async (req, res, next) => {
     try {
         const pageSize = Math.min(parseInt(req.query.limit, 10) || 24, 40);
         const watches = await Watch.find()
-            .select('caption thumbnail videoUrl reacts comments shares feeling audience author type createdAt')
+            .select('caption thumbnail videoUrl youtubeId reacts comments shares feeling audience author type createdAt')
             .populate({
                 path: 'author',
                 select: 'profilePic user fullName displayName',
@@ -394,4 +394,3 @@ exports.shareWatch = async (req, res, next) => {
         next(error)
     }
 }
-

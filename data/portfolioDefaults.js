@@ -9,7 +9,7 @@ module.exports = {
     cvUrl: '/assets/cv.pdf',
     email: 'mdikram295@gmail.com',
     phone: '01581400711',
-    website: 'https://connect-zfgx.onrender.com/',
+    website: 'https://connect-bd.online/',
     addressLine1: 'Biler Kani, West Dewvoge',
     addressLine2: '',
     locality: 'Munshiganj',
