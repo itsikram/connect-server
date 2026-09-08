@@ -108,6 +108,15 @@ const sanitizeFileName = (name) => {
 
 const pickFormat = (formats, targetHeight) => {
   const withAv = formats.filter((f) => f.hasVideo && f.hasAudio);
+  const bestAudioFirst = (items) =>
+    [...items].sort(
+      (a, b) =>
+        (b.height || 0) - (a.height || 0) ||
+        (b.audioBitrate || b.audioQuality || 0) -
+          (a.audioBitrate || a.audioQuality || 0) ||
+        (b.bitrate || b.averageBitrate || 0) -
+          (a.bitrate || a.averageBitrate || 0),
+    );
   if (!withAv.length) {
     return ytdl.chooseFormat(formats, {
       quality: "highest",
@@ -115,13 +124,20 @@ const pickFormat = (formats, targetHeight) => {
     });
   }
   if (!targetHeight) {
-    return withAv.sort((a, b) => (b.height || 0) - (a.height || 0))[0];
+    return bestAudioFirst(withAv)[0];
   }
   const matching = withAv
     .filter((f) => f.height && f.height <= targetHeight)
-    .sort((a, b) => (b.height || 0) - (a.height || 0));
+    .sort(
+      (a, b) =>
+        (b.height || 0) - (a.height || 0) ||
+        (b.audioBitrate || b.audioQuality || 0) -
+          (a.audioBitrate || a.audioQuality || 0) ||
+        (b.bitrate || b.averageBitrate || 0) -
+          (a.bitrate || a.averageBitrate || 0),
+    );
   return (
-    matching[0] || withAv.sort((a, b) => (b.height || 0) - (a.height || 0))[0]
+    matching[0] || bestAudioFirst(withAv)[0]
   );
 };
 
