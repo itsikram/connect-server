@@ -34,6 +34,7 @@ const admin = require("firebase-admin");
 const fs = require("fs");
 const { startUnseenMessageReminderWorker } = require("./utils/unseenMessageReminderWorker");
 const { startDailyPromptWorker } = require("./utils/dailyPromptWorker");
+const { startFitnessReminderWorker } = require("./utils/fitnessReminderWorker");
 const { startCpuSampler, getMetrics } = require("./utils/cpuMetrics");
 const {
   attachPeerAdapter,
@@ -765,6 +766,7 @@ mongoose
     if (runWorkers) {
       startUnseenMessageReminderWorker();
       startDailyPromptWorker();
+      startFitnessReminderWorker();
     } else {
       console.log("Background workers skipped on this instance");
     }

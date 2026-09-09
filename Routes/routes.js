@@ -30,6 +30,7 @@ const savedVideoRoutes = require("./savedVideoRoutes");
 const videoPlaylistRoutes = require("./videoPlaylistRoutes");
 const contentRoutes = require("./contentRoutes");
 const reportRoutes = require("./reportRoutes");
+const fitnessRoutes = require("./fitnessRoutes");
 
 let rootRoute = async (req, res) => {
   return res.sendFile(path.join(__dirname, "build", "index.html"));
@@ -158,6 +159,10 @@ const routes = [
   {
     path: "/api/report",
     handler: reportRoutes,
+  },
+  {
+    path: "/api/fitness",
+    handler: fitnessRoutes,
   },
 ];
 

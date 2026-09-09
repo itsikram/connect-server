@@ -305,6 +305,69 @@ const GEMINI_AGENT_TOOLS = [
         },
       },
       {
+        name: "fitness_dashboard",
+        description: "Open the user's private Fitness dashboard.",
+        parameters: { type: "OBJECT", properties: {} },
+      },
+      {
+        name: "fitness_recommendations",
+        description: "Get personalized food recommendations using the user's private Fitness targets and today's totals.",
+        parameters: { type: "OBJECT", properties: {} },
+      },
+      {
+        name: "fitness_progress",
+        description: "Get the user's private daily, weekly, or monthly Fitness progress.",
+        parameters: {
+          type: "OBJECT",
+          properties: { period: { type: "STRING", description: "daily, weekly, or monthly" } },
+        },
+      },
+      {
+        name: "log_fitness_meal",
+        description: "Save a confirmed Fitness meal for the user. Ask for missing nutrition values instead of inventing them.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            name: { type: "STRING" },
+            calories: { type: "NUMBER" },
+            proteinG: { type: "NUMBER" },
+            carbsG: { type: "NUMBER" },
+            fatG: { type: "NUMBER" },
+            fiberG: { type: "NUMBER" },
+            mealType: { type: "STRING", description: "breakfast, lunch, dinner, or snack" },
+          },
+          required: ["name", "calories", "proteinG", "carbsG", "fatG"],
+        },
+      },
+      {
+        name: "log_fitness_weight",
+        description: "Log the user's current body weight in kilograms.",
+        parameters: {
+          type: "OBJECT",
+          properties: { weightKg: { type: "NUMBER" }, note: { type: "STRING" } },
+          required: ["weightKg"],
+        },
+      },
+      {
+        name: "create_fitness_reminder",
+        description: "Create a private Fitness reminder. Time must be HH:mm, such as 08:00.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            title: { type: "STRING" },
+            time: { type: "STRING" },
+            type: { type: "STRING", description: "meal, water, workout, weight, or custom" },
+            message: { type: "STRING" },
+          },
+          required: ["title", "time"],
+        },
+      },
+      {
+        name: "ask_fitness_coach",
+        description: "Ask the private Fitness coach for safe wellness guidance based on backend-calculated numbers.",
+        parameters: { type: "OBJECT", properties: { question: { type: "STRING" } }, required: ["question"] },
+      },
+      {
         name: "search_users",
         description: "Search Connect users by name. Never invent a user ID.",
         parameters: {
