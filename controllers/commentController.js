@@ -9,6 +9,7 @@ const { getPostId, postLink } = require('../utils/getPostId')
 const Story = require('../models/Story')
 const Watch = require('../models/Watch')
 const mongoose = require('mongoose')
+const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
 
 async function resolveCommentParent(parentId) {
     const id = getPostId(parentId)
@@ -218,7 +219,7 @@ exports.updateComment = async(req,res,next) => {
     let {commentId, body} = req.body
     try {
 
-        let UpdatedComment = await Comment.findOneAndUpdate({ _id: commentId }, {
+        let UpdatedComment = await Comment.findOneAndUpdate({ _id: commentId, author: req.profile._id }, {
             body
         }, { new: true }).populate({
             path: 'author',
@@ -227,6 +228,7 @@ exports.updateComment = async(req,res,next) => {
                 path: 'user',
                 select: ['firstName', 'surname']
             }
+
         })
         if (UpdatedComment) {
             return res.json(UpdatedComment).status(200)
@@ -238,6 +240,30 @@ exports.updateComment = async(req,res,next) => {
         
     }
 }
+
+exports.updateCommentReply = async (req, res, next) => {
+    const { replyId, body } = req.body
+    try {
+        const updatedReply = await CmntReply.findOneAndUpdate(
+            { _id: replyId, author: req.profile._id },
+            { body },
+            { new: true }
+        ).populate({
+            path: 'author',
+            select: ['profilePic', 'user', 'fullName', 'displayName'],
+            populate: {
+                path: 'user',
+                select: ['firstName', 'surname']
+            }
+        })
+
+        if (updatedReply) return res.status(200).json(updatedReply)
+        return res.status(403).json({ message: 'Reply update is not allowed' })
+    } catch (error) {
+        next(error)
+    }
+}
+
 exports.storyAddComment = async (req, res, next) => {
     try {
         let body = req.body.body
@@ -523,6 +549,7 @@ exports.removeCommentReply = async (req, res, next) => {
         let deletedReply = await CmntReply.findOneAndDelete({ _id: replyId })
 
         if (deletedReply) {
+            await deleteCloudinaryResources([deletedReply.attachment])
 
             let pullReplyIdFromCmnt = await Comment.findOneAndUpdate({ _id: deletedReply.parent }, {
                 $pull: {
@@ -592,6 +619,7 @@ exports.postDeleteComment = async (req, res, next) => {
 
         let deleteComment = await Comment.findOneAndDelete({ _id: commentId })
         if (deleteComment) {
+            await deleteCloudinaryResources([deleteComment.attachment])
             const idToPull = parentId || deleteComment.watch || deleteComment.post
 
             if (parentType === 'story') {

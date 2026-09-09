@@ -4,19 +4,75 @@ const streamifier = require('streamifier');
 
 cloudinary.config({ cloud_name: process.env.CLOUDINARY_CLOUD_NAME || '', api_key: process.env.CLOUDINARY_API_KEY || '', api_secret: process.env.CLOUDINARY_API_SECRET  }); // Use multer to store files in memory 
 
-exports.uploadImage = async (req, res, next) => {
+const getCloudinaryErrorResponse = (error) => {
+    const message = String(error?.message || error || 'Cloudinary upload failed');
+    const blocked = /blocked|suspend|disabled|terms of use|acceptable use|prohibited|under review/i.test(message);
 
+    return {
+        status: blocked ? 503 : 502,
+        body: {
+            error: blocked
+                ? 'Media uploads are temporarily unavailable while the media provider reviews this account.'
+                : message,
+            code: blocked ? 'MEDIA_PROVIDER_BLOCKED' : 'MEDIA_UPLOAD_FAILED',
+        },
+    };
+};
 
-    if (!req.file) { return res.status(400).json({ error: 'No file uploaded' }); } // Create an upload stream and pipe the file buffer to Cloudinary 
-    let uploadStream = cloudinary.uploader.upload_stream((error, result) => {
-        if (error) {
-            return res.status(500).json({ error });
-        }
-        res.json(result);
+const sendCloudinaryError = (res, error, context) => {
+    const response = getCloudinaryErrorResponse(error);
+    console.error(`[upload] ${context}`, {
+        status: response.status,
+        code: response.body.code,
+        error: error?.message || error,
     });
-    streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
+    if (!res.headersSent) {
+        res.status(response.status).json(response.body);
+    }
+};
 
-}
+exports.uploadImage = async (req, res, next) => {
+    if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    if (!req.file.buffer || req.file.buffer.length === 0) {
+        return res.status(400).json({ error: 'Uploaded file is empty' });
+    }
+
+    try {
+        const uploadStream = cloudinary.uploader.upload_stream(
+            { resource_type: 'image' },
+            (error, result) => {
+                if (error) {
+                    console.error('[upload] Cloudinary image upload failed', {
+                        name: req.file.originalname,
+                        mime: req.file.mimetype,
+                        bytes: req.file.size,
+                        error: error?.message || error,
+                    });
+                    sendCloudinaryError(res, error, 'Cloudinary image upload failed');
+                    return;
+                }
+                return res.status(200).json(result);
+            }
+        );
+
+        const inputStream = streamifier.createReadStream(req.file.buffer);
+        inputStream.on('error', (error) => {
+            console.error('[upload] image file stream failed', error?.message || error);
+            if (!res.headersSent) res.status(500).json({ error: 'File stream failed' });
+        });
+        uploadStream.on('error', (error) => {
+            console.error('[upload] Cloudinary image stream failed', error?.message || error);
+            if (!res.headersSent) res.status(502).json({ error: error?.message || 'Cloudinary upload failed' });
+        });
+        inputStream.pipe(uploadStream);
+    } catch (error) {
+        console.error('[upload] image upload handler failed', error?.message || error);
+        return res.status(500).json({ error: error?.message || 'Upload failed' });
+    }
+};
 exports.uploadVideo = async (req, res, next) => {
 
     if (!req.file) {
@@ -39,7 +95,7 @@ exports.uploadVideo = async (req, res, next) => {
         },
         (error, result) => {
             if (error) {
-                return res.status(500).json({ error });
+                return sendCloudinaryError(res, error, 'Cloudinary video upload failed');
             }
             res.json(result);
         }
@@ -86,7 +142,7 @@ exports.uploadFile = async (req, res, next) => {
                         bytes: req.file.size,
                         error: error?.message || error,
                     });
-                    return res.status(502).json({ error: error?.message || 'Cloudinary upload failed' });
+                    return sendCloudinaryError(res, error, 'Cloudinary file upload failed');
                 }
                 // Return full Cloudinary response so client can use secure_url
                 return res.status(200).json(result);

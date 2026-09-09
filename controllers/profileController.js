@@ -6,6 +6,7 @@ const User = require("../models/User");
 const { asId, listHasId } = require("../utils/ids");
 const { saveNotification } = require("./notificationController");
 const { sendPushToProfile } = require("../utils/pushNotifications");
+const { deleteCloudinaryResources } = require("../utils/cloudinaryCleanup");
 
 const MONGO_ID_RE = /^[a-fA-F0-9]{24}$/;
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
@@ -177,12 +178,16 @@ exports.updateCoverPost = async (req, res, next) => {
   let profileId = req.body.profile;
   let coverPicUrl = req.body.coverPicUrl;
   try {
-    let updateProfile = await Profile.findOneAndUpdate(
+  const previous = await Profile.findById(profileId).select('coverPic')
+  let updateProfile = await Profile.findOneAndUpdate(
       { _id: profileId },
       {
         coverPic: coverPicUrl,
       },
     );
+    if (previous?.coverPic && previous.coverPic !== coverPicUrl) {
+      await deleteCloudinaryResources([previous.coverPic]);
+    }
     res.json(updateProfile);
   } catch (error) {
     console.log(error);

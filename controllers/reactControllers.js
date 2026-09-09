@@ -6,6 +6,7 @@ const { saveNotification } = require('./notificationController')
 const checkIsActive = require('../utils/checkIsActive')
 const { sendPushToProfile } = require('../utils/pushNotifications')
 const { normalizeReactType } = require('../utils/reactTypes')
+const { updateInterestProfile } = require('../services/recommendationService')
 
 const reactProfileId = (value) => String(value?._id || value || '')
 
@@ -69,6 +70,7 @@ exports.postAddReact = async (req, res, next) => {
                 if (!addPostReact) {
                     return res.status(404).json({ message: 'Post not found' })
                 }
+                updateInterestProfile({ profileId: profile, item: addPostReact }).catch((error) => console.error('[recommendations] post interest update failed:', error.message || error))
 
                 if (String(friendProfile._id) !== String(profile)) {
                     const activeBrowserIds = friendProfile.browserIds
@@ -154,6 +156,7 @@ exports.postAddReact = async (req, res, next) => {
                 if (!addWatchReact) {
                     return res.status(404).json({ message: 'Video not found' })
                 }
+                updateInterestProfile({ profileId: profile, item: addWatchReact }).catch((error) => console.error('[recommendations] watch interest update failed:', error.message || error))
 
                 if (friendProfile && String(friendProfile._id) !== String(profile)) {
                     const activeBrowserIds = friendProfile.browserIds

@@ -3,8 +3,9 @@ const {postStory,getSingleStory,deleteStory,getAllStories} = require('../control
 const {addStoryReact,deleteStoryReact} = require('../controllers/reactControllers')
 const {storyAddComment} = require('../controllers/commentController')
 const isAuth = require('../middlewares/isAuth')
+const optionalAuth = require('../middlewares/optionalAuth')
 
-Router.get('/',getAllStories)
+Router.get('/',optionalAuth,getAllStories)
 Router.get('/single',getSingleStory)
 Router.post('/create',isAuth,postStory)
 Router.post('/delete',isAuth,deleteStory)

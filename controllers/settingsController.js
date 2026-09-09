@@ -1,6 +1,7 @@
 const Setting = require('../models/Setting')
 const { v2: cloudinary } = require('cloudinary')
 const streamifier = require('streamifier')
+const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
 
 cloudinary.config({ 
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME || '', 
@@ -128,6 +129,9 @@ exports.updateSetting = async (req, res, next) => {
         )
 
         if (updatedSetting) {
+            if (req.file && existing?.chatBackground && existing.chatBackground !== updatedSetting.chatBackground) {
+                await deleteCloudinaryResources([existing.chatBackground])
+            }
             return res.status(200).json(updatedSetting)
         }
 

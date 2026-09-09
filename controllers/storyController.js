@@ -3,6 +3,7 @@ const Profile = require('../models/Profile')
 const Comment = require('../models/Comment')
 const CmntReply = require('../models/CmntReply')
 const mongoose = require('mongoose')
+const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
 
 exports.postStory = async(req,res,next) => {
     try {
@@ -37,8 +38,20 @@ exports.deleteStory = async (req,res,next) => {
         let story = await Story.findOne({_id: storyId})
 
         if(profileId == (story.author._id).toString()) {
+            const comments = await Comment.find({ post: storyId }).select('attachment replies')
+            const replies = await CmntReply.find({ parent: { $in: comments.map((comment) => comment._id) } }).select('attachment')
             let deleteStory = await Story.findOneAndDelete({_id: storyId})
             if(deleteStory) {
+                await Promise.all([
+                    Comment.deleteMany({ post: storyId }),
+                    CmntReply.deleteMany({ parent: { $in: comments.map((comment) => comment._id) } }),
+                ])
+                await deleteCloudinaryResources([
+                    deleteStory.image,
+                    deleteStory.music,
+                    ...comments.map((comment) => comment.attachment),
+                    ...replies.map((reply) => reply.attachment),
+                ])
                 return res.json({
                     message: 'Story Deleted Successfully'
                 }).status(200)
@@ -151,7 +164,23 @@ exports.getSingleStory = async(req,res,next) => {
 exports.getAllStories = async(req,res,next) => {
 
     try {
-        let newsFeedStories = await Story.find().populate([
+        const profile = req.profile;
+        const visibilityFilter = profile
+            ? {
+                $or: [
+                    { audience: 1 },
+                    { audience: 2, author: { $in: profile.friends || [] } },
+                    { audience: 3, author: profile._id },
+                ],
+            }
+            : { audience: 1 };
+        const blockedAuthorsFilter = {
+            author: { $nin: profile?.blockedUsers || [] },
+        };
+
+        let newsFeedStories = await Story.find({
+            $and: [visibilityFilter, blockedAuthorsFilter],
+        }).populate([
             {
                 path: 'author',
                 model: Profile,
@@ -182,6 +211,3 @@ exports.getAllStories = async(req,res,next) => {
         next(error)
     }
 }
-
-
-

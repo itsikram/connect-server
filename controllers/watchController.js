@@ -7,6 +7,8 @@ const CmntReply = require('../models/CmntReply')
 const mongoose = require('mongoose')
 const Post = require('../models/Post')
 const generateAndUploadThumbnail = require('../utils/generateThumbnail')
+const { enqueueCategorization } = require('../services/contentCategorizationQueue')
+const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
 
 exports.createWatch = async (req, res, next) => {
     const profileId = req.profile._id
@@ -52,6 +54,7 @@ exports.createWatch = async (req, res, next) => {
         })
 
         const savedData = await watch.save()
+        enqueueCategorization(savedData._id, 'watch')
         const populated = await Watch.findById(savedData._id).populate([
             {
                 path: 'author',
@@ -86,6 +89,8 @@ exports.deleteWatch = async (req, res, next) => {
         }
 
         // Only the author can delete — verify ownership server-side
+        const comments = await Comment.find({ watch: watchId }).select('attachment replies')
+        const replies = await CmntReply.find({ parent: { $in: comments.map((comment) => comment._id) } }).select('attachment')
         const deleted = await Watch.findOneAndDelete({
             _id: watchId,
             author: profileId,
@@ -100,6 +105,16 @@ exports.deleteWatch = async (req, res, next) => {
             return res.status(403).json({ message: 'Not authorized to delete this watch' })
         }
 
+        await Promise.all([
+            Comment.deleteMany({ watch: watchId }),
+            CmntReply.deleteMany({ parent: { $in: comments.map((comment) => comment._id) } }),
+        ])
+        await deleteCloudinaryResources([
+            deleted.videoUrl,
+            deleted.thumbnail,
+            ...comments.map((comment) => comment.attachment),
+            ...replies.map((reply) => reply.attachment),
+        ])
         return res.status(200).json({
             message: 'Watch Deleted Successfully',
             watchId,
@@ -256,6 +271,7 @@ exports.updateWatch = async (req, res, next) => {
         let updatedWatch = await Watch.findOneAndUpdate(query, updateFields, { new: true })
 
         if (updatedWatch) {
+            enqueueCategorization(updatedWatch._id, 'watch')
             return res.status(200).json({ message: 'Watch updated', watch: updatedWatch })
         }
 

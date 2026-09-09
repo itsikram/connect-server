@@ -6,6 +6,8 @@ const jwt = require('jsonwebtoken')
 const CmntReply = require('../models/CmntReply')
 const mongoose = require('mongoose')
 const { rankPosts } = require('../utils/feedRanking')
+const { enqueueCategorization } = require('../services/contentCategorizationQueue')
+const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
 
 const commentPopulate = {
     path: 'comments',
@@ -53,6 +55,7 @@ exports.createPost = async (req, res, next) => {
         })
 
         let savedData = await post.save()
+        enqueueCategorization(savedData._id, 'post')
 
         let getPost = await Post.findOne({ _id: savedData._id }).populate([
             {
@@ -100,9 +103,20 @@ exports.deletePost = async (req, res, next) => {
         let authorId = req.body.authorId;
 
         if (profileId == authorId) {
+            const comments = await Comment.find({ post: postId }).select('attachment replies')
+            const replies = await CmntReply.find({ parent: { $in: comments.map((comment) => comment._id) } }).select('attachment')
             let deletePost = await Post.findOneAndDelete({ _id: postId })
 
             if (deletePost) {
+                await Promise.all([
+                    Comment.deleteMany({ post: postId }),
+                    CmntReply.deleteMany({ parent: { $in: comments.map((comment) => comment._id) } }),
+                ])
+                await deleteCloudinaryResources([
+                    deletePost.photos,
+                    ...comments.map((comment) => comment.attachment),
+                    ...replies.map((reply) => reply.attachment),
+                ])
                         res.status(200).json({
             message: 'Post Deleted Successfully'
         })
@@ -342,6 +356,7 @@ exports.updatePost = async (req, res, next) => {
         if (!updatedPost) {
             return res.status(404).json({ message: 'Post not found' })
         }
+        enqueueCategorization(updatedPost._id, 'post')
 
         const populatedPost = await Post.findOne({ _id: updatedPost._id }).populate([
             {
@@ -469,5 +484,3 @@ exports.getNewsFeed = async (req, res, next) => {
         next(error)
     }
 }
-
-

@@ -1,8 +1,11 @@
 const Admin = require('../models/Admin')
 const Profile = require('../models/Profile')
+const UserInterestProfile = require('../models/UserInterestProfile')
+const { rebuildInterestProfile, rebuildInterestProfiles } = require('../services/recommendationService')
 const User = require('../models/User')
 const Post = require('../models/Post')
 const Watch = require('../models/Watch')
+const Story = require('../models/Story')
 const Comment = require('../models/Comment')
 const CmntReply = require('../models/CmntReply')
 const Report = require('../models/Report')
@@ -12,6 +15,7 @@ const crypto = require('crypto');
 const SECRET_KEY = process.env.JWT_SECRET_KEY;
 const deleteUserData = require('../utils/deleteUserData')
 const sendEmailNotification = require('../utils/sendEmailNotification')
+const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
 
 const getAdminAppUrl = () => {
     const url = (
@@ -195,10 +199,49 @@ exports.deleteAccount = async (req, res, next) => {
 }
 
 
+const serializeInterestProfile = (interestProfile) => {
+    if (!interestProfile) {
+        return {
+            lovedCategories: [],
+            interestCount: 0,
+            interestUpdatedAt: null
+        };
+    }
+
+    const categories = interestProfile.categories instanceof Map
+        ? Array.from(interestProfile.categories.entries())
+        : Object.entries(interestProfile.categories || {});
+
+    return {
+        lovedCategories: categories
+            .map(([name, score]) => ({ name, score: Number(score) || 0 }))
+            .filter((category) => category.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 10),
+        interestCount: interestProfile.interactionCount || 0,
+        interestUpdatedAt: interestProfile.updatedAt || interestProfile.createdAt || null
+    };
+};
+
 exports.getProfiles = async (req, res, next) => {
     try {
         let profiles = await Profile.find().populate(['user', 'friends']).limit(50);
-        return res.status(200).json(profiles);
+        const rebuiltInterests = await rebuildInterestProfiles(profiles.map((profile) => profile._id));
+        const interestProfiles = await UserInterestProfile.find({
+            profile: { $in: profiles.map((profile) => profile._id) }
+        }).lean();
+        const interestsByProfile = new Map(interestProfiles.map((interestProfile) => [
+            String(interestProfile.profile),
+            serializeInterestProfile(interestProfile)
+        ]));
+        for (const [profileId, interestProfile] of rebuiltInterests) {
+            interestsByProfile.set(profileId, serializeInterestProfile(interestProfile));
+        }
+
+        return res.status(200).json(profiles.map((profile) => ({
+            ...profile.toObject(),
+            ...(interestsByProfile.get(String(profile._id)) || serializeInterestProfile(null))
+        })));
     } catch (error) {
         next(error);
     }
@@ -213,7 +256,11 @@ exports.getProfile = async (req, res, next) => {
             return res.status(404).json({ message: 'Profile not found' });
         }
 
-        return res.status(200).json(profile);
+        const interestProfile = await rebuildInterestProfile(profile._id);
+        return res.status(200).json({
+            ...profile.toObject(),
+            ...serializeInterestProfile(interestProfile)
+        });
     } catch (error) {
         next(error);
     }
@@ -426,6 +473,7 @@ exports.deletePost = async (req, res, next) => {
         
         // Find all comments associated with this post
         const comments = await Comment.find({ post: id });
+        const replies = await CmntReply.find({ parent: { $in: comments.map((comment) => comment._id) } }).select('attachment');
         
         // Delete all comment replies for each comment
         for (const comment of comments) {
@@ -437,6 +485,7 @@ exports.deletePost = async (req, res, next) => {
         
         // Finally delete the post
         await Post.findByIdAndDelete(id);
+        await deleteCloudinaryResources([post.photos, ...comments.map((comment) => comment.attachment), ...replies.map((reply) => reply.attachment)]);
         
         return res.status(200).json({ 
             message: 'Post and all associated comments and replies deleted successfully',
@@ -541,9 +590,10 @@ exports.deleteWatch = async (req, res, next) => {
         if (!watch) {
             return res.status(404).json({ message: 'Watch not found' });
         }
-        
+
         // Find all comments associated with this watch
         const comments = await Comment.find({ watch: id });
+        const replies = await CmntReply.find({ parent: { $in: comments.map((comment) => comment._id) } }).select('attachment');
         
         // Delete all comment replies for each comment
         for (const comment of comments) {
@@ -555,11 +605,52 @@ exports.deleteWatch = async (req, res, next) => {
         
         // Finally delete the watch
         await Watch.findByIdAndDelete(id);
+        await deleteCloudinaryResources([watch.videoUrl, watch.thumbnail, ...comments.map((comment) => comment.attachment), ...replies.map((reply) => reply.attachment)]);
         
         return res.status(200).json({ 
             message: 'Watch and all associated comments and replies deleted successfully',
             deletedComments: comments.length,
             deletedReplies: comments.reduce((total, comment) => total + comment.replies.length, 0)
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+
+// Story Admin Functions
+exports.getStories = async (req, res, next) => {
+    try {
+        const stories = await Story.find()
+            .populate('author', 'fullName displayName profilePic coverPic bio')
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json(stories);
+    } catch (error) {
+        next(error);
+    }
+}
+
+exports.deleteStory = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const story = await Story.findById(id);
+
+        if (!story) {
+            return res.status(404).json({ message: 'Story not found' });
+        }
+
+        const comments = await Comment.find({ post: id });
+        const replies = await CmntReply.find({ parent: { $in: comments.map((comment) => comment._id) } }).select('attachment');
+        for (const comment of comments) {
+            await CmntReply.deleteMany({ parent: comment._id });
+        }
+        await Comment.deleteMany({ post: id });
+        await Story.findByIdAndDelete(id);
+        await deleteCloudinaryResources([story.image, story.music, ...comments.map((comment) => comment.attachment), ...replies.map((reply) => reply.attachment)]);
+
+        return res.status(200).json({
+            message: 'Story and associated comments and replies deleted successfully',
+            deletedComments: comments.length
         });
     } catch (error) {
         next(error);

@@ -17,6 +17,10 @@ const OLLAMA_URL = `${String(process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11
 const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS) || 180000;
 const OLLAMA_MAX_TOKENS = Number(process.env.OLLAMA_MAX_TOKENS) || 220;
 const OLLAMA_NUM_CTX = Number(process.env.OLLAMA_NUM_CTX) || 2048;
+// Gemini may take longer on the first request or while the provider is busy.
+// Keep this configurable, but never use the old 8-second cap for AI captions.
+const GEMINI_JSON_TIMEOUT_MS = Number(process.env.GEMINI_JSON_TIMEOUT_MS) || 30000;
+const GEMINI_STREAM_TIMEOUT_MS = Number(process.env.GEMINI_STREAM_TIMEOUT_MS) || 30000;
 const parseProviderKeys = (value = "") =>
   [...new Set(String(value || "").split(/[,\r\n]+/).map(key => key.trim()).filter(Boolean))];
 const isRateLimitError = (status, data, error) => {
@@ -737,7 +741,10 @@ const completeGemini = async ({
         model,
       )}:generateContent?key=${encodeURIComponent(keys[i])}`,
       requestBody,
-      { timeout: json ? 8000 : 16000, validateStatus: () => true },
+      {
+        timeout: json ? GEMINI_JSON_TIMEOUT_MS : GEMINI_STREAM_TIMEOUT_MS,
+        validateStatus: () => true,
+      },
     );
     if (response.status < 400) {
       const parts = response.data?.candidates?.[0]?.content?.parts || [];
@@ -1215,7 +1222,7 @@ const streamGeminiProvider = async ({
       model,
     )}:streamGenerateContent?alt=sse&key=${encodeURIComponent(keys[i])}`;
     const response = await axios.post(url, requestBody, {
-      timeout: json ? 8000 : 16000,
+      timeout: json ? GEMINI_JSON_TIMEOUT_MS : GEMINI_STREAM_TIMEOUT_MS,
       responseType: "stream",
       validateStatus: () => true,
       signal,

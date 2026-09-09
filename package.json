@@ -7,6 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node index.js",
     "dev": "nodemon index.js",
+    "test:ai-feed": "node --test services/*.test.js",
     "start:lb": "node load-balancer/start-cluster.js",
     "start:lb:2": "node load-balancer/start-cluster.js 2",
     "start:lb:4": "node load-balancer/start-cluster.js 4",

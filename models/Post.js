@@ -56,6 +56,18 @@ let postSchema = new Schema({
     source: {
         type: String,
         default: 'user'
+    },
+    aiMetadata: {
+        status: { type: String, enum: ['pending', 'ready', 'failed'], default: 'pending', index: true },
+        categories: { type: [String], default: [] },
+        embedding: { type: [Number], default: undefined },
+        embeddingModel: String,
+        provider: String,
+        contentHash: { type: String, index: true },
+        sentiment: String,
+        contentSafetyFlags: { type: [String], default: [] },
+        processedAt: Date,
+        error: String
     }
 
 },{

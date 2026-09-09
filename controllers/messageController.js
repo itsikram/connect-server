@@ -1,4 +1,5 @@
 const Message = require('../models/Message')
+const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
 const Profile = require('../models/Profile')
 const { sendChatMessageDataPush } = require('../utils/pushNotifications')
 const { listHasId } = require('../utils/ids')
@@ -602,6 +603,7 @@ exports.deleteMessage = async (req, res, next) => {
         
         // Delete the message
         await Message.findByIdAndDelete(messageId);
+        await deleteCloudinaryResources([message.attachment]);
         
         // Emit real-time event to all users in the chat room
         const io = req.app.get('io');
@@ -632,7 +634,9 @@ exports.deleteConversation = async (req, res, next) => {
             ],
         };
 
+        const messages = await Message.find(conversationQuery).select('attachment');
         const result = await Message.deleteMany(conversationQuery);
+        await deleteCloudinaryResources(messages.map((message) => message.attachment));
 
         const io = req.app.get('io');
         if (io) {

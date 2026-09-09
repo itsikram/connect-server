@@ -3,6 +3,7 @@ const path = require("path");
 const AiSettings = require("../models/AiSettings");
 
 const CACHE_TTL_MS = 15000;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 let cache = { at: 0, doc: null };
 
 const PROVIDERS = ["gemini", "openai", "cursor", "grok", "groq", "ollama"];
@@ -19,7 +20,7 @@ const defaultDoc = () => ({
     ollama: true,
   },
   models: {
-    gemini: "gemini-2.0-flash",
+    gemini: GEMINI_MODEL,
     openai: "gpt-4o-mini",
     cursor: "composer-2.5",
     grok: "grok-3-mini",
@@ -89,6 +90,9 @@ const envFallbackFor = (provider) => {
 const normalizeDoc = (doc = {}) => {
   const base = defaultDoc();
   const configuredModels = { ...base.models, ...(doc.models || {}) };
+  if (!configuredModels.gemini || configuredModels.gemini === "gemini-2.0-flash") {
+    configuredModels.gemini = GEMINI_MODEL;
+  }
   if (!doc.models?.ollama || doc.models.ollama === "llama3.2") {
     configuredModels.ollama = base.models.ollama;
   }
@@ -125,8 +129,11 @@ exports.loadAiSettings = async ({ force = false } = {}) => {
 exports.getProviderKey = async (provider) => {
   if (!PROVIDERS.includes(provider)) return "";
   const doc = await exports.loadAiSettings();
+  // Environment keys are the deployment source of truth. This also prevents
+  // an obsolete key saved in the admin settings document from overriding .env.
+  const envKey = envFallbackFor(provider);
   const dbKey = stripEnvValue(doc.keys?.[provider]);
-  return dbKey || envFallbackFor(provider);
+  return envKey || dbKey;
 };
 
 exports.getCursorRepoUrl = async () => {

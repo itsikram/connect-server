@@ -1,9 +1,10 @@
 const Router = require('express').Router()
 const isAuth = require('../middlewares/isAuth')
-const {postAddComment,updateComment,storyAddComment, postDeleteComment,addCommentReact,removeCommentReact,postCommentReply,removeCommentReply,addReplyReact,removeReplyReact} = require('../controllers/commentController')
+const {postAddComment,updateComment,updateCommentReply,storyAddComment, postDeleteComment,addCommentReact,removeCommentReact,postCommentReply,removeCommentReply,addReplyReact,removeReplyReact} = require('../controllers/commentController')
 
 Router.post('/addComment',isAuth,postAddComment)
 Router.post('/updateComment',isAuth,updateComment)
+Router.post('/updateReply',isAuth,updateCommentReply)
 Router.post('/deleteComment',isAuth,postDeleteComment);
 Router.post('/addReact',isAuth,addCommentReact);
 Router.post('/addReply',isAuth,postCommentReply);
