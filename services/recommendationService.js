@@ -1,5 +1,8 @@
 const Post = require('../models/Post');
 const Watch = require('../models/Watch');
+const Comment = require('../models/Comment');
+const CmntReply = require('../models/CmntReply');
+const Profile = require('../models/Profile');
 const UserInterestProfile = require('../models/UserInterestProfile');
 
 const cosineSimilarity = (a, b) => {
@@ -35,7 +38,32 @@ const getRecommendations = async ({ profileId, kind, page = 1, limit = 10, filte
     const profile = await rebuildInterestProfile(profileId);
     const query = Model.find(filter).sort({ createdAt: -1 }).limit(Math.max(limit * 5, 40));
     query.populate({ path: 'author', select: 'fullName displayName username nickname profilePic isOfficial isVerified isActive user', populate: { path: 'user', select: 'firstName surname' } });
-    query.populate({ path: 'comments', options: { sort: { createdAt: -1 }, limit: 50 } });
+    query.populate({
+        path: 'comments',
+        model: Comment,
+        options: { sort: { createdAt: -1 }, limit: 50 },
+        populate: [{
+            path: 'author',
+            model: Profile,
+            select: 'profilePic user fullName displayName username nickname',
+            populate: {
+                path: 'user',
+                select: 'firstName surname displayName fullName',
+            },
+        }, {
+            path: 'replies',
+            model: CmntReply,
+            populate: {
+                path: 'author',
+                model: Profile,
+                select: 'profilePic user fullName displayName username nickname',
+                populate: {
+                    path: 'user',
+                    select: 'firstName surname displayName fullName',
+                },
+            },
+        }],
+    });
     if (kind === 'post') query.populate({ path: 'parentPost', select: 'author caption photos type createdAt' });
     const candidates = await query.lean();
     const ranked = rankItems(candidates, profile);

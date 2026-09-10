@@ -9,29 +9,26 @@ const { rankPosts } = require('../utils/feedRanking')
 const { enqueueCategorization } = require('../services/contentCategorizationQueue')
 const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
 
+const commentAuthorPopulate = {
+    path: 'author',
+    model: Profile,
+    select: 'profilePic user fullName displayName username nickname',
+    populate: {
+        path: 'user',
+        select: 'firstName surname displayName fullName'
+    }
+}
+
+const commentReplyPopulate = {
+    path: 'replies',
+    model: CmntReply,
+    populate: commentAuthorPopulate
+}
+
 const commentPopulate = {
     path: 'comments',
     model: Comment,
-    populate: [{
-        path: 'author',
-        select: ['profilePic', 'user', 'fullName', 'displayName'],
-        populate: {
-            path: 'user',
-            select: ['firstName', 'surname']
-        }
-    }, {
-        path: 'replies',
-        model: CmntReply,
-        populate: {
-            path: 'author',
-            model: Profile,
-            select: ['profilePic', 'user', 'fullName', 'displayName'],
-            populate: {
-                path: 'user',
-                select: ['firstName', 'surname']
-            }
-        }
-    }]
+    populate: [commentAuthorPopulate, commentReplyPopulate]
 }
 
 
@@ -68,21 +65,7 @@ exports.createPost = async (req, res, next) => {
             {
                 path: 'comments',
                 model: Comment,
-                populate: [{
-                    path: 'author',
-                    select: ['profilePic', 'user'],
-                    populate: {
-                        path: 'user',
-                        select: ['firstName', 'surname']
-                    }
-                }, {
-                    path: 'replies',
-                    Model: CmntReply,
-                    populate: {
-                        path: 'author',
-                        model: Profile
-                    }
-                }]
+                populate: [commentAuthorPopulate, commentReplyPopulate]
             }]).sort({ 'createdAt': -1 })
         res.status(200).json({
             message: 'Post Created Successfully',
@@ -178,21 +161,7 @@ exports.sharePost = async (req, res, next) => {
                 {
                     path: 'comments',
                     model: Comment,
-                    populate: [{
-                        path: 'author',
-                        select: ['profilePic', 'user'],
-                        populate: {
-                            path: 'user',
-                            select: ['firstName', 'surname']
-                        }
-                    }, {
-                        path: 'replies',
-                        Model: CmntReply,
-                        populate: {
-                            path: 'author',
-                            model: Profile
-                        }
-                    }]
+                    populate: [commentAuthorPopulate, commentReplyPopulate]
                 }]).sort({ 'createdAt': -1 })
             if (updatePost) {
                 return res.status(200).json({ message: 'Post Shared Succesfully', post: getPost })
@@ -241,21 +210,7 @@ exports.getMyPosts = async (req, res, next) => {
             {
                 path: 'comments',
                 model: Comment,
-                populate: [{
-                    path: 'author',
-                    select: ['profilePic', 'user'],
-                    populate: {
-                        path: 'user',
-                        select: ['firstName', 'surname']
-                    }
-                }, {
-                    path: 'replies',
-                    Model: CmntReply,
-                    populate: {
-                        path: 'author',
-                        model: Profile
-                    }
-                }]
+                populate: [commentAuthorPopulate, commentReplyPopulate]
             }]).sort({ 'createdAt': -1 })
 
         res.status(200).json(posts)
@@ -292,22 +247,7 @@ exports.getSinglePost = async (req, res, next) => {
             {
                 path: 'comments',
                 model: Comment,
-                populate: [{
-                    path: 'author',
-                    select: ['profilePic', 'user'],
-                    populate: {
-                        path: 'user',
-                        select: ['firstName', 'surname']
-                    }
-                },
-                {
-                    path: 'replies',
-                    Model: CmntReply,
-                    populate: {
-                        path: 'author',
-                        model: Profile
-                    }
-                }]
+                populate: [commentAuthorPopulate, commentReplyPopulate]
             },
             {
                 path: 'viewers',
@@ -379,21 +319,7 @@ exports.updatePost = async (req, res, next) => {
             {
                 path: 'comments',
                 model: Comment,
-                populate: [{
-                    path: 'author',
-                    select: ['profilePic', 'user'],
-                    populate: {
-                        path: 'user',
-                        select: ['firstName', 'surname']
-                    }
-                }, {
-                    path: 'replies',
-                    Model: CmntReply,
-                    populate: {
-                        path: 'author',
-                        model: Profile
-                    }
-                }]
+                populate: [commentAuthorPopulate, commentReplyPopulate]
             }
         ])
 

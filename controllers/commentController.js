@@ -47,6 +47,22 @@ async function resolveCommentParent(parentId) {
 
     return null
 }
+
+const sameProfile = (left, right) => String(left?._id || left) === String(right?._id || right)
+
+async function canDeleteComment(profileId, comment) {
+    if (sameProfile(comment.author, profileId)) return true
+    const parent = await resolveCommentParent(comment.post || comment.watch)
+    return Boolean(parent?.type === 'post' && parent.doc?.author && sameProfile(parent.doc.author, profileId))
+}
+
+async function canDeleteReply(profileId, reply) {
+    if (sameProfile(reply.author, profileId)) return true
+    const parentComment = await Comment.findById(reply.parent).select('post watch')
+    if (!parentComment) return false
+    const parent = await resolveCommentParent(parentComment.post || parentComment.watch)
+    return Boolean(parent?.type === 'post' && parent.doc?.author && sameProfile(parent.doc.author, profileId))
+}
 exports.postAddComment = async (req, res, next) => {
     try {
         let attachment = req.body.attachment ? req.body.attachment : ''
@@ -415,7 +431,7 @@ exports.postCommentReply = async (req, res, next) => {
     console.log('add comment')
     try {
         let commentId = req.body.commentId
-        let authorId = req.body.authorId
+        let authorId = req.profile._id
         let replyMsg = req.body.replyMsg
         let myProfileId = req.profile._id
         let myProfile = req.profile
@@ -545,6 +561,13 @@ exports.removeCommentReply = async (req, res, next) => {
     try {
 
         let replyId = req.body.replyId
+        let reply = await CmntReply.findById(replyId)
+        if (!reply) {
+            return res.status(400).json({ message: 'Comment Reply Deletion Failed' })
+        }
+        if (!await canDeleteReply(req.profile._id, reply)) {
+            return res.status(403).json({ message: 'You are not allowed to delete this reply' })
+        }
 
         let deletedReply = await CmntReply.findOneAndDelete({ _id: replyId })
 
@@ -617,9 +640,20 @@ exports.postDeleteComment = async (req, res, next) => {
         let parentId = req.body.postId || req.body.storyId || req.body.watchId
         let parentType = req.body.parentType
 
+        const comment = await Comment.findById(commentId)
+        if (!comment) {
+            return res.status(500).json({ message: 'Comment Deletion Failed' })
+        }
+        if (!await canDeleteComment(req.profile._id, comment)) {
+            return res.status(403).json({ message: 'You are not allowed to delete this comment' })
+        }
+
+        const replies = await CmntReply.find({ parent: commentId }).select('attachment')
         let deleteComment = await Comment.findOneAndDelete({ _id: commentId })
         if (deleteComment) {
             await deleteCloudinaryResources([deleteComment.attachment])
+            await deleteCloudinaryResources(replies.map((reply) => reply.attachment))
+            await CmntReply.deleteMany({ parent: commentId })
             const idToPull = parentId || deleteComment.watch || deleteComment.post
 
             if (parentType === 'story') {
