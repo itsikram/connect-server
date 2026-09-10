@@ -27,6 +27,9 @@ const agoraRoutes = require("./Routes/agoraRoutes");
 const ytDownloadRoutes = require("./Routes/ytDownloadRoutes");
 let app = express();
 app.set("trust proxy", 1);
+// API consumers do not maintain an HTTP cache. ETags therefore cause
+// body-less 304 responses that the mobile client cannot use.
+app.disable("etag");
 const socketHandler = require("./sockets/socketHandler");
 const { initializeSpeechWebSocketServer } = require("./speech/speechWsServer");
 const httpServer = createServer(app);
@@ -456,6 +459,8 @@ app.use(
       "X-Requested-With",
       "Accept",
       "Origin",
+      "Cache-Control",
+      "Pragma",
     ],
     exposedHeaders: ["Content-Range", "X-Content-Range"],
   }),
@@ -471,7 +476,7 @@ app.use((req, res, next) => {
   res.header("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS");
   res.header(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, Content-Length, X-Requested-With, Accept, Origin",
+    "Content-Type, Authorization, Content-Length, X-Requested-With, Accept, Origin, Cache-Control, Pragma",
   );
   res.header("Access-Control-Allow-Credentials", "true");
   if ("OPTIONS" === req.method) {

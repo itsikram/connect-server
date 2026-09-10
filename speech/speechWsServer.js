@@ -474,6 +474,7 @@ class DeepgramBridge {
     const options = {
       model,
       language: effectiveLanguage,
+      ...(effectiveLanguage === "multi" ? { detect_language: true } : {}),
       channels: 1,
       interim_results: true,
       punctuate: true,

@@ -330,6 +330,12 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             console.warn('audio-call-reject: Missing to or channelName', { to, channelName });
             return;
         }
+        // A duplicate push/socket delivery can cause a callee to send reject
+        // after answering. Do not invalidate an already accepted call.
+        const roomKey = getRoomKey(profileId, to);
+        if (wasAccepted(roomKey)) {
+            return;
+        }
         callTimeouts.delete(`agora:${channelName}`);
         io.to(String(to)).emit('audio-call-rejected', { to, connectId: profileId, channelName });
     });
@@ -403,6 +409,11 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
 
     socket.on("answer-call", async ({ to, channelName, isAudio = false }) => {
         try {
+            // Record acceptance before async work so a duplicate reject cannot
+            // invalidate a call while profile data/events are being prepared.
+            const roomKey = getRoomKey(profileId, to);
+            markAccepted(roomKey);
+
             // Clear any pending missed-call timer for this channel
             try {
                 const key = `agora:${channelName}`;
@@ -426,6 +437,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                 callerProfilePic: calleeProfileData?.profilePic,
                 callerId: String(profileId)
             });
+
             // Also notify the callee (echo) so their app can open the call UI with caller info
             socket.emit("call-accepted", {
                 channelName,
@@ -435,11 +447,22 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                 callerId: String(to)
             });
 
+            // Captions are opt-in and scoped to the active call channel. Never relay
+            // arbitrary text or audio; the authenticated socket identity is the sender.
+            socket.on("call-transcript", ({ to, channelName, text, isFinal = false } = {}) => {
+                const target = String(to || '');
+                const channel = String(channelName || '');
+                const transcript = String(text || '').trim().slice(0, 500);
+                if (!target || !channel || !transcript) return;
+                io.to(target).emit('call-transcript', {
+                    senderId: String(profileId),
+                    channelName: channel,
+                    text: transcript,
+                    isFinal: Boolean(isFinal),
+                });
+            });
+
             // Mark this room as accepted to avoid sending 'missed' on leave
-            try {
-                const roomKey = getRoomKey(profileId, to);
-                markAccepted(roomKey);
-            } catch (e) { }
         } catch (err) {
             console.error('Error handling agora-answer-call:', err, { to, channelName, isAudio });
         }

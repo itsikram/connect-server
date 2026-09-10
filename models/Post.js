@@ -13,6 +13,10 @@ let postSchema = new Schema({
         type: String,
         maxLength: 250,
     },
+    gallery: {
+        type: [String],
+        default: [],
+    },
     reacts: [{
         profile: {
             type: Schema.Types.ObjectId,

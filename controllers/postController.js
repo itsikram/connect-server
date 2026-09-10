@@ -37,13 +37,27 @@ exports.createPost = async (req, res, next) => {
         let profileId = req.profile._id
         let caption = req.body.caption
         let thumbnail_url = req.body.photos
+        let gallery = req.body.gallery
         let feelings = req.body.feelings
         let location = req.body.location
         let audience = req.body.audience ? parseInt(req.body.audience) : 3
         // return console.log(req.body)
+        if (typeof gallery === 'string') {
+            try {
+                gallery = JSON.parse(gallery)
+            } catch (error) {
+                return res.status(400).json({ message: 'Gallery must be a valid JSON array' })
+            }
+        }
+        if (gallery === undefined || gallery === null || gallery === '') gallery = []
+        if (!Array.isArray(gallery) || gallery.some((url) => typeof url !== 'string' || !url.trim())) {
+            return res.status(400).json({ message: 'Gallery must be an array of image URLs' })
+        }
+
         let post = new Post({
             caption,
             photos: thumbnail_url,
+            gallery,
             author: profileId,
             feelings,
             location,
@@ -97,6 +111,7 @@ exports.deletePost = async (req, res, next) => {
                 ])
                 await deleteCloudinaryResources([
                     deletePost.photos,
+                    ...(deletePost.gallery || []),
                     ...comments.map((comment) => comment.attachment),
                     ...replies.map((reply) => reply.attachment),
                 ])
@@ -126,6 +141,7 @@ exports.sharePost = async (req, res, next) => {
         let sharedPost = new Post({
             caption,
             photos: thePost.photos,
+            gallery: thePost.gallery || [],
             author: profileId,
             parentPost: thePost._id,
             type: 'share'
@@ -267,7 +283,7 @@ exports.getSinglePost = async (req, res, next) => {
 }
 
 exports.updatePost = async (req, res, next) => {
-    let { postId, caption, feelings, location, photos, audience } = req.body
+    let { postId, caption, feelings, location, photos, audience, gallery } = req.body
     try {
         let updateData = {}
 
@@ -285,6 +301,22 @@ exports.updatePost = async (req, res, next) => {
         
         if (photos !== undefined) {
             updateData.photos = photos
+        }
+
+        if (gallery !== undefined) {
+            if (typeof gallery === 'string') {
+                try {
+                    gallery = JSON.parse(gallery)
+                } catch (error) {
+                    return res.status(400).json({ message: 'Gallery must be a valid JSON array' })
+                }
+            }
+
+            if (!Array.isArray(gallery) || gallery.some((url) => typeof url !== 'string' || !url.trim())) {
+                return res.status(400).json({ message: 'Gallery must be an array of image URLs' })
+            }
+
+            updateData.gallery = gallery
         }
         
         if (audience !== undefined) {
