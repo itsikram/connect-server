@@ -629,6 +629,7 @@ const createSpeechSession = (ws, transcriber) => {
       type: "final",
       text,
       confidence: 1,
+      isFinal: true,
     });
     state.confirmedTranscript = "";
     state.lastPartial = "";
@@ -664,6 +665,7 @@ const createSpeechSession = (ws, transcriber) => {
       type: "final",
       text: finalText,
       confidence: 1,
+      isFinal: true,
     });
 
     closeDeepgramConnection();

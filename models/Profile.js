@@ -182,6 +182,14 @@ let profileSchema = new Schema(
   },
 );
 
+profileSchema.virtual("followersCount").get(function () {
+  return Array.isArray(this.followers) ? this.followers.length : 0;
+});
+
+profileSchema.virtual("followingCount").get(function () {
+  return Array.isArray(this.following) ? this.following.length : 0;
+});
+
 let Profile = model("Profile", profileSchema);
 
 module.exports = Profile;

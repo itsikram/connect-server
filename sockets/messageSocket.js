@@ -31,7 +31,7 @@ module.exports = function messageSocket(io, socket, profileId) {
   socket.on("fetchMessages", async () => {
     let profileContacts = [];
     let myProfile = await Profile.findOne({ _id: profileId }).populate(
-      "friends",
+      "connects",
     );
 
     if (!myProfile) return;

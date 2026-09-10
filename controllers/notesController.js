@@ -131,7 +131,14 @@ exports.updateNote = async (req, res, next) => {
         }
 
         if (title !== undefined) {
-            note.title = title.trim();
+            // Mirror createNote validation: title must be a non-empty string when provided
+            if (!title || !String(title).trim()) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Title is required'
+                });
+            }
+            note.title = String(title).trim();
         }
         if (content !== undefined) {
             note.content = content;

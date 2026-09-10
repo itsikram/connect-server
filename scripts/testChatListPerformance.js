@@ -69,7 +69,7 @@ async function testChatListPerformance() {
         console.log('\nTesting old approach for comparison...');
         const oldStartTime = Date.now();
         
-        const myProfile = await Profile.findOne({ _id: profileId }).populate('friends');
+        const myProfile = await Profile.findOne({ _id: profileId }).populate('connects');
         
         if (myProfile?.connects) {
             let messageCount = 0;
