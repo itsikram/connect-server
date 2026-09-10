@@ -1,21 +1,21 @@
 /**
  * Location Controller
- * Handles friend location queries and AI responses
+ * Handles connect location queries and AI responses
  */
 
 const Profile = require("../models/Profile");
 const {
-  getFriendsLocations,
+  getConnectsLocations,
   formatAIResponse,
 } = require("../services/ai/locationService");
 const { translate } = require("../utils/localization/translations");
 
 /**
- * GET /api/location/friends-nearby
- * Get friends nearby based on user's location coordinates
+ * GET /api/location/connects-nearby
+ * Get connects nearby based on user's location coordinates
  * Query params: latitude, longitude, lang (optional - 'eng' or 'bn'), radius (optional)
  */
-exports.getFriendsNearby = async (req, res, next) => {
+exports.getConnectsNearby = async (req, res, next) => {
   try {
     const { latitude, longitude, lang = "eng", radius = 50 } = req.query;
     const profileId = req.profile?._id;
@@ -80,8 +80,8 @@ exports.getFriendsNearby = async (req, res, next) => {
       },
     });
 
-    // Get friends locations
-    const locationData = await getFriendsLocations(userProfile, lat, lon, {
+    // Get connects locations
+    const locationData = await getConnectsLocations(userProfile, lat, lon, {
       lang,
       radiusKm,
     });
@@ -91,17 +91,17 @@ exports.getFriendsNearby = async (req, res, next) => {
 
     return res.status(200).json(aiResponse);
   } catch (error) {
-    console.error("Error in getFriendsNearby:", error);
+    console.error("Error in getConnectsNearby:", error);
     next(error);
   }
 };
 
 /**
- * GET /api/location/friends-location-raw
- * Get raw friends location data (for map display)
+ * GET /api/location/connects-location-raw
+ * Get raw connects location data (for map display)
  * Query params: latitude, longitude, lang (optional)
  */
-exports.getFriendsLocationRaw = async (req, res, next) => {
+exports.getConnectsLocationRaw = async (req, res, next) => {
   try {
     const { latitude, longitude, lang = "eng" } = req.query;
     const profileId = req.profile?._id;
@@ -131,25 +131,25 @@ exports.getFriendsLocationRaw = async (req, res, next) => {
       });
     }
 
-    const locationData = await getFriendsLocations(userProfile, lat, lon, {
+    const locationData = await getConnectsLocations(userProfile, lat, lon, {
       lang,
       radiusKm: 100, // Larger radius for raw data
     });
 
     return res.status(200).json({
       success: true,
-      friends: locationData.friends.map((friend) => ({
-        id: friend.id,
-        name: friend.name,
-        latitude: friend.lastLocation?.latitude,
-        longitude: friend.lastLocation?.longitude,
-        distance: friend.distance,
-        profilePic: friend.profilePic,
+      connects: locationData.connects.map((connect) => ({
+        id: connect.id,
+        name: connect.name,
+        latitude: connect.lastLocation?.latitude,
+        longitude: connect.lastLocation?.longitude,
+        distance: connect.distance,
+        profilePic: connect.profilePic,
       })),
       userLocation: { latitude: lat, longitude: lon },
     });
   } catch (error) {
-    console.error("Error in getFriendsLocationRaw:", error);
+    console.error("Error in getConnectsLocationRaw:", error);
     next(error);
   }
 };
@@ -216,14 +216,14 @@ exports.shareLocation = async (req, res, next) => {
 };
 
 /**
- * GET /api/location/friend/:friendId
- * Get specific friend's location
+ * GET /api/location/connect/:connectId
+ * Get specific connect's location
  * Query params: lang (optional)
  */
-exports.getFriendLocation = async (req, res, next) => {
+exports.getConnectLocation = async (req, res, next) => {
   try {
     const { lang = "eng" } = req.query;
-    const { friendId } = req.params;
+    const { connectId } = req.params;
     const profileId = req.profile?._id;
 
     if (!profileId) {
@@ -233,20 +233,20 @@ exports.getFriendLocation = async (req, res, next) => {
       });
     }
 
-    // Check if friend exists and is in user's friend list
+    // Check if connect exists and is in user's connect list
     const userProfile = await Profile.findById(profileId);
-    if (!userProfile || !userProfile.friends.includes(friendId)) {
+    if (!userProfile || !userProfile.connects.includes(connectId)) {
       return res.status(403).json({
         error: true,
         message:
           lang === "bn"
             ? "এই বন্ধুটি আপনার বন্ধু তালিকায় নেই।"
-            : "This friend is not in your friends list.",
-        code: "NOT_FRIEND",
+            : "This connect is not in your connects list.",
+        code: "NOT_CONNECT",
       });
     }
 
-    const friendProfile = await Profile.findById(friendId).select([
+    const connectProfile = await Profile.findById(connectId).select([
       "fullName",
       "displayName",
       "lastLocation",
@@ -255,46 +255,46 @@ exports.getFriendLocation = async (req, res, next) => {
       "profilePic",
     ]);
 
-    if (!friendProfile) {
+    if (!connectProfile) {
       return res.status(404).json({
         error: true,
         message: translate("profileNotFound", lang),
       });
     }
 
-    if (!friendProfile.lastLocation) {
+    if (!connectProfile.lastLocation) {
       return res.status(200).json({
         success: true,
-        friend: {
-          name: friendProfile.fullName,
+        connect: {
+          name: connectProfile.fullName,
           hasLocation: false,
           message:
             lang === "bn"
               ? "এই বন্ধু তাদের অবস্থান শেয়ার করেননি।"
-              : "This friend has not shared their location.",
+              : "This connect has not shared their location.",
         },
       });
     }
 
     return res.status(200).json({
       success: true,
-      friend: {
-        name: friendProfile.fullName,
+      connect: {
+        name: connectProfile.fullName,
         hasLocation: true,
-        location: friendProfile.lastLocation,
-        address: friendProfile.presentAddress || friendProfile.permanentAddress,
-        profilePic: friendProfile.profilePic,
+        location: connectProfile.lastLocation,
+        address: connectProfile.presentAddress || connectProfile.permanentAddress,
+        profilePic: connectProfile.profilePic,
       },
     });
   } catch (error) {
-    console.error("Error in getFriendLocation:", error);
+    console.error("Error in getConnectLocation:", error);
     next(error);
   }
 };
 
 /**
  * POST /api/location/search-nearby
- * AI-powered search for nearby friends
+ * AI-powered search for nearby connects
  * Body: { latitude, longitude, query, lang }
  */
 exports.searchNearby = async (req, res, next) => {
@@ -348,7 +348,7 @@ exports.searchNearby = async (req, res, next) => {
       });
     }
 
-    const locationData = await getFriendsLocations(userProfile, lat, lon, {
+    const locationData = await getConnectsLocations(userProfile, lat, lon, {
       lang,
       radiusKm,
     });
@@ -357,7 +357,7 @@ exports.searchNearby = async (req, res, next) => {
 
     return res.status(200).json({
       ...aiResponse,
-      query: query || "nearby friends",
+      query: query || "nearby connects",
       radiusUsed: radiusKm,
     });
   } catch (error) {

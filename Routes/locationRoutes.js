@@ -1,22 +1,22 @@
 /**
  * Location Routes
- * Handles friend location queries and sharing
+ * Handles connect location queries and sharing
  */
 
 const Router = require("express").Router();
 const isAuth = require("../middlewares/isAuth");
 const {
-  getFriendsNearby,
-  getFriendsLocationRaw,
+  getConnectsNearby,
+  getConnectsLocationRaw,
   shareLocation,
-  getFriendLocation,
+  getConnectLocation,
   searchNearby,
 } = require("../controllers/locationController");
 const {
   chatLocationQuery,
-  getFriendDetailsForChat,
-  getBulkFriendDetails,
-  getChatFriendsList,
+  getConnectDetailsForChat,
+  getBulkConnectDetails,
+  getChatConnectsList,
 } = require("../controllers/chatLocationController");
 const {
   getMapData,
@@ -27,20 +27,20 @@ const {
 } = require("../controllers/mapLocationController");
 
 /**
- * GET /api/location/friends-nearby
- * Get friends nearby based on user's current location
+ * GET /api/location/connects-nearby
+ * Get connects nearby based on user's current location
  * Query params: latitude, longitude, lang (eng/bn), radius (km)
  *
- * Example: /api/location/friends-nearby?latitude=23.8103&longitude=90.4125&lang=bn&radius=50
+ * Example: /api/location/connects-nearby?latitude=23.8103&longitude=90.4125&lang=bn&radius=50
  */
-Router.get("/friends-nearby", isAuth, getFriendsNearby);
+Router.get("/connects-nearby", isAuth, getConnectsNearby);
 
 /**
- * GET /api/location/friends-location-raw
- * Get raw location data for friends (for map display)
+ * GET /api/location/connects-location-raw
+ * Get raw location data for connects (for map display)
  * Query params: latitude, longitude, lang
  */
-Router.get("/friends-location-raw", isAuth, getFriendsLocationRaw);
+Router.get("/connects-location-raw", isAuth, getConnectsLocationRaw);
 
 /**
  * POST /api/location/share-location
@@ -53,22 +53,22 @@ Router.get("/friends-location-raw", isAuth, getFriendsLocationRaw);
 Router.post("/share-location", isAuth, shareLocation);
 
 /**
- * GET /api/location/friend/:friendId
- * Get specific friend's location
+ * GET /api/location/connect/:connectId
+ * Get specific connect's location
  * Query params: lang (eng/bn)
  */
-Router.get("/friend/:friendId", isAuth, getFriendLocation);
+Router.get("/connect/:connectId", isAuth, getConnectLocation);
 
 /**
  * POST /api/location/search-nearby
- * AI-powered search for nearby friends with natural language query
+ * AI-powered search for nearby connects with natural language query
  * Body: { latitude, longitude, query, lang }
  *
  * Example: POST /api/location/search-nearby
  * {
  *   "latitude": 23.8103,
  *   "longitude": 90.4125,
- *   "query": "find my close friends",
+ *   "query": "find my close connects",
  *   "lang": "bn"
  * }
  */
@@ -76,7 +76,7 @@ Router.post("/search-nearby", isAuth, searchNearby);
 
 /**
  * POST /api/location/chat
- * AI Chat endpoint for natural language friend location queries
+ * AI Chat endpoint for natural language connect location queries
  * Body: { latitude, longitude, message, lang }
  *
  * Example: POST /api/location/chat
@@ -90,29 +90,29 @@ Router.post("/search-nearby", isAuth, searchNearby);
 Router.post("/chat", isAuth, chatLocationQuery);
 
 /**
- * GET /api/location/friend-details/:friendId
- * Get complete friend details for chat display
+ * GET /api/location/connect-details/:connectId
+ * Get complete connect details for chat display
  * Query params: lang (eng/bn)
  */
-Router.get("/friend-details/:friendId", isAuth, getFriendDetailsForChat);
+Router.get("/connect-details/:connectId", isAuth, getConnectDetailsForChat);
 
 /**
- * POST /api/location/bulk-friend-details
- * Get details for multiple friends at once
- * Body: { friendIds: [], lang }
+ * POST /api/location/bulk-connect-details
+ * Get details for multiple connects at once
+ * Body: { connectIds: [], lang }
  */
-Router.post("/bulk-friend-details", isAuth, getBulkFriendDetails);
+Router.post("/bulk-connect-details", isAuth, getBulkConnectDetails);
 
 /**
- * POST /api/location/chat-list-friends
- * Get formatted list of all friends for chat display
+ * POST /api/location/chat-list-connects
+ * Get formatted list of all connects for chat display
  * Body: { latitude, longitude, lang }
  */
-Router.post("/chat-list-friends", isAuth, getChatFriendsList);
+Router.post("/chat-list-connects", isAuth, getChatConnectsList);
 
 /**
  * GET /api/location/map-data
- * Get map data for friend locations visualization
+ * Get map data for connect locations visualization
  * Query params: latitude, longitude, lang, radius
  */
 Router.get("/map-data", isAuth, getMapData);
@@ -126,7 +126,7 @@ Router.get("/geojson", isAuth, getGeoJSON);
 
 /**
  * GET /api/location/kml
- * Export friend locations as KML (for Google Earth)
+ * Export connect locations as KML (for Google Earth)
  * Query params: latitude, longitude, lang, radius
  */
 Router.get("/kml", isAuth, getKML);
@@ -140,7 +140,7 @@ Router.get("/map-embed-html", isAuth, getMapEmbedHTML);
 
 /**
  * POST /api/location/nearby-summary
- * Get summary of nearby friends with categorization
+ * Get summary of nearby connects with categorization
  * Body: { latitude, longitude, lang, radius }
  */
 Router.post("/nearby-summary", isAuth, getNearbySummary);

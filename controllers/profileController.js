@@ -12,12 +12,12 @@ const MONGO_ID_RE = /^[a-fA-F0-9]{24}$/;
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 const PROFILE_PRIVATE_EXCLUDE =
   "-deviceTokens -browserIds -webPushSubscriptions";
-const FRIEND_PUBLIC_FIELDS =
+const CONNECT_PUBLIC_FIELDS =
   "_id fullName displayName username nickname profilePic bio isOfficial isVerified isActive lastActive lastLocation user";
 const USER_PUBLIC_FIELDS = "firstName surname";
 const USER_OWN_FIELDS = "firstName surname email faceLoginEnabled";
 const LITE_PROFILE_FIELDS =
-  "_id fullName displayName username nickname profilePic coverPic bio isOfficial isVerified isActive lastActive lastLocation blockedUsers friends friendReqs following followers user";
+  "_id fullName displayName username nickname profilePic coverPic bio isOfficial isVerified isActive lastActive lastLocation blockedUsers connects connectReqs following followers user";
 
 const isMongoId = (value) => MONGO_ID_RE.test(String(value || ""));
 
@@ -62,8 +62,8 @@ const loadProfileDocument = async (
     findQuery
       .select(PROFILE_PRIVATE_EXCLUDE)
       .populate({
-        path: "friends",
-        select: FRIEND_PUBLIC_FIELDS,
+        path: "connects",
+        select: CONNECT_PUBLIC_FIELDS,
         populate: { path: "user", select: USER_PUBLIC_FIELDS },
       })
       .populate({
@@ -337,16 +337,16 @@ exports.getNearbyProfiles = async (req, res, next) => {
       });
     }
 
-    // Get current user's friends list if profileId is provided
-    let userFriends = [];
+    // Get current user's connects list if profileId is provided
+    let userConnects = [];
     if (profileId) {
       try {
-        const currentUser = await Profile.findById(profileId).select("friends");
-        if (currentUser && currentUser.friends) {
-          userFriends = currentUser.friends.map((fid) => String(fid));
+        const currentUser = await Profile.findById(profileId).select("connects");
+        if (currentUser && currentUser.connects) {
+          userConnects = currentUser.connects.map((fid) => String(fid));
         }
       } catch (err) {
-        console.warn("Error fetching current user friends:", err);
+        console.warn("Error fetching current user connects:", err);
       }
     }
 
@@ -397,7 +397,7 @@ exports.getNearbyProfiles = async (req, res, next) => {
             timestamp: profile.lastLocation.timestamp,
           },
           distance: parseFloat(distance.toFixed(2)),
-          isFriend: userFriends.includes(profileIdStr),
+          isConnect: userConnects.includes(profileIdStr),
         });
       }
     }

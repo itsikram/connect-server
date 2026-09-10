@@ -60,6 +60,25 @@ let userSchema = new Schema({
     },
     resetPasswordExpire: {
         type: Date
+    },
+    walletBalanceCoins: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+    subscriptionStatus: {
+        type: String,
+        enum: ['none', 'active', 'expired', 'cancelled'],
+        default: 'none'
+    },
+    subscriptionTier: {
+        type: String,
+        enum: ['none', 'plus_basic', 'plus_pro'],
+        default: 'none'
+    },
+    subscriptionExpiresAt: {
+        type: Date,
+        default: null
     }
 },{timestamps: true})
 

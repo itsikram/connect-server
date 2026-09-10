@@ -169,7 +169,7 @@ exports.getAllStories = async(req,res,next) => {
             ? {
                 $or: [
                     { audience: 1 },
-                    { audience: 2, author: { $in: profile.friends || [] } },
+                    { audience: 2, author: { $in: profile.connects || [] } },
                     { audience: 3, author: profile._id },
                 ],
             }

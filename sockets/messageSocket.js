@@ -35,12 +35,12 @@ module.exports = function messageSocket(io, socket, profileId) {
     );
 
     if (!myProfile) return;
-    if (myProfile?.friends !== null) {
-      for (const friendProfile of myProfile.friends) {
-        // Only fetch the most recent message from each friend
+    if (myProfile?.connects !== null) {
+      for (const connectProfile of myProfile.connects) {
+        // Only fetch the most recent message from each connect
         // and mark it as 'fromInitialLoad' so frontend doesn't show notification
         const messages = await Message.find({
-          senderId: friendProfile._id,
+          senderId: connectProfile._id,
           receiverId: profileId,
         })
           .limit(1)
@@ -53,7 +53,7 @@ module.exports = function messageSocket(io, socket, profileId) {
         }));
 
         profileContacts.push({
-          person: friendProfile,
+          person: connectProfile,
           messages: messagesWithFlag,
         });
       }
@@ -80,7 +80,7 @@ module.exports = function messageSocket(io, socket, profileId) {
     socket.emit("roomJoined", { room });
   });
 
-  socket.on("loadMessages", async ({ myId, friendId, skip }) => {
+  socket.on("loadMessages", async ({ myId, connectId, skip }) => {
     let limit = 20;
     if (skip < 1) {
       return io
@@ -89,8 +89,8 @@ module.exports = function messageSocket(io, socket, profileId) {
     }
     const loadedMessages = await Message.find({
       $or: [
-        { senderId: myId, receiverId: friendId },
-        { senderId: friendId, receiverId: myId },
+        { senderId: myId, receiverId: connectId },
+        { senderId: connectId, receiverId: myId },
       ],
     })
       .skip(skip)
@@ -99,8 +99,8 @@ module.exports = function messageSocket(io, socket, profileId) {
       .populate("parent");
     let messagesLeft = await Message.find({
       $or: [
-        { senderId: myId, receiverId: friendId },
-        { senderId: friendId, receiverId: myId },
+        { senderId: myId, receiverId: connectId },
+        { senderId: connectId, receiverId: myId },
       ],
     })
       .skip(skip)
@@ -219,9 +219,9 @@ module.exports = function messageSocket(io, socket, profileId) {
 
   socket.on(
     "speak_message",
-    async ({ msgId, friendId, message, attachment, messageType } = {}) => {
+    async ({ msgId, connectId, message, attachment, messageType } = {}) => {
       try {
-        const targetProfileId = friendId ? String(friendId) : "";
+        const targetProfileId = connectId ? String(connectId) : "";
         const senderProfileId = profileId ? String(profileId) : "";
         if (!targetProfileId || !senderProfileId) return;
         if (targetProfileId === senderProfileId) {
@@ -483,7 +483,7 @@ module.exports = function messageSocket(io, socket, profileId) {
       socket.emit("messageSent", messagePayload);
       reply({ ok: true, updatedMessage, tempId });
 
-      let friendProfile = await Profile.findById(senderId).populate("user");
+      let connectProfile = await Profile.findById(senderId).populate("user");
       // Emit newMessageToUser only for real-time messages (isRealTime: true)
       // This ensures the receiver gets notification only when a NEW message arrives
       io.to(receiverId).emit("newMessageToUser", {
@@ -491,7 +491,7 @@ module.exports = function messageSocket(io, socket, profileId) {
         senderName,
         senderPP,
         chatPage: false,
-        friendProfile,
+        connectProfile,
         isRealTime: true, // Flag indicates this is a real-time notification, not from initial load
       });
 
@@ -533,14 +533,14 @@ module.exports = function messageSocket(io, socket, profileId) {
 
             // 1) Mobile FCM first (independent of saveNotification / web)
             let fcmResult = { successCount: 0, failureCount: 0 };
-            if (friendProfile) {
+            if (connectProfile) {
               try {
                 fcmResult = await sendChatMessageDataPush(receiverId, {
                   senderId,
                   updatedMessage,
                   senderName,
                   senderPP,
-                  friendProfile,
+                  connectProfile,
                   room,
                 });
                 console.log("[FCM chat] sendMessage push result", {
@@ -557,7 +557,7 @@ module.exports = function messageSocket(io, socket, profileId) {
                 );
               }
             } else {
-              console.warn("[FCM chat] skipped — friendProfile missing");
+              console.warn("[FCM chat] skipped — connectProfile missing");
             }
 
             // 2) Web: persist + socket to browsers
@@ -611,14 +611,14 @@ module.exports = function messageSocket(io, socket, profileId) {
       }
   });
 
-  // Unified handler to emit emotion change to one, many, or all friends
+  // Unified handler to emit emotion change to one, many, or all connects
   async function handleEmotionChange(payload, ack) {
     const receivedAt = Date.now();
     const {
       profileId,
       emotion,
-      friendId,
-      friendIds,
+      connectId,
+      connectIds,
       broadcast,
       emotionText,
       emoji,
@@ -630,7 +630,7 @@ module.exports = function messageSocket(io, socket, profileId) {
       emotionScores,
     } = payload || {};
     const targetDescription =
-      friendId || friendIds || (broadcast ? "broadcast" : null);
+      connectId || connectIds || (broadcast ? "broadcast" : null);
 
     console.info("[realtime_detection_received]", {
       socketId: socket.id,
@@ -687,16 +687,16 @@ module.exports = function messageSocket(io, socket, profileId) {
 
       // Resolve target recipients
       let targets = [];
-      if (Array.isArray(friendIds) && friendIds.length > 0) {
-        console.log("friendIds.map(String)", friendIds.map(String));
-        targets = friendIds.map(String);
-      } else if (friendId && friendId !== "all") {
-        targets = [String(friendId)];
+      if (Array.isArray(connectIds) && connectIds.length > 0) {
+        console.log("connectIds.map(String)", connectIds.map(String));
+        targets = connectIds.map(String);
+      } else if (connectId && connectId !== "all") {
+        targets = [String(connectId)];
       } else {
-        // broadcast to all friends
-        const me = await Profile.findById(profileId).select("friends");
-        if (me?.friends && me.friends.length > 0) {
-          targets = me.friends.map((id) => String(id));
+        // broadcast to all connects
+        const me = await Profile.findById(profileId).select("connects");
+        if (me?.connects && me.connects.length > 0) {
+          targets = me.connects.map((id) => String(id));
         }
       }
 
@@ -707,7 +707,7 @@ module.exports = function messageSocket(io, socket, profileId) {
           processingMs: Date.now() - receivedAt,
         });
         if (typeof ack === "function") {
-          ack({ ok: false, error: "No target friends resolved", recipients: 0 });
+          ack({ ok: false, error: "No target connects resolved", recipients: 0 });
         }
         return;
       }
@@ -727,7 +727,7 @@ module.exports = function messageSocket(io, socket, profileId) {
         timestamp: new Date(),
       };
 
-      // Emit to each target room (friend profileId is used as room)
+      // Emit to each target room (connect profileId is used as room)
       const recipients = targets.map((toId) => ({
         profileId: toId,
         connectedSockets: io.sockets.adapter.rooms.get(toId)?.size || 0,
@@ -824,10 +824,10 @@ module.exports = function messageSocket(io, socket, profileId) {
     }
   });
 
-  socket.on("last_emotion", async ({ friendId, profileId }) => {
-    if (!isValidObjectId(friendId) && !isValidObjectId(profileId)) return;
+  socket.on("last_emotion", async ({ connectId, profileId }) => {
+    if (!isValidObjectId(connectId) && !isValidObjectId(profileId)) return;
 
-    let profileData = await Profile.findOne({ _id: friendId }).select(
+    let profileData = await Profile.findOne({ _id: connectId }).select(
       "lastEmotion",
     );
     if (profileData) {
@@ -839,12 +839,12 @@ module.exports = function messageSocket(io, socket, profileId) {
   socket.on("live-voice-start", async ({ to, channelName }) => {
     try {
       if (!to || !channelName) return;
-      let callerName = "Friend";
+      let callerName = "Connect";
       try {
         const myProfileData = await Profile.findById(profileId).select(
           "fullName",
         );
-        callerName = myProfileData?.fullName || "Friend";
+        callerName = myProfileData?.fullName || "Connect";
       } catch (_e) {}
       const payload = {
         from: String(profileId),

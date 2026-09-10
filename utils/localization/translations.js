@@ -6,13 +6,13 @@
 const translations = {
   // Greeting messages
   greeting: {
-    eng: "Hello! I'm your AI assistant. I can help you find your friends' locations.",
+    eng: "Hello! I'm your AI assistant. I can help you find your connects' locations.",
     bn: "নমস্কার! আমি আপনার এআই সহায়ক। আমি আপনার বন্ধুদের অবস্থান খুঁজে পেতে সাহায্য করতে পারি।"
   },
 
-  // Friend location inquiry
-  friendLocationInquiry: {
-    eng: "I'll help you find your friends nearby based on your current location.",
+  // Connect location inquiry
+  connectLocationInquiry: {
+    eng: "I'll help you find your connects nearby based on your current location.",
     bn: "আমি আপনার বর্তমান অবস্থানের উপর ভিত্তি করে কাছাকাছি থাকা আপনার বন্ধুদের খুঁজে পেতে সাহায্য করব।"
   },
 
@@ -44,17 +44,17 @@ const translations = {
 
   // Summary messages
   summaryHeading: {
-    eng: "Friends Nearby - Summary",
+    eng: "Connects Nearby - Summary",
     bn: "কাছাকাছি থাকা বন্ধুরা - সংক্ষিপ্ত বিবরণ"
   },
 
-  noFriendsWithLocation: {
-    eng: "None of your friends have shared their location.",
+  noConnectsWithLocation: {
+    eng: "None of your connects have shared their location.",
     bn: "আপনার কোনো বন্ধু তাদের অবস্থান শেয়ার করেননি।"
   },
 
-  totalFriendsNearby: {
-    eng: (count) => `You have ${count} friend(s) within 5 km of your location.`,
+  totalConnectsNearby: {
+    eng: (count) => `You have ${count} connect(s) within 5 km of your location.`,
     bn: (count) => `আপনার অবস্থানের ৫ কিমির মধ্যে ${count} জন বন্ধু রয়েছেন।`
   },
 
@@ -64,8 +64,8 @@ const translations = {
     bn: "অবৈধ অবস্থান স্থানাঙ্ক প্রদান করা হয়েছে।"
   },
 
-  noFriendsFound: {
-    eng: "No friends found. Send friend requests to get started!",
+  noConnectsFound: {
+    eng: "No connects found. Send connect requests to get started!",
     bn: "কোনো বন্ধু খুঁজে পাওয়া যায়নি। শুরু করতে বন্ধুর অনুরোধ পাঠান!"
   },
 
@@ -81,7 +81,7 @@ const translations = {
 
   // Privacy messages
   locationPrivacyEnabled: {
-    eng: "Location sharing is currently disabled in your settings. Enable it to see friends' locations.",
+    eng: "Location sharing is currently disabled in your settings. Enable it to see connects' locations.",
     bn: "অবস্থান শেয়ারিং বর্তমানে আপনার সেটিংসে নিষ্ক্রিয়। বন্ধুদের অবস্থান দেখতে এটি সক্ষম করুন।"
   },
 
@@ -92,7 +92,7 @@ const translations = {
   },
 
   success: {
-    eng: "Success! Here are your nearby friends:",
+    eng: "Success! Here are your nearby connects:",
     bn: "সফল! এখানে আপনার কাছাকাছি থাকা বন্ধুরা রয়েছেন:"
   },
 
@@ -107,26 +107,26 @@ const translations = {
   southwest: { eng: "Southwest", bn: "দক্ষিণ-পশ্চিম" },
 
   // Direction helper message
-  friendDirection: {
+  connectDirection: {
     eng: (name, direction, distance) => `${name} is to the ${direction}, ${distance.toFixed(2)} km away`,
     bn: (name, direction, distance) => `${name} ${direction}ে, ${distance.toFixed(2)} কিমি দূরে রয়েছেন`
   },
 
   // Summary list heading
-  friendsList: {
-    eng: "Nearby Friends List",
+  connectsList: {
+    eng: "Nearby Connects List",
     bn: "কাছাকাছি বন্ধুদের তালিকা"
   },
 
   // Ranking
   closest: {
-    eng: "Closest friend",
+    eng: "Closest connect",
     bn: "নিকটতম বন্ধু"
   },
 
   // Response format
   detailedResponse: {
-    eng: "Here's a detailed view of your nearby friends:",
+    eng: "Here's a detailed view of your nearby connects:",
     bn: "এখানে আপনার কাছাকাছি থাকা বন্ধুদের বিস্তারিত দৃশ্য রয়েছে:"
   }
 };

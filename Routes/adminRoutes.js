@@ -3,6 +3,12 @@ const {signUp,login,deleteAccount,getProfiles,getProfile,updateProfile,deletePro
 const {uploadImage} = require('../controllers/uploadControllers')
 const {listResources, migrateResources, getMigrationStatus} = require('../controllers/cloudinaryController')
 const isAdminAuth = require('../middlewares/isAdminAuth');
+const isAdminRole = require('../middlewares/isAdminRole');
+const {
+  listPayments,
+  approvePayment,
+  rejectPayment,
+} = require('../controllers/adminPaymentsController');
 const multer = require('multer');
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -43,6 +49,9 @@ Router.get('/cloudinary/migrate/:jobId', isAdminAuth, getMigrationStatus)
 Router.get('/reports/posts', getReportedPosts)
 Router.get('/reports/profiles', getReportedProfiles)
 Router.put('/reports/:id/status', updateReportStatus)
+Router.get('/payments', isAdminRole, listPayments)
+Router.post('/payments/:id/approve', isAdminRole, approvePayment)
+Router.post('/payments/:id/reject', isAdminRole, rejectPayment)
 
 const {
   getAdminAiSettings,

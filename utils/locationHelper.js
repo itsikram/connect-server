@@ -7,23 +7,23 @@ const { translate } = require('./localization/translations');
 
 /**
  * Format location response based on context
- * @param {object} friends - Array of friends with location data
+ * @param {object} connects - Array of connects with location data
  * @param {string} lang - Language code
  * @returns {string} - Formatted response text
  */
-function formatFriendsResponse(friends, lang = 'eng') {
-  if (!friends || friends.length === 0) {
-    return translate('noFriendsFound', lang);
+function formatConnectsResponse(connects, lang = 'eng') {
+  if (!connects || connects.length === 0) {
+    return translate('noConnectsFound', lang);
   }
 
   let response = translate('detailedResponse', lang) + '\n\n';
 
-  friends.forEach((friend, index) => {
-    response += `${index + 1}. ${friend.name}\n`;
-    response += `   Distance: ${friend.distance.toFixed(2)} km\n`;
-    response += `   Direction: ${friend.direction}\n`;
-    if (friend.address) {
-      response += `   Address: ${friend.address}\n`;
+  connects.forEach((connect, index) => {
+    response += `${index + 1}. ${connect.name}\n`;
+    response += `   Distance: ${connect.distance.toFixed(2)} km\n`;
+    response += `   Direction: ${connect.direction}\n`;
+    if (connect.address) {
+      response += `   Address: ${connect.address}\n`;
     }
     response += '\n';
   });
@@ -153,33 +153,33 @@ function isWithinRadius(lat1, lon1, lat2, lon2, radiusKm) {
 }
 
 /**
- * Get AI-friendly location description
- * @param {object} friend - Friend object with location data
+ * Get AI-connectly location description
+ * @param {object} connect - Connect object with location data
  * @param {number} userLat - User's latitude
  * @param {number} userLon - User's longitude
  * @param {string} lang - Language code
- * @returns {string} - Friendly location description
+ * @returns {string} - Connectly location description
  */
-function getLocationDescription(friend, userLat, userLon, lang = 'eng') {
-  if (!friend.distance) {
-    return translate('noLocation', lang, friend.name);
+function getLocationDescription(connect, userLat, userLon, lang = 'eng') {
+  if (!connect.distance) {
+    return translate('noLocation', lang, connect.name);
   }
 
-  let description = friend.name + ' is ';
+  let description = connect.name + ' is ';
 
   // Direction
-  if (friend.direction) {
-    description += `to the ${friend.direction}, `;
+  if (connect.direction) {
+    description += `to the ${connect.direction}, `;
   }
 
   // Distance
-  if (friend.distance < 0.1) {
+  if (connect.distance < 0.1) {
     description += lang === 'bn' ? 'খুব কাছে' : 'very close';
-  } else if (friend.distance < 1) {
-    description += formatDistance(friend.distance, lang);
-  } else if (friend.distance < 5) {
+  } else if (connect.distance < 1) {
+    description += formatDistance(connect.distance, lang);
+  } else if (connect.distance < 5) {
     description += lang === 'bn' ? 'কাছাকাছি' : 'nearby';
-  } else if (friend.distance < 50) {
+  } else if (connect.distance < 50) {
     description += lang === 'bn' ? 'মধ্যম দূরত্বে' : 'at a moderate distance';
   } else {
     description += lang === 'bn' ? 'অনেক দূরে' : 'quite far';
@@ -228,7 +228,7 @@ async function batchUpdateLocations(updates) {
 }
 
 module.exports = {
-  formatFriendsResponse,
+  formatConnectsResponse,
   formatDistance,
   getSafeLocationData,
   generateGeohash,

@@ -298,7 +298,7 @@ const GEMINI_AGENT_TOOLS = [
     functionDeclarations: [
       {
         name: "navigate",
-        description: "Navigate anywhere in Connect. Use exact routes: Home, Friends, Videos, Message, Menu, Tasks, FriendProfile, or VpnBrowser. For nested screens, include params such as {screen:'Camera'}, {screen:'Gallery'}, {screen:'MediaPlayer'}, {screen:'Downloads'}, {screen:'Facebook'}, {screen:'YouTube'}, {screen:'Cricbuzz'}, {screen:'GoogleMaps'}, or {screen:'GoogleContacts'}. For the current user's profile use route Menu with params {screen:'MyProfile'}.",
+        description: "Navigate anywhere in Connect. Use exact routes: Home, Connects, Videos, Message, Menu, Tasks, ConnectProfile, or VpnBrowser. For nested screens, include params such as {screen:'Camera'}, {screen:'Gallery'}, {screen:'MediaPlayer'}, {screen:'Downloads'}, {screen:'Facebook'}, {screen:'YouTube'}, {screen:'Cricbuzz'}, {screen:'GoogleMaps'}, or {screen:'GoogleContacts'}. For the current user's profile use route Menu with params {screen:'MyProfile'}.",
         parameters: {
           type: "OBJECT",
           properties: {
@@ -557,7 +557,7 @@ const GEMINI_AGENT_TOOLS = [
         parameters: {
           type: "OBJECT",
           properties: {
-            triggerUserName: { type: "STRING", description: "Friend whose incoming messages trigger the reply." },
+            triggerUserName: { type: "STRING", description: "Connect whose incoming messages trigger the reply." },
             replyText: { type: "STRING", description: "Exact reply to send." },
           },
           required: ["triggerUserName", "replyText"],

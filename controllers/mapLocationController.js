@@ -4,7 +4,7 @@
  */
 
 const Profile = require("../models/Profile");
-const { getFriendsLocations } = require("../services/ai/locationService");
+const { getConnectsLocations } = require("../services/ai/locationService");
 const {
   generateMapData,
   generateGeoJSON,
@@ -14,7 +14,7 @@ const { translate } = require("../utils/localization/translations");
 
 /**
  * GET /api/location/map-data
- * Get map data for friend locations
+ * Get map data for connect locations
  * Query params: latitude, longitude, lang (optional)
  */
 exports.getMapData = async (req, res, next) => {
@@ -48,15 +48,15 @@ exports.getMapData = async (req, res, next) => {
       });
     }
 
-    // Get friends locations
-    const locationData = await getFriendsLocations(userProfile, lat, lon, {
+    // Get connects locations
+    const locationData = await getConnectsLocations(userProfile, lat, lon, {
       lang,
       radiusKm,
     });
 
     // Generate map data
     const mapData = generateMapData(
-      locationData.friends,
+      locationData.connects,
       { latitude: lat, longitude: lon },
       lang,
     );
@@ -110,13 +110,13 @@ exports.getGeoJSON = async (req, res, next) => {
       });
     }
 
-    const locationData = await getFriendsLocations(userProfile, lat, lon, {
+    const locationData = await getConnectsLocations(userProfile, lat, lon, {
       lang,
       radiusKm,
     });
 
     const mapData = generateMapData(
-      locationData.friends,
+      locationData.connects,
       { latitude: lat, longitude: lon },
       lang,
     );
@@ -138,7 +138,7 @@ exports.getGeoJSON = async (req, res, next) => {
 
 /**
  * GET /api/location/kml
- * Export friend locations as KML (for Google Earth)
+ * Export connect locations as KML (for Google Earth)
  * Query params: latitude, longitude, lang
  */
 exports.getKML = async (req, res, next) => {
@@ -172,13 +172,13 @@ exports.getKML = async (req, res, next) => {
       });
     }
 
-    const locationData = await getFriendsLocations(userProfile, lat, lon, {
+    const locationData = await getConnectsLocations(userProfile, lat, lon, {
       lang,
       radiusKm,
     });
 
     const mapData = generateMapData(
-      locationData.friends,
+      locationData.connects,
       { latitude: lat, longitude: lon },
       lang,
     );
@@ -189,7 +189,7 @@ exports.getKML = async (req, res, next) => {
     res.header("Content-Type", "application/vnd.google-earth.kml+xml");
     res.header(
       "Content-Disposition",
-      'attachment; filename="friends-locations.kml"',
+      'attachment; filename="connects-locations.kml"',
     );
     return res.send(kml);
   } catch (error) {
@@ -209,7 +209,7 @@ exports.getMapEmbedHTML = async (req, res, next) => {
       latitude,
       longitude,
       lang = "eng",
-      mapId = "friendsMap",
+      mapId = "connectsMap",
       height = 500,
       radius = 100,
     } = req.query;
@@ -241,13 +241,13 @@ exports.getMapEmbedHTML = async (req, res, next) => {
       });
     }
 
-    const locationData = await getFriendsLocations(userProfile, lat, lon, {
+    const locationData = await getConnectsLocations(userProfile, lat, lon, {
       lang,
       radiusKm,
     });
 
     const mapData = generateMapData(
-      locationData.friends,
+      locationData.connects,
       { latitude: lat, longitude: lon },
       lang,
     );
@@ -256,7 +256,7 @@ exports.getMapEmbedHTML = async (req, res, next) => {
     <!DOCTYPE html>
     <html>
     <head>
-      <title>${lang === "bn" ? "বন্ধুদের অবস্থান মানচিত্র" : "Friends Location Map"}</title>
+      <title>${lang === "bn" ? "বন্ধুদের অবস্থান মানচিত্র" : "Connects Location Map"}</title>
       <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
       <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
       <style>
@@ -279,8 +279,8 @@ exports.getMapEmbedHTML = async (req, res, next) => {
     </head>
     <body>
       <div class="info-box">
-        <h2>${lang === "bn" ? "📍 বন্ধুদের অবস্থান" : "📍 Friends Locations"}</h2>
-        <p>${lang === "bn" ? `মোট বন্ধু: ${mapData.totalMarkers - 1}` : `Total Friends: ${mapData.totalMarkers - 1}`}</p>
+        <h2>${lang === "bn" ? "📍 বন্ধুদের অবস্থান" : "📍 Connects Locations"}</h2>
+        <p>${lang === "bn" ? `মোট বন্ধু: ${mapData.totalMarkers - 1}` : `Total Connects: ${mapData.totalMarkers - 1}`}</p>
       </div>
       <div id="${mapId}"></div>
 
@@ -312,7 +312,7 @@ exports.getMapEmbedHTML = async (req, res, next) => {
           let popupContent = '<div style="text-align: center; padding: 10px; min-width: 200px;">';
           popupContent += '<strong>' + marker.title + '</strong>';
 
-          if (marker.type === 'friend') {
+          if (marker.type === 'connect') {
             popupContent += '<br/><div style="font-size: 12px; margin: 5px 0;">' + marker.distance.toFixed(2) + ' km away</div>';
             if (marker.direction) popupContent += '<div style="font-size: 12px;">' + marker.direction + '</div>';
             if (marker.address) popupContent += '<div style="font-size: 12px;">' + marker.address + '</div>';
@@ -348,7 +348,7 @@ exports.getMapEmbedHTML = async (req, res, next) => {
 
 /**
  * POST /api/location/nearby-summary
- * Get summary of nearby friends for display
+ * Get summary of nearby connects for display
  * Body: { latitude, longitude, lang }
  */
 exports.getNearbySummary = async (req, res, next) => {
@@ -382,21 +382,21 @@ exports.getNearbySummary = async (req, res, next) => {
       });
     }
 
-    const locationData = await getFriendsLocations(userProfile, lat, lon, {
+    const locationData = await getConnectsLocations(userProfile, lat, lon, {
       lang,
       radiusKm,
     });
 
-    const nearbyFriends = locationData.friends.filter(
+    const nearbyConnects = locationData.connects.filter(
       (f) => f.distance !== null && f.distance <= radiusKm,
     );
 
     // Group by distance category
     const categories = {
-      veryClose: nearbyFriends.filter((f) => f.distance < 0.5),
-      close: nearbyFriends.filter((f) => f.distance >= 0.5 && f.distance < 2),
-      nearby: nearbyFriends.filter((f) => f.distance >= 2 && f.distance < 10),
-      moderate: nearbyFriends.filter(
+      veryClose: nearbyConnects.filter((f) => f.distance < 0.5),
+      close: nearbyConnects.filter((f) => f.distance >= 0.5 && f.distance < 2),
+      nearby: nearbyConnects.filter((f) => f.distance >= 2 && f.distance < 10),
+      moderate: nearbyConnects.filter(
         (f) => f.distance >= 10 && f.distance < 50,
       ),
     };
@@ -405,7 +405,7 @@ exports.getNearbySummary = async (req, res, next) => {
       success: true,
       summary: {
         total: locationData.summary.total,
-        nearby: nearbyFriends.length,
+        nearby: nearbyConnects.length,
         categories: {
           veryClose: {
             label:
@@ -413,7 +413,7 @@ exports.getNearbySummary = async (req, res, next) => {
                 ? "🔴 খুব কাছে (< 0.5 কিমি)"
                 : "🔴 Very Close (< 0.5 km)",
             count: categories.veryClose.length,
-            friends: categories.veryClose,
+            connects: categories.veryClose,
           },
           close: {
             label:
@@ -421,7 +421,7 @@ exports.getNearbySummary = async (req, res, next) => {
                 ? "🟠 কাছাকাছি (0.5-2 কিমি)"
                 : "🟠 Close (0.5-2 km)",
             count: categories.close.length,
-            friends: categories.close,
+            connects: categories.close,
           },
           nearby: {
             label:
@@ -429,7 +429,7 @@ exports.getNearbySummary = async (req, res, next) => {
                 ? "🟡 খুবই কাছে (2-10 কিমি)"
                 : "🟡 Nearby (2-10 km)",
             count: categories.nearby.length,
-            friends: categories.nearby,
+            connects: categories.nearby,
           },
           moderate: {
             label:
@@ -437,7 +437,7 @@ exports.getNearbySummary = async (req, res, next) => {
                 ? "🟢 মধ্যম দূরত্ব (10-50 কিমি)"
                 : "🟢 Moderate (10-50 km)",
             count: categories.moderate.length,
-            friends: categories.moderate,
+            connects: categories.moderate,
           },
         },
       },

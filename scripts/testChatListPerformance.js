@@ -71,13 +71,13 @@ async function testChatListPerformance() {
         
         const myProfile = await Profile.findOne({ _id: profileId }).populate('friends');
         
-        if (myProfile?.friends) {
+        if (myProfile?.connects) {
             let messageCount = 0;
-            for (const friendProfile of myProfile.friends.slice(0, 5)) { // Test first 5 friends
+            for (const connectProfile of myProfile.connects.slice(0, 5)) { // Test first 5 connects
                 const messages = await Message.find({
                     $or: [
-                        { senderId: friendProfile._id, receiverId: profileId },
-                        { senderId: profileId, receiverId: friendProfile._id }
+                        { senderId: connectProfile._id, receiverId: profileId },
+                        { senderId: profileId, receiverId: connectProfile._id }
                     ]
                 }).limit(1).sort({ timestamp: -1 });
                 messageCount += messages.length;
@@ -86,7 +86,7 @@ async function testChatListPerformance() {
             const oldEndTime = Date.now();
             const oldDuration = oldEndTime - oldStartTime;
             
-            console.log(`⏱️  Old approach (5 friends) completed in ${oldDuration}ms`);
+            console.log(`⏱️  Old approach (5 connects) completed in ${oldDuration}ms`);
             console.log(`📈 Performance improvement: ${Math.round((oldDuration - duration) / oldDuration * 100)}% faster`);
         }
         

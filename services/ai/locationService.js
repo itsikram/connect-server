@@ -1,6 +1,6 @@
 /**
  * AI-Powered Location Service
- * Handles friend location queries and analysis
+ * Handles connect location queries and analysis
  */
 
 const Profile = require("../../models/Profile");
@@ -14,8 +14,8 @@ const {
  * Calculate distance between two coordinates using Haversine formula
  * @param {number} lat1 - User's latitude
  * @param {number} lon1 - User's longitude
- * @param {number} lat2 - Friend's latitude
- * @param {number} lon2 - Friend's longitude
+ * @param {number} lat2 - Connect's latitude
+ * @param {number} lon2 - Connect's longitude
  * @returns {number} - Distance in kilometers
  */
 function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -40,8 +40,8 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
  * Get cardinal direction between two points
  * @param {number} lat1 - User's latitude
  * @param {number} lon1 - User's longitude
- * @param {number} lat2 - Friend's latitude
- * @param {number} lon2 - Friend's longitude
+ * @param {number} lat2 - Connect's latitude
+ * @param {number} lon2 - Connect's longitude
  * @returns {string} - Cardinal direction (N, S, E, W, NE, NW, SE, SW)
  */
 function getDirection(lat1, lon1, lat2, lon2) {
@@ -92,7 +92,7 @@ function getDirectionName(directionCode, lang = "eng") {
 /**
  * Categorize distance for messaging
  * @param {number} distance - Distance in kilometers
- * @param {string} name - Friend's name
+ * @param {string} name - Connect's name
  * @param {string} lang - Language code
  * @returns {object} - Category and message
  */
@@ -138,14 +138,14 @@ function isValidLocation(latitude, longitude) {
 }
 
 /**
- * Get friends' locations based on user's location
+ * Get connects' locations based on user's location
  * @param {object} userProfile - User's profile object
  * @param {number} latitude - User's latitude
  * @param {number} longitude - User's longitude
  * @param {object} options - Additional options
  * @returns {Promise<object>} - Location data with formatted response
  */
-async function getFriendsLocations(
+async function getConnectsLocations(
   userProfile,
   latitude,
   longitude,
@@ -163,12 +163,12 @@ async function getFriendsLocations(
     };
   }
 
-  // Check if user has friends
-  if (!userProfile.friends || userProfile.friends.length === 0) {
+  // Check if user has connects
+  if (!userProfile.connects || userProfile.connects.length === 0) {
     return {
       success: true,
-      message: translate("noFriendsFound", lang),
-      friends: [],
+      message: translate("noConnectsFound", lang),
+      connects: [],
       summary: {
         total: 0,
         nearby: 0,
@@ -177,9 +177,9 @@ async function getFriendsLocations(
     };
   }
 
-  // Fetch friends with their location data
-  const friendsData = await Profile.find({
-    _id: { $in: userProfile.friends },
+  // Fetch connects with their location data
+  const connectsData = await Profile.find({
+    _id: { $in: userProfile.connects },
   })
     .select([
       "fullName",
@@ -195,87 +195,87 @@ async function getFriendsLocations(
       select: ["firstName", "surname"],
     });
 
-  // Process each friend's location
-  const processedFriends = [];
-  let friendsWithLocation = 0;
-  let friendsNearby = 0;
+  // Process each connect's location
+  const processedConnects = [];
+  let connectsWithLocation = 0;
+  let connectsNearby = 0;
 
-  for (const friend of friendsData) {
-    // Check if friend has location data
+  for (const connect of connectsData) {
+    // Check if connect has location data
     if (
-      !friend.lastLocation ||
+      !connect.lastLocation ||
       !isValidLocation(
-        friend.lastLocation.latitude,
-        friend.lastLocation.longitude,
+        connect.lastLocation.latitude,
+        connect.lastLocation.longitude,
       )
     ) {
-      processedFriends.push({
-        id: friend._id,
-        name: friend.fullName || friend.displayName,
-        username: friend.username,
-        profilePic: friend.profilePic,
+      processedConnects.push({
+        id: connect._id,
+        name: connect.fullName || connect.displayName,
+        username: connect.username,
+        profilePic: connect.profilePic,
         distance: null,
         direction: null,
         hasLocation: false,
         message: translate(
           "noLocation",
           lang,
-          friend.fullName || friend.displayName,
+          connect.fullName || connect.displayName,
         ),
-        address: friend.presentAddress || friend.permanentAddress,
+        address: connect.presentAddress || connect.permanentAddress,
       });
       continue;
     }
 
-    friendsWithLocation++;
+    connectsWithLocation++;
 
     // Calculate distance
     const distance = calculateDistance(
       latitude,
       longitude,
-      friend.lastLocation.latitude,
-      friend.lastLocation.longitude,
+      connect.lastLocation.latitude,
+      connect.lastLocation.longitude,
     );
 
     // Check if within radius
     if (distance <= radiusKm) {
-      friendsNearby++;
+      connectsNearby++;
 
       // Get direction
       const directionCode = getDirection(
         latitude,
         longitude,
-        friend.lastLocation.latitude,
-        friend.lastLocation.longitude,
+        connect.lastLocation.latitude,
+        connect.lastLocation.longitude,
       );
       const directionName = getDirectionName(directionCode, lang);
 
       // Categorize distance
       const distanceCategory = categorizeDistance(
         distance,
-        friend.fullName || friend.displayName,
+        connect.fullName || connect.displayName,
         lang,
       );
 
-      processedFriends.push({
-        id: friend._id,
-        name: friend.fullName || friend.displayName,
-        username: friend.username,
-        profilePic: friend.profilePic,
+      processedConnects.push({
+        id: connect._id,
+        name: connect.fullName || connect.displayName,
+        username: connect.username,
+        profilePic: connect.profilePic,
         distance: parseFloat(distance.toFixed(2)),
         direction: directionName,
         directionCode: directionCode,
         category: distanceCategory.category,
         message: distanceCategory.message,
-        address: friend.presentAddress || friend.permanentAddress,
+        address: connect.presentAddress || connect.permanentAddress,
         hasLocation: true,
-        timestamp: friend.lastLocation.timestamp,
+        timestamp: connect.lastLocation.timestamp,
       });
     }
   }
 
   // Sort by distance
-  processedFriends.sort((a, b) => {
+  processedConnects.sort((a, b) => {
     if (a.distance === null) return 1;
     if (b.distance === null) return -1;
     return a.distance - b.distance;
@@ -283,35 +283,35 @@ async function getFriendsLocations(
 
   // Generate summary
   const summary = {
-    total: userProfile.friends.length,
-    nearby: friendsNearby,
-    withLocation: friendsWithLocation,
-    withoutLocation: userProfile.friends.length - friendsWithLocation,
+    total: userProfile.connects.length,
+    nearby: connectsNearby,
+    withLocation: connectsWithLocation,
+    withoutLocation: userProfile.connects.length - connectsWithLocation,
     radius: radiusKm,
   };
 
   // Generate detailed response
   let detailedMessage = "";
 
-  if (friendsNearby === 0) {
-    if (friendsWithLocation === 0) {
-      detailedMessage = translate("noFriendsWithLocation", lang);
+  if (connectsNearby === 0) {
+    if (connectsWithLocation === 0) {
+      detailedMessage = translate("noConnectsWithLocation", lang);
     } else {
-      detailedMessage = `${translate("friendsNearby", lang)} No friends within ${radiusKm} km.`;
+      detailedMessage = `${translate("connectsNearby", lang)} No connects within ${radiusKm} km.`;
     }
   } else {
     detailedMessage = translate("success", lang) + "\n";
     detailedMessage +=
-      translate("totalFriendsNearby", lang, friendsNearby) + "\n\n";
+      translate("totalConnectsNearby", lang, connectsNearby) + "\n\n";
 
-    // Add details for each nearby friend
-    processedFriends
+    // Add details for each nearby connect
+    processedConnects
       .filter((f) => f.distance !== null)
-      .forEach((friend, index) => {
-        detailedMessage += `${index + 1}. ${friend.name}\n`;
-        detailedMessage += `   ${friend.message}\n`;
-        if (friend.address) {
-          detailedMessage += `   Address: ${friend.address}\n`;
+      .forEach((connect, index) => {
+        detailedMessage += `${index + 1}. ${connect.name}\n`;
+        detailedMessage += `   ${connect.message}\n`;
+        if (connect.address) {
+          detailedMessage += `   Address: ${connect.address}\n`;
         }
         detailedMessage += "\n";
       });
@@ -320,7 +320,7 @@ async function getFriendsLocations(
   return {
     success: true,
     message: detailedMessage,
-    friends: processedFriends,
+    connects: processedConnects,
     summary,
     metadata: {
       userLocation: { latitude, longitude },
@@ -331,8 +331,8 @@ async function getFriendsLocations(
 }
 
 /**
- * Get AI-formatted response for friend locations
- * @param {object} locationData - Data from getFriendsLocations
+ * Get AI-formatted response for connect locations
+ * @param {object} locationData - Data from getConnectsLocations
  * @param {string} lang - Language code
  * @returns {object} - AI-formatted response
  */
@@ -345,22 +345,22 @@ function formatAIResponse(locationData, lang = "eng") {
     };
   }
 
-  const nearbyFriends = locationData.friends.filter((f) => f.distance !== null);
+  const nearbyConnects = locationData.connects.filter((f) => f.distance !== null);
 
   return {
     success: true,
-    greeting: translate("friendLocationInquiry", lang),
+    greeting: translate("connectLocationInquiry", lang),
     summary: translate("summaryHeading", lang),
-    totalFriendsWithLocation: locationData.summary.withLocation,
+    totalConnectsWithLocation: locationData.summary.withLocation,
     totalNearby: locationData.summary.nearby,
-    details: nearbyFriends.map((friend) => ({
-      name: friend.name,
-      distance: `${friend.distance} km`,
-      direction: friend.direction,
-      message: friend.message,
-      address: friend.address || "Not shared",
+    details: nearbyConnects.map((connect) => ({
+      name: connect.name,
+      distance: `${connect.distance} km`,
+      direction: connect.direction,
+      message: connect.message,
+      address: connect.address || "Not shared",
     })),
-    friendsWithoutLocation: locationData.friends.filter(
+    connectsWithoutLocation: locationData.connects.filter(
       (f) => f.distance === null,
     ).length,
     message: locationData.message,
@@ -373,6 +373,6 @@ module.exports = {
   getDirectionName,
   categorizeDistance,
   isValidLocation,
-  getFriendsLocations,
+  getConnectsLocations,
   formatAIResponse,
 };

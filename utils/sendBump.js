@@ -20,11 +20,11 @@ const shouldEmitBump = (fromId, toId) => {
 };
 
 /**
- * Deliver a bump to a friend: realtime socket + native/web push.
+ * Deliver a bump to a connect: realtime socket + native/web push.
  * @returns {{ ok: boolean, skipped?: boolean, reason?: string }}
  */
-async function sendBump(io, { friendProfile, myProfile }) {
-  const toId = String(friendProfile || '');
+async function sendBump(io, { connectProfile, myProfile }) {
+  const toId = String(connectProfile || '');
   const fromId = String(myProfile || '');
   if (!toId || !fromId) {
     return { ok: false, reason: 'missing_ids' };
@@ -36,7 +36,7 @@ async function sendBump(io, { friendProfile, myProfile }) {
     return { ok: true, skipped: true };
   }
 
-  const [friendProfileData, myProfileData] = await Promise.all([
+  const [connectProfileData, myProfileData] = await Promise.all([
     Profile.findById(toId).select('fullName profilePic'),
     Profile.findById(fromId).select('fullName profilePic'),
   ]);
@@ -51,7 +51,7 @@ async function sendBump(io, { friendProfile, myProfile }) {
   const payload = {
     type: 'bump',
     senderId: fromId,
-    friendProfileData,
+    connectProfileData,
     myProfileData,
   };
 
@@ -66,7 +66,7 @@ async function sendBump(io, { friendProfile, myProfile }) {
     io.to(toId).emit('bumpUser', payload);
   }
 
-  // Online friends already got the live socket event — extra push caused
+  // Online connects already got the live socket event — extra push caused
   // duplicate alerts in the open tab.
   if (!recipientOnline) {
     try {

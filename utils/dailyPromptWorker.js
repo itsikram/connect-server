@@ -18,7 +18,7 @@ const MORNING_PROMPTS = [
 
 const EVENING_PROMPTS = [
   "Photo of the day — what did you see?\nআজকের ছবি — কী দেখলে?",
-  "Challenge a friend to Ludo or Chess tonight.\nআজ রাতে কাউকে লুডু বা দাবায় চ্যালেঞ্জ করো।",
+  "Challenge a connect to Ludo or Chess tonight.\nআজ রাতে কাউকে লুডু বা দাবায় চ্যালেঞ্জ করো।",
   "How did today actually go?\nআজকের দিনটা আসলে কেমন কাটল?",
   "One thing you'll do better tomorrow.\nকালকে একটা জিনিস ভালো করবে।",
   "Caption this: your current mood.\nএখনকার মুডটা ক্যাপশন করো।",

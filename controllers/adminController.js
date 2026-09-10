@@ -225,7 +225,7 @@ const serializeInterestProfile = (interestProfile) => {
 
 exports.getProfiles = async (req, res, next) => {
     try {
-        let profiles = await Profile.find().populate(['user', 'friends']).limit(50);
+        let profiles = await Profile.find().populate(['user', 'connects']).limit(50);
         const rebuiltInterests = await rebuildInterestProfiles(profiles.map((profile) => profile._id));
         const interestProfiles = await UserInterestProfile.find({
             profile: { $in: profiles.map((profile) => profile._id) }
@@ -250,7 +250,7 @@ exports.getProfiles = async (req, res, next) => {
 exports.getProfile = async (req, res, next) => {
     try {
         const { id } = req.params;
-        let profile = await Profile.findById(id).populate(['user', 'friends', 'following', 'blockedUsers']);
+        let profile = await Profile.findById(id).populate(['user', 'connects', 'following', 'blockedUsers']);
 
         if (!profile) {
             return res.status(404).json({ message: 'Profile not found' });
@@ -298,7 +298,7 @@ exports.updateProfile = async (req, res, next) => {
         await profile.save();
 
         // Return updated profile
-        const updatedProfile = await Profile.findById(id).populate(['user', 'friends', 'following', 'blockedUsers']);
+        const updatedProfile = await Profile.findById(id).populate(['user', 'connects', 'following', 'blockedUsers']);
 
         return res.status(200).json({
             message: 'Profile updated successfully',

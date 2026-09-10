@@ -417,22 +417,22 @@ exports.getNewsFeed = async (req, res, next) => {
         }
         
         const currentUserId = profile._id
-        const friendsList = profile.friends || []
+        const connectsList = profile.connects || []
         const blockedUsers = profile.blockedUsers || []
 
         // Build audience filter query
-        // Audience values: 1 = Public, 2 = Friends, 3 = Only Me
+        // Audience values: 1 = Public, 2 = Connects, 3 = Only Me
         const audienceFilter = {
             $and: [
                 {
                     $or: [
                         // Public posts (audience = 1) - everyone can see
                         { audience: 1 },
-                        // Friends posts (audience = 2) - only friends can see
-                        // Check if author is in current user's friends list (bidirectional friendship)
+                        // Connects posts (audience = 2) - only connects can see
+                        // Check if author is in current user's connects list (bidirectional connection)
                         {
                             audience: 2,
-                            author: { $in: friendsList }
+                            author: { $in: connectsList }
                         },
                         // Only Me posts (audience = 3) - only author can see
                         {
@@ -449,7 +449,7 @@ exports.getNewsFeed = async (req, res, next) => {
         }
 
         const RANK_WINDOW = 40
-        const friendIds = new Set((friendsList || []).map((id) => String(id)))
+        const connectIds = new Set((connectsList || []).map((id) => String(id)))
         const authorLite = {
             path: 'author',
             select: 'fullName displayName username nickname profilePic isOfficial isVerified isActive lastActive user',
@@ -470,7 +470,7 @@ exports.getNewsFeed = async (req, res, next) => {
         ]).sort({ createdAt: -1 }).limit(RANK_WINDOW).lean()
 
         const ranked = rankPosts(rankedWindow, {
-            friendIds,
+            connectIds,
             currentUserId: String(currentUserId),
         })
         const start = (pageNumber - 1) * limit

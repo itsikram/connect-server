@@ -35,7 +35,7 @@ let settingSchema = new Schema({
         type: String,
         default: 'public',
     },
-    friendRequestVisibility: {
+    connectRequestVisibility: {
         type: String,
         default: 'public',
     },
@@ -43,11 +43,11 @@ let settingSchema = new Schema({
         type: String,
         default: 'public',
     },
-    friendRequestReceived: {
+    connectRequestReceived: {
         type: Boolean,
         default: true,
     },
-    friendRequestAccepted: {
+    connectRequestAccepted: {
         type: Boolean,
         default: true,
     },
@@ -55,23 +55,23 @@ let settingSchema = new Schema({
         type: Boolean,
         default: true,
     },
-    newFriendPost: {
+    newConnectPost: {
         type: Boolean,
         default: true,
     },
-    newFriendStory: {
+    newConnectStory: {
         type: Boolean,
         default: true,
     },
-    newFriendWatch: {
+    newConnectWatch: {
         type: Boolean,
         default: true,
     },
-    friendRequestReceivedEmail: {
+    connectRequestReceivedEmail: {
         type: Boolean,
         default: false,
     },
-    friendRequestAcceptedEmail: {
+    connectRequestAcceptedEmail: {
         type: Boolean,
         default: false,
     },
@@ -79,15 +79,15 @@ let settingSchema = new Schema({
         type: Boolean,
         default: false,
     },
-    newFriendPostEmail: {
+    newConnectPostEmail: {
         type: Boolean,
         default: false,
     },
-    newFriendStoryEmail: {
+    newConnectStoryEmail: {
         type: Boolean,
         default: false,
     },
-    newFriendWatchEmail: {
+    newConnectWatchEmail: {
         type: Boolean,
         default: false,
     },
@@ -95,7 +95,7 @@ let settingSchema = new Schema({
         type: String,
         default: null,
     },
-    friendChatSettings: {
+    connectChatSettings: {
         type: Schema.Types.Mixed,
         default: {},
     },

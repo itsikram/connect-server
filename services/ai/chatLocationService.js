@@ -1,6 +1,6 @@
 /**
  * AI Chat Location Service
- * Handles natural language queries about friend locations
+ * Handles natural language queries about connect locations
  * Provides detailed conversational responses
  */
 
@@ -11,7 +11,7 @@ const {
   getDirectionName,
   categorizeDistance,
   isValidLocation,
-  getFriendsLocations,
+  getConnectsLocations,
 } = require("./locationService");
 const { translate } = require("../../utils/localization/translations");
 
@@ -26,7 +26,7 @@ function parseLocationQuery(query) {
   return {
     type: determineQueryType(lowerQuery),
     hasDistance: determineDistancePreference(lowerQuery),
-    isSingleFriend: isSingleFriendQuery(lowerQuery),
+    isSingleConnect: isSingleConnectQuery(lowerQuery),
     needsDirection:
       lowerQuery.includes("direction") || lowerQuery.includes("where"),
     needsAddress:
@@ -51,10 +51,10 @@ function determineQueryType(query) {
   } else if (query.includes("all") || query.includes("everyone")) {
     return "all";
   } else if (
-    query.includes("friend") &&
+    query.includes("connect") &&
     (query.includes("where") || query.includes("location"))
   ) {
-    return "friend_location";
+    return "connect_location";
   } else {
     return "general";
   }
@@ -77,9 +77,9 @@ function determineDistancePreference(query) {
 }
 
 /**
- * Check if query is about single friend
+ * Check if query is about single connect
  */
-function isSingleFriendQuery(query) {
+function isSingleConnectQuery(query) {
   return (
     query.includes("where is ") ||
     query.includes("where's ") ||
@@ -94,7 +94,7 @@ function determineTone(query) {
   if (query.includes("?") && query.includes("!")) return "enthusiastic";
   if (query.includes("!!") || query.includes("???")) return "enthusiastic";
   if (query.includes("please") || query.includes("help")) return "polite";
-  return "friendly";
+  return "connectly";
 }
 
 /**
@@ -115,30 +115,30 @@ function detectLanguage(query) {
  * Build detailed chat response
  */
 function buildDetailedResponse(locationData, lang = "eng") {
-  const nearbyFriends = locationData.friends.filter((f) => f.distance !== null);
-  const friendsWithoutLocation = locationData.friends.filter(
+  const nearbyConnects = locationData.connects.filter((f) => f.distance !== null);
+  const connectsWithoutLocation = locationData.connects.filter(
     (f) => f.distance === null,
   );
 
   let response = "";
 
   // Greeting
-  response += getGreeting(nearbyFriends.length, lang) + "\n\n";
+  response += getGreeting(nearbyConnects.length, lang) + "\n\n";
 
   // Summary
-  if (nearbyFriends.length > 0) {
+  if (nearbyConnects.length > 0) {
     response += getSummary(locationData.summary, lang) + "\n\n";
 
-    // Detailed friend information
-    response += getFriendsDetails(nearbyFriends, lang) + "\n\n";
+    // Detailed connect information
+    response += getConnectsDetails(nearbyConnects, lang) + "\n\n";
   } else {
     response +=
-      getNoFriendsMessage(friendsWithoutLocation.length, lang) + "\n\n";
+      getNoConnectsMessage(connectsWithoutLocation.length, lang) + "\n\n";
   }
 
   // Helpful suggestions
-  if (nearbyFriends.length > 0) {
-    response += getSuggestions(nearbyFriends, lang);
+  if (nearbyConnects.length > 0) {
+    response += getSuggestions(nearbyConnects, lang);
   }
 
   return response;
@@ -147,22 +147,22 @@ function buildDetailedResponse(locationData, lang = "eng") {
 /**
  * Generate greeting message
  */
-function getGreeting(friendCount, lang = "eng") {
-  if (friendCount === 0) {
+function getGreeting(connectCount, lang = "eng") {
+  if (connectCount === 0) {
     return lang === "bn"
       ? "আপনার অবস্থানের কাছে কোনো বন্ধু নেই। তবে আপনার বন্ধুদের তালিকা দেখে আমি আপনাকে সাহায্য করতে পারি।"
-      : "I couldn't find any friends nearby at your location, but I can help you with your friends' information.";
+      : "I couldn't find any connects nearby at your location, but I can help you with your connects' information.";
   }
 
-  if (friendCount === 1) {
+  if (connectCount === 1) {
     return lang === "bn"
       ? "দুর্দান্ত! আমি আপনার কাছে ১ জন বন্ধু খুঁজে পেয়েছি। এখানে বিস্তারিত তথ্য রয়েছে:"
-      : "Great! I found 1 friend near you. Here are the details:";
+      : "Great! I found 1 connect near you. Here are the details:";
   }
 
   return lang === "bn"
-    ? `চমৎকার! আমি আপনার কাছে ${friendCount} জন বন্ধু খুঁজে পেয়েছি। এখানে সবার বিস্তারিত তথ্য রয়েছে:`
-    : `Excellent! I found ${friendCount} friends near you. Here are the details for everyone:`;
+    ? `চমৎকার! আমি আপনার কাছে ${connectCount} জন বন্ধু খুঁজে পেয়েছি। এখানে সবার বিস্তারিত তথ্য রয়েছে:`
+    : `Excellent! I found ${connectCount} connects near you. Here are the details for everyone:`;
 }
 
 /**
@@ -171,46 +171,46 @@ function getGreeting(friendCount, lang = "eng") {
 function getSummary(summary, lang = "eng") {
   return lang === "bn"
     ? `📊 **সংক্ষিপ্ত বিবরণ:**\n- মোট বন্ধু: ${summary.total}\n- ${summary.radius} কিমির মধ্যে কাছাকাছি: ${summary.nearby}\n- অবস্থান শেয়ার করেছেন: ${summary.withLocation}`
-    : `📊 **Summary:**\n- Total Friends: ${summary.total}\n- Nearby (within ${summary.radius} km): ${summary.nearby}\n- Shared Location: ${summary.withLocation}`;
+    : `📊 **Summary:**\n- Total Connects: ${summary.total}\n- Nearby (within ${summary.radius} km): ${summary.nearby}\n- Shared Location: ${summary.withLocation}`;
 }
 
 /**
- * Generate detailed friend information
+ * Generate detailed connect information
  */
-function getFriendsDetails(friends, lang = "eng") {
+function getConnectsDetails(connects, lang = "eng") {
   let details =
     lang === "bn"
       ? "👥 **কাছাকাছি বন্ধুদের বিস্তারিত:**\n\n"
-      : "👥 **Nearby Friends Details:**\n\n";
+      : "👥 **Nearby Connects Details:**\n\n";
 
-  friends.forEach((friend, index) => {
+  connects.forEach((connect, index) => {
     const emoji =
       index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : "📍";
 
-    details += `${emoji} **${friend.name}**\n`;
+    details += `${emoji} **${connect.name}**\n`;
 
-    if (friend.distance !== null) {
+    if (connect.distance !== null) {
       details +=
         lang === "bn"
-          ? `   📏 দূরত্ব: ${friend.distance.toFixed(2)} কিমি\n`
-          : `   📏 Distance: ${friend.distance.toFixed(2)} km\n`;
+          ? `   📏 দূরত্ব: ${connect.distance.toFixed(2)} কিমি\n`
+          : `   📏 Distance: ${connect.distance.toFixed(2)} km\n`;
 
       details +=
         lang === "bn"
-          ? `   🧭 দিক: ${friend.direction}\n`
-          : `   🧭 Direction: ${friend.direction}\n`;
+          ? `   🧭 দিক: ${connect.direction}\n`
+          : `   🧭 Direction: ${connect.direction}\n`;
 
-      if (friend.address) {
+      if (connect.address) {
         details +=
           lang === "bn"
-            ? `   📍 ঠিকানা: ${friend.address}\n`
-            : `   📍 Address: ${friend.address}\n`;
+            ? `   📍 ঠিকানা: ${connect.address}\n`
+            : `   📍 Address: ${connect.address}\n`;
       }
 
       details +=
         lang === "bn"
-          ? `   ℹ️ বর্ণনা: ${friend.message}\n`
-          : `   ℹ️ Info: ${friend.message}\n`;
+          ? `   ℹ️ বর্ণনা: ${connect.message}\n`
+          : `   ℹ️ Info: ${connect.message}\n`;
     }
 
     details += "\n";
@@ -220,38 +220,38 @@ function getFriendsDetails(friends, lang = "eng") {
 }
 
 /**
- * Generate message when no friends are nearby
+ * Generate message when no connects are nearby
  */
-function getNoFriendsMessage(totalFriends, lang = "eng") {
-  if (totalFriends === 0) {
+function getNoConnectsMessage(totalConnects, lang = "eng") {
+  if (totalConnects === 0) {
     return lang === "bn"
       ? "❌ কোনো বন্ধু এখনও তাদের অবস্থান শেয়ার করেননি। তাদের অবস্থান শেয়ার করতে বলুন!"
-      : "❌ None of your friends have shared their location yet. Ask them to share their location!";
+      : "❌ None of your connects have shared their location yet. Ask them to share their location!";
   }
 
   return lang === "bn"
-    ? `⚠️ আপনার ${totalFriends} জন বন্ধু দূরে রয়েছেন।`
-    : `⚠️ Your ${totalFriends} friends are too far away.`;
+    ? `⚠️ আপনার ${totalConnects} জন বন্ধু দূরে রয়েছেন।`
+    : `⚠️ Your ${totalConnects} connects are too far away.`;
 }
 
 /**
  * Generate helpful suggestions
  */
-function getSuggestions(friends, lang = "eng") {
+function getSuggestions(connects, lang = "eng") {
   let suggestions =
     lang === "bn"
       ? "💡 **সহায়ক পরামর্শ:**\n"
       : "💡 **Helpful Suggestions:**\n";
 
-  const closest = friends[0];
+  const closest = connects[0];
   suggestions +=
     lang === "bn"
       ? `✓ আপনার সবচেয়ে কাছের বন্ধু হল ${closest.name} (${closest.distance.toFixed(2)} কিমি দূরে)\n`
-      : `✓ Your closest friend is ${closest.name} (${closest.distance.toFixed(2)} km away)\n`;
+      : `✓ Your closest connect is ${closest.name} (${closest.distance.toFixed(2)} km away)\n`;
 
-  if (friends.length > 1) {
+  if (connects.length > 1) {
     const average = (
-      friends.reduce((sum, f) => sum + f.distance, 0) / friends.length
+      connects.reduce((sum, f) => sum + f.distance, 0) / connects.length
     ).toFixed(2);
     suggestions +=
       lang === "bn"
@@ -262,7 +262,7 @@ function getSuggestions(friends, lang = "eng") {
   suggestions +=
     lang === "bn"
       ? `✓ আপনি বন্ধুদের সাথে দেখা করতে পারেন!\n`
-      : `✓ You can meet up with your friends!\n`;
+      : `✓ You can meet up with your connects!\n`;
 
   return suggestions;
 }
@@ -303,7 +303,7 @@ async function processLocationChatQuery(
     }
 
     // Get location data
-    const locationData = await getFriendsLocations(
+    const locationData = await getConnectsLocations(
       userProfile,
       latitude,
       longitude,
@@ -313,9 +313,9 @@ async function processLocationChatQuery(
       },
     );
 
-    // If query is about specific friend, handle differently
-    if (parsedQuery.isSingleFriend && query.includes("where")) {
-      return buildSingleFriendResponse(locationData, query, lang);
+    // If query is about specific connect, handle differently
+    if (parsedQuery.isSingleConnect && query.includes("where")) {
+      return buildSingleConnectResponse(locationData, query, lang);
     }
 
     // Build detailed chat response
@@ -326,9 +326,9 @@ async function processLocationChatQuery(
       success: true,
       message: detailedResponse,
       queryType: parsedQuery.type,
-      friendsFound: locationData.friends.filter((f) => f.distance !== null)
+      connectsFound: locationData.connects.filter((f) => f.distance !== null)
         .length,
-      totalFriends: locationData.summary.total,
+      totalConnects: locationData.summary.total,
       timestamp: new Date(),
       language: lang,
       metadata: {
@@ -355,43 +355,43 @@ async function processLocationChatQuery(
 }
 
 /**
- * Build response for single friend query
+ * Build response for single connect query
  */
-function buildSingleFriendResponse(locationData, query, lang = "eng") {
-  // Extract friend name from query
-  const friends = locationData.friends.filter((f) => f.distance !== null);
+function buildSingleConnectResponse(locationData, query, lang = "eng") {
+  // Extract connect name from query
+  const connects = locationData.connects.filter((f) => f.distance !== null);
 
-  if (friends.length === 0) {
+  if (connects.length === 0) {
     return {
       success: true,
       message:
         lang === "bn"
           ? "কোনো বন্ধু আপনার কাছাকাছি নেই বা তাদের অবস্থান শেয়ার করেননি।"
-          : "No friends are near you or have shared their location.",
-      friendsFound: 0,
+          : "No connects are near you or have shared their location.",
+      connectsFound: 0,
     };
   }
 
   let response =
     lang === "bn"
       ? "🔍 **আপনার বন্ধুদের অবস্থান তথ্য:**\n\n"
-      : "🔍 **Your Friends' Location Information:**\n\n";
+      : "🔍 **Your Connects' Location Information:**\n\n";
 
-  friends.forEach((friend) => {
-    response += `📍 **${friend.name}**\n`;
+  connects.forEach((connect) => {
+    response += `📍 **${connect.name}**\n`;
     response +=
       lang === "bn"
-        ? `   • দূরত্ব: ${friend.distance.toFixed(2)} কিমি\n`
-        : `   • Distance: ${friend.distance.toFixed(2)} km\n`;
+        ? `   • দূরত্ব: ${connect.distance.toFixed(2)} কিমি\n`
+        : `   • Distance: ${connect.distance.toFixed(2)} km\n`;
     response +=
       lang === "bn"
-        ? `   • দিক: ${friend.direction}\n`
-        : `   • Direction: ${friend.direction}\n`;
-    if (friend.address) {
+        ? `   • দিক: ${connect.direction}\n`
+        : `   • Direction: ${connect.direction}\n`;
+    if (connect.address) {
       response +=
         lang === "bn"
-          ? `   • ঠিকানা: ${friend.address}\n`
-          : `   • Address: ${friend.address}\n`;
+          ? `   • ঠিকানা: ${connect.address}\n`
+          : `   • Address: ${connect.address}\n`;
     }
     response += "\n";
   });
@@ -399,28 +399,28 @@ function buildSingleFriendResponse(locationData, query, lang = "eng") {
   return {
     success: true,
     message: response,
-    friendsFound: friends.length,
+    connectsFound: connects.length,
   };
 }
 
 /**
- * Get full friend details for chat display
+ * Get full connect details for chat display
  */
-async function getFullFriendDetails(friendId, userProfileId, lang = "eng") {
+async function getFullConnectDetails(connectId, userProfileId, lang = "eng") {
   try {
     const userProfile = await Profile.findById(userProfileId);
 
-    if (!userProfile || !userProfile.friends.includes(friendId)) {
+    if (!userProfile || !userProfile.connects.includes(connectId)) {
       return {
         success: false,
         message:
           lang === "bn"
             ? "এই বন্ধু আপনার বন্ধু তালিকায় নেই।"
-            : "This friend is not in your friends list.",
+            : "This connect is not in your connects list.",
       };
     }
 
-    const friend = await Profile.findById(friendId)
+    const connect = await Profile.findById(connectId)
       .populate("user", ["firstName", "surname", "email"])
       .select([
         "fullName",
@@ -438,71 +438,71 @@ async function getFullFriendDetails(friendId, userProfileId, lang = "eng") {
         "lastEmotionText",
       ]);
 
-    if (!friend) {
+    if (!connect) {
       return {
         success: false,
         message:
           lang === "bn"
             ? "বন্ধু প্রোফাইল খুঁজে পাওয়া যায়নি।"
-            : "Friend profile not found.",
+            : "Connect profile not found.",
       };
     }
 
     // Format detailed response
     let details =
       lang === "bn"
-        ? `👤 **${friend.fullName} এর সম্পূর্ণ তথ্য:**\n\n`
-        : `👤 **Complete Information about ${friend.fullName}:**\n\n`;
+        ? `👤 **${connect.fullName} এর সম্পূর্ণ তথ্য:**\n\n`
+        : `👤 **Complete Information about ${connect.fullName}:**\n\n`;
 
     details += lang === "bn" ? `**ব্যক্তিগত তথ্য:**\n` : `**Personal Info:**\n`;
     details +=
       lang === "bn"
-        ? `   • ডিসপ্লে নাম: ${friend.displayName || "-"}\n`
-        : `   • Display Name: ${friend.displayName || "-"}\n`;
+        ? `   • ডিসপ্লে নাম: ${connect.displayName || "-"}\n`
+        : `   • Display Name: ${connect.displayName || "-"}\n`;
     details +=
       lang === "bn"
-        ? `   • ইউজারনেম: ${friend.username || "-"}\n`
-        : `   • Username: ${friend.username || "-"}\n`;
+        ? `   • ইউজারনেম: ${connect.username || "-"}\n`
+        : `   • Username: ${connect.username || "-"}\n`;
     details +=
       lang === "bn"
-        ? `   • ইমেইল: ${friend.user?.email || "-"}\n`
-        : `   • Email: ${friend.user?.email || "-"}\n`;
+        ? `   • ইমেইল: ${connect.user?.email || "-"}\n`
+        : `   • Email: ${connect.user?.email || "-"}\n`;
     details +=
       lang === "bn"
-        ? `   • বায়ো: ${friend.bio || "-"}\n`
-        : `   • Bio: ${friend.bio || "-"}\n`;
+        ? `   • বায়ো: ${connect.bio || "-"}\n`
+        : `   • Bio: ${connect.bio || "-"}\n`;
 
-    if (friend.lastLocation) {
+    if (connect.lastLocation) {
       details += lang === "bn" ? `\n**অবস্থান:**\n` : `\n**Location:**\n`;
       details +=
         lang === "bn"
-          ? `   • অক্ষাংশ: ${friend.lastLocation.latitude}\n`
-          : `   • Latitude: ${friend.lastLocation.latitude}\n`;
+          ? `   • অক্ষাংশ: ${connect.lastLocation.latitude}\n`
+          : `   • Latitude: ${connect.lastLocation.latitude}\n`;
       details +=
         lang === "bn"
-          ? `   • দ্রাঘিমাংশ: ${friend.lastLocation.longitude}\n`
-          : `   • Longitude: ${friend.lastLocation.longitude}\n`;
+          ? `   • দ্রাঘিমাংশ: ${connect.lastLocation.longitude}\n`
+          : `   • Longitude: ${connect.lastLocation.longitude}\n`;
     }
 
-    if (friend.presentAddress || friend.permanentAddress) {
+    if (connect.presentAddress || connect.permanentAddress) {
       details += lang === "bn" ? `\n**ঠিকানা:**\n` : `\n**Addresses:**\n`;
-      if (friend.presentAddress) {
+      if (connect.presentAddress) {
         details +=
           lang === "bn"
-            ? `   • বর্তমান: ${friend.presentAddress}\n`
-            : `   • Present: ${friend.presentAddress}\n`;
+            ? `   • বর্তমান: ${connect.presentAddress}\n`
+            : `   • Present: ${connect.presentAddress}\n`;
       }
-      if (friend.permanentAddress) {
+      if (connect.permanentAddress) {
         details +=
           lang === "bn"
-            ? `   • স্থায়ী: ${friend.permanentAddress}\n`
-            : `   • Permanent: ${friend.permanentAddress}\n`;
+            ? `   • স্থায়ী: ${connect.permanentAddress}\n`
+            : `   • Permanent: ${connect.permanentAddress}\n`;
       }
     }
 
-    if (friend.workPlaces && friend.workPlaces.length > 0) {
+    if (connect.workPlaces && connect.workPlaces.length > 0) {
       details += lang === "bn" ? `\n**কর্মক্ষেত্র:**\n` : `\n**Workplaces:**\n`;
-      friend.workPlaces.forEach((work) => {
+      connect.workPlaces.forEach((work) => {
         details +=
           lang === "bn"
             ? `   • ${work.company || "-"} (${work.position || "-"})\n`
@@ -510,10 +510,10 @@ async function getFullFriendDetails(friendId, userProfileId, lang = "eng") {
       });
     }
 
-    if (friend.schools && friend.schools.length > 0) {
+    if (connect.schools && connect.schools.length > 0) {
       details +=
         lang === "bn" ? `\n**শিক্ষা প্রতিষ্ঠান:**\n` : `\n**Schools:**\n`;
-      friend.schools.forEach((school) => {
+      connect.schools.forEach((school) => {
         details +=
           lang === "bn"
             ? `   • ${school.name || "-"} (${school.degree || "-"})\n`
@@ -524,34 +524,34 @@ async function getFullFriendDetails(friendId, userProfileId, lang = "eng") {
     details += lang === "bn" ? `\n**স্থিতি:**\n` : `\n**Status:**\n`;
     details +=
       lang === "bn"
-        ? `   • সক্রিয়: ${friend.isActive ? "হ্যাঁ ✓" : "না"}\n`
-        : `   • Active: ${friend.isActive ? "Yes ✓" : "No"}\n`;
+        ? `   • সক্রিয়: ${connect.isActive ? "হ্যাঁ ✓" : "না"}\n`
+        : `   • Active: ${connect.isActive ? "Yes ✓" : "No"}\n`;
 
-    if (friend.lastEmotion) {
+    if (connect.lastEmotion) {
       details +=
         lang === "bn"
-          ? `   • মেজাজ: ${friend.lastEmotionText || friend.lastEmotion}\n`
-          : `   • Mood: ${friend.lastEmotionText || friend.lastEmotion}\n`;
+          ? `   • মেজাজ: ${connect.lastEmotionText || connect.lastEmotion}\n`
+          : `   • Mood: ${connect.lastEmotionText || connect.lastEmotion}\n`;
     }
 
     return {
       success: true,
       message: details,
-      friend: {
-        id: friend._id,
-        name: friend.fullName,
-        profilePic: friend.profilePic,
-        isActive: friend.isActive,
+      connect: {
+        id: connect._id,
+        name: connect.fullName,
+        profilePic: connect.profilePic,
+        isActive: connect.isActive,
       },
     };
   } catch (error) {
-    console.error("Error in getFullFriendDetails:", error);
+    console.error("Error in getFullConnectDetails:", error);
     return {
       success: false,
       message:
         lang === "bn"
           ? "বন্ধুর তথ্য সংগ্রহে ত্রুটি ঘটেছে।"
-          : "Error retrieving friend details.",
+          : "Error retrieving connect details.",
       error: error.message,
     };
   }
@@ -561,5 +561,5 @@ module.exports = {
   parseLocationQuery,
   processLocationChatQuery,
   buildDetailedResponse,
-  getFullFriendDetails,
+  getFullConnectDetails,
 };

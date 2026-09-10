@@ -85,7 +85,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
         const senderName = (senderProfile?.user?.firstName || '') + ' ' + (senderProfile?.user?.surname || '');
         const senderPP = senderProfile?.profilePic || config?.defaultProfile;
         const roomPayload = { updatedMessage, senderName, senderPP, chatPage: true };
-        const userPayload = { updatedMessage, senderName, senderPP, chatPage: false, friendProfile: senderProfile };
+        const userPayload = { updatedMessage, senderName, senderPP, chatPage: false, connectProfile: senderProfile };
         io.to(room).emit('newMessage', roomPayload);
         io.to(String(otherId)).emit('newMessage', roomPayload);
         io.to(String(senderId)).emit('newMessage', roomPayload);
@@ -163,7 +163,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             return;
         }
         callTimeouts.delete(`agora:${channelName}`);
-        io.to(String(to)).emit('video-call-cancelled', { to, friendId: profileId, channelName });
+        io.to(String(to)).emit('video-call-cancelled', { to, connectId: profileId, channelName });
     });
 
     socket.on("video-call-reject", async ({ to, channelName }) => {
@@ -172,37 +172,37 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             return;
         }
         callTimeouts.delete(`agora:${channelName}`);
-        io.to(String(to)).emit('video-call-rejected', { to, friendId: profileId, channelName });
+        io.to(String(to)).emit('video-call-rejected', { to, connectId: profileId, channelName });
     });
 
     socket.on("video-call-end", async ({ to, channelName }) => {
         callTimeouts.delete(`agora:${channelName}`);
 
-        let friendId = to;
+        let connectId = to;
 
         try {
 
-            // Emit to the friend's profile room (all tabs), not a single socket id
-            if (friendId) {
-                io.to(String(friendId)).emit('video-call-ended', {
+            // Emit to the connect's profile room (all tabs), not a single socket id
+            if (connectId) {
+                io.to(String(connectId)).emit('video-call-ended', {
                     from: String(profileId),
                     channelName,
                 });
             }
             try {
                 for (const [key, entry] of callTimeouts.entries()) {
-                    if (entry && entry.transport === 'agora' && entry.to === friendId && entry.from === profileId) {
+                    if (entry && entry.transport === 'agora' && entry.to === connectId && entry.from === profileId) {
                         clearTimeout(entry.timer);
                         callTimeouts.delete(key);
                     }
                 }
             } catch (e) { }
-            const roomKey = getRoomKey(profileId, friendId);
+            const roomKey = getRoomKey(profileId, connectId);
             const accepted = wasAccepted(roomKey);
             // Only send push for missed
             if (!accepted) {
                 try {
-                    await sendPushToProfile(friendId, {
+                    await sendPushToProfile(connectId, {
                         title: 'Missed video call',
                         body: 'You missed a video call',
                         data: { type: 'missed_call', isVideo: 'true' }
@@ -218,7 +218,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                     const callMsg = new Message({
                         room,
                         senderId: String(profileId),
-                        receiverId: String(friendId),
+                        receiverId: String(connectId),
                         message: callEvent === 'missed' ? 'Missed video call' : 'Video call ended',
                         messageType: 'call',
                         callType: 'video',
@@ -231,7 +231,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                         await broadcastCallMessage({
                             updatedMessage,
                             senderId: String(profileId),
-                            otherId: String(friendId),
+                            otherId: String(connectId),
                             senderProfile: profileData,
                         });
                     }
@@ -239,7 +239,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             } catch (e) {
             }
         } catch (err) {
-            console.error('Error handling leaveVideoCall:', err, friendId);
+            console.error('Error handling leaveVideoCall:', err, connectId);
         }
     });
 
@@ -322,7 +322,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             return;
         }
         callTimeouts.delete(`agora:${channelName}`);
-        io.to(String(to)).emit('audio-call-cancelled', { to, friendId: profileId, channelName });
+        io.to(String(to)).emit('audio-call-cancelled', { to, connectId: profileId, channelName });
     });
 
     socket.on("audio-call-reject", async ({ to, channelName }) => {
@@ -331,35 +331,35 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             return;
         }
         callTimeouts.delete(`agora:${channelName}`);
-        io.to(String(to)).emit('audio-call-rejected', { to, friendId: profileId, channelName });
+        io.to(String(to)).emit('audio-call-rejected', { to, connectId: profileId, channelName });
     });
 
     // End audio call
-    socket.on('audio-call-end', async ({to: friendId, channelName}) => {
+    socket.on('audio-call-end', async ({to: connectId, channelName}) => {
         try {
 
-            // Emit to the friend's profile room (all tabs)
-            if (friendId) {
-                io.to(String(friendId)).emit('audio-call-ended', {
+            // Emit to the connect's profile room (all tabs)
+            if (connectId) {
+                io.to(String(connectId)).emit('audio-call-ended', {
                     from: String(profileId),
                     channelName,
                 });
             }
 
-            // Clear any pending missed-call timers for this caller<->friend pair
+            // Clear any pending missed-call timers for this caller<->connect pair
             try {
                 for (const [key, entry] of callTimeouts.entries()) {
-                    if (entry && entry.transport === 'agora' && entry.to === friendId && entry.from === profileId) {
+                    if (entry && entry.transport === 'agora' && entry.to === connectId && entry.from === profileId) {
                         clearTimeout(entry.timer);
                         callTimeouts.delete(key);
                     }
                 }
             } catch (e) { }
-            const roomKey = getRoomKey(profileId, friendId);
+            const roomKey = getRoomKey(profileId, connectId);
             const accepted = wasAccepted(roomKey);
             if (!accepted) {
                 try {
-                    await sendPushToProfile(friendId, {
+                    await sendPushToProfile(connectId, {
                         title: 'Missed audio call',
                         body: 'You missed an audio call',
                         data: { type: 'missed_call', isVideo: 'false' }
@@ -375,7 +375,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                     const callMsg = new Message({
                         room,
                         senderId: String(profileId),
-                        receiverId: String(friendId),
+                        receiverId: String(connectId),
                         message: callEvent === 'missed' ? 'Missed audio call' : 'Audio call ended',
                         messageType: 'call',
                         callType: 'audio',
@@ -388,7 +388,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                         await broadcastCallMessage({
                             updatedMessage,
                             senderId: String(profileId),
-                            otherId: String(friendId),
+                            otherId: String(connectId),
                             senderProfile: profileData,
                         });
                     }
@@ -396,7 +396,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             } catch (e) {
             }
         } catch (err) {
-            console.error('Error handling leaveAudioCall:', err, friendId);
+            console.error('Error handling leaveAudioCall:', err, connectId);
         }
     });
 

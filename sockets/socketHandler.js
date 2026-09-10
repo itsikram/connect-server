@@ -39,7 +39,7 @@ module.exports = function socketHandler(io) {
             profileSockets.get(profileId).add(socket.id);
             onlineUsers.set(profileId, socket.id);
 
-            let profileFriends = await Profile.findById(profileId) || []
+            let profileConnects = await Profile.findById(profileId) || []
 
             // Update user's lastLogin and isActive status on connection
             try {
@@ -62,15 +62,15 @@ module.exports = function socketHandler(io) {
                 socket.join(`browser_${browserId}`);
             }
 
-            // Emit friend_online to all friends (regardless of browserId)
+            // Emit connect_online to all connects (regardless of browserId)
             try {
-                if (profileFriends && profileFriends.friends && profileFriends.friends.length > 0) {
-                    profileFriends.friends.forEach(friend => {
-                        io.to(String(friend)).emit('friend_online', { profileId });
+                if (profileConnects && profileConnects.connects && profileConnects.connects.length > 0) {
+                    profileConnects.connects.forEach(connect => {
+                        io.to(String(connect)).emit('connect_online', { profileId });
                     });
                 }
             } catch (err) {
-                console.error('Error emitting friend_online:', err);
+                console.error('Error emitting connect_online:', err);
             }
 
 
@@ -103,10 +103,10 @@ module.exports = function socketHandler(io) {
         });
 
         // bump notification
-        socket.on('bump', async ({ friendProfile, myProfile }) => {
+        socket.on('bump', async ({ connectProfile, myProfile }) => {
             try {
                 const fromId = myProfile || profileId;
-                await sendBump(io, { friendProfile, myProfile: fromId });
+                await sendBump(io, { connectProfile, myProfile: fromId });
             } catch (err) {
                 console.error('bump emit error', err);
             }
@@ -183,13 +183,13 @@ module.exports = function socketHandler(io) {
                 // Update last active time for location update
                 await updateLastActive(senderProfileId);
 
-                // Get user's friends to broadcast location update
-                const profile = await Profile.findById(senderProfileId).select('friends');
-                if (profile && profile.friends && profile.friends.length > 0) {
-                    console.log('📍 Broadcasting location update to', profile.friends.length, 'friends');
-                    // Emit location update to all friends
-                    profile.friends.forEach(friendId => {
-                        const friendIdStr = String(friendId);
+                // Get user's connects to broadcast location update
+                const profile = await Profile.findById(senderProfileId).select('connects');
+                if (profile && profile.connects && profile.connects.length > 0) {
+                    console.log('📍 Broadcasting location update to', profile.connects.length, 'connects');
+                    // Emit location update to all connects
+                    profile.connects.forEach(connectId => {
+                        const connectIdStr = String(connectId);
                         const locationUpdateData = {
                             profileId: senderProfileId,
                             location: {
@@ -199,11 +199,11 @@ module.exports = function socketHandler(io) {
                                 accuracy: location.accuracy,
                             }
                         };
-                        io.to(friendIdStr).emit('friend_location_update', locationUpdateData);
-                        console.log('📍 Location update sent to friend room:', friendIdStr, 'for profile:', senderProfileId);
+                        io.to(connectIdStr).emit('connect_location_update', locationUpdateData);
+                        console.log('📍 Location update sent to connect room:', connectIdStr, 'for profile:', senderProfileId);
                     });
                 } else {
-                    console.log('📍 No friends found for profile:', senderProfileId);
+                    console.log('📍 No connects found for profile:', senderProfileId);
                 }
 
                 console.log('📍 Location updated for profile:', senderProfileId);
@@ -278,12 +278,12 @@ module.exports = function socketHandler(io) {
                                     { isActive: false }
                                 );
                                 
-                                // Notify friends that user is offline
-                                let profileFriends = await Profile.findById(profileId);
-                                if (profileFriends && profileFriends.friends && profileFriends.friends.length > 0) {
-                                    profileFriends.friends.forEach(friend => {
-                                        console.log('friend_offline', String(friend), profileId);
-                                        io.to(String(friend)).emit('friend_offline', { profileId });
+                                // Notify connects that user is offline
+                                let profileConnects = await Profile.findById(profileId);
+                                if (profileConnects && profileConnects.connects && profileConnects.connects.length > 0) {
+                                    profileConnects.connects.forEach(connect => {
+                                        console.log('connect_offline', String(connect), profileId);
+                                        io.to(String(connect)).emit('connect_offline', { profileId });
                                     });
                                 }
                                 

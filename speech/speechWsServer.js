@@ -47,7 +47,7 @@ const ENGLISH_KEYTERMS = [
   "message",
   "profile",
   "settings",
-  "friend",
+  "connect",
   "ludo",
   "chess",
 ];

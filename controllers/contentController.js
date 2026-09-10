@@ -14,9 +14,9 @@ exports.getDigest = async (req, res, next) => {
     const soon = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
 
     const currentProfile = await Profile.findById(profileId).select(
-      "friends friendReqs",
+      "connects connectReqs",
     );
-    const friendsList = currentProfile?.friends || [];
+    const connectsList = currentProfile?.connects || [];
 
     const myPosts = await Post.find({
       author: profileId,
@@ -32,7 +32,7 @@ exports.getDigest = async (req, res, next) => {
       0,
     );
 
-    const [notesThisWeek, upcomingEvents, topFriendPost] = await Promise.all([
+    const [notesThisWeek, upcomingEvents, topConnectPost] = await Promise.all([
       Note.countDocuments({
         user: profileId,
         updatedAt: { $gte: weekAgo },
@@ -44,9 +44,9 @@ exports.getDigest = async (req, res, next) => {
         .sort({ date: 1 })
         .limit(5)
         .select("title date time"),
-      friendsList.length
+      connectsList.length
         ? Post.findOne({
-            author: { $in: friendsList },
+            author: { $in: connectsList },
             audience: { $in: [1, 2] },
             createdAt: { $gte: weekAgo },
           })
@@ -59,11 +59,11 @@ exports.getDigest = async (req, res, next) => {
       postsThisWeek: myPosts.length,
       reactsReceived,
       commentsReceived,
-      friendCount: friendsList.length,
-      pendingFriendReqs: currentProfile?.friendReqs?.length || 0,
+      connectCount: connectsList.length,
+      pendingConnectReqs: currentProfile?.connectReqs?.length || 0,
       notesThisWeek,
       upcomingEvents,
-      topFriendPost,
+      topConnectPost,
     });
   } catch (error) {
     next(error);

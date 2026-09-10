@@ -61,24 +61,24 @@ exports.postAddReact = async (req, res, next) => {
             return res.status(400).json({ message: 'Invalid reaction target' })
         }
 
-        let friendProfile = ''
+        let connectProfile = ''
 
         switch (postType) {
             case 'post': {
-                friendProfile = (await Post.findOne({ _id: id }).populate('author')).author
+                connectProfile = (await Post.findOne({ _id: id }).populate('author')).author
                 const addPostReact = await replaceReact(Post, id, profile, reactType)
                 if (!addPostReact) {
                     return res.status(404).json({ message: 'Post not found' })
                 }
                 updateInterestProfile({ profileId: profile, item: addPostReact }).catch((error) => console.error('[recommendations] post interest update failed:', error.message || error))
 
-                if (String(friendProfile._id) !== String(profile)) {
-                    const activeBrowserIds = friendProfile.browserIds
+                if (String(connectProfile._id) !== String(profile)) {
+                    const activeBrowserIds = connectProfile.browserIds
                         ?.filter(browser => browser.isActive)
                         ?.map(browser => browser.browserId) || []
 
                     saveNotification(io, {
-                        receiverId: friendProfile._id,
+                        receiverId: connectProfile._id,
                         text: `${myProfileData.fullName} Reacted your post`,
                         link: '/post/' + addPostReact._id,
                         type: 'postReact',
@@ -93,7 +93,7 @@ exports.postAddReact = async (req, res, next) => {
                         }
                     })
 
-                    io.to(friendProfile._id).emit('postReactNotification', {
+                    io.to(connectProfile._id).emit('postReactNotification', {
                         senderName: myProfileData.fullName,
                         senderPP: myProfileData.profilePic,
                         postId: addPostReact._id,
@@ -101,9 +101,9 @@ exports.postAddReact = async (req, res, next) => {
                     })
 
                     try {
-                        const { isActive } = await checkIsActive(friendProfile._id)
+                        const { isActive } = await checkIsActive(connectProfile._id)
                         if (!isActive) {
-                            await sendPushToProfile(friendProfile._id, {
+                            await sendPushToProfile(connectProfile._id, {
                                 title: 'New reaction',
                                 body: `${myProfileData.fullName} reacted to your post`,
                                 data: { type: 'post_react', postId: String(addPostReact._id) }
@@ -115,15 +115,15 @@ exports.postAddReact = async (req, res, next) => {
                 return res.status(200).json(addPostReact)
             }
             case 'story': {
-                friendProfile = (await Story.findOne({ _id: id }).populate('author')).author
+                connectProfile = (await Story.findOne({ _id: id }).populate('author')).author
                 const addStoryReact = await replaceReact(Story, id, profile, reactType)
                 if (!addStoryReact) {
                     return res.status(404).json({ message: 'Story not found' })
                 }
 
-                if (String(friendProfile._id) !== String(profile)) {
+                if (String(connectProfile._id) !== String(profile)) {
                     saveNotification(io, {
-                        receiverId: friendProfile._id,
+                        receiverId: connectProfile._id,
                         text: `${myProfileData.fullName} Reacted your Story`,
                         link: '/story/' + addStoryReact._id,
                         type: 'storyReact',
@@ -137,9 +137,9 @@ exports.postAddReact = async (req, res, next) => {
                         }
                     })
                     try {
-                        const { isActive } = await checkIsActive(friendProfile._id)
+                        const { isActive } = await checkIsActive(connectProfile._id)
                         if (!isActive) {
-                            await sendPushToProfile(friendProfile._id, {
+                            await sendPushToProfile(connectProfile._id, {
                                 title: 'New reaction',
                                 body: `${myProfileData.fullName} reacted to your story`,
                                 data: { type: 'story_react', storyId: String(addStoryReact._id) }
@@ -151,20 +151,20 @@ exports.postAddReact = async (req, res, next) => {
                 return res.status(200).json(addStoryReact)
             }
             case 'watch': {
-                friendProfile = (await Watch.findOne({ _id: id }).populate('author')).author
+                connectProfile = (await Watch.findOne({ _id: id }).populate('author')).author
                 const addWatchReact = await replaceReact(Watch, id, profile, reactType)
                 if (!addWatchReact) {
                     return res.status(404).json({ message: 'Video not found' })
                 }
                 updateInterestProfile({ profileId: profile, item: addWatchReact }).catch((error) => console.error('[recommendations] watch interest update failed:', error.message || error))
 
-                if (friendProfile && String(friendProfile._id) !== String(profile)) {
-                    const activeBrowserIds = friendProfile.browserIds
+                if (connectProfile && String(connectProfile._id) !== String(profile)) {
+                    const activeBrowserIds = connectProfile.browserIds
                         ?.filter(browser => browser.isActive)
                         ?.map(browser => browser.browserId) || []
 
                     saveNotification(io, {
-                        receiverId: friendProfile._id,
+                        receiverId: connectProfile._id,
                         text: `${myProfileData.fullName} Reacted your video`,
                         link: '/watch/' + addWatchReact._id,
                         type: 'postReact',
@@ -179,7 +179,7 @@ exports.postAddReact = async (req, res, next) => {
                         }
                     })
 
-                    io.to(friendProfile._id).emit('postReactNotification', {
+                    io.to(connectProfile._id).emit('postReactNotification', {
                         senderName: myProfileData.fullName,
                         senderPP: myProfileData.profilePic,
                         watchId: addWatchReact._id,
@@ -187,9 +187,9 @@ exports.postAddReact = async (req, res, next) => {
                     })
 
                     try {
-                        const { isActive } = await checkIsActive(friendProfile._id)
+                        const { isActive } = await checkIsActive(connectProfile._id)
                         if (!isActive) {
-                            await sendPushToProfile(friendProfile._id, {
+                            await sendPushToProfile(connectProfile._id, {
                                 title: 'New reaction',
                                 body: `${myProfileData.fullName} reacted to your video`,
                                 data: { type: 'watch_react', watchId: String(addWatchReact._id) }

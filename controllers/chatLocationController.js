@@ -1,18 +1,18 @@
 /**
  * Chat Location Controller
- * Handles AI-powered natural language queries about friend locations
+ * Handles AI-powered natural language queries about connect locations
  */
 
 const Profile = require("../models/Profile");
 const {
   processLocationChatQuery,
-  getFullFriendDetails,
+  getFullConnectDetails,
 } = require("../services/ai/chatLocationService");
 const { translate } = require("../utils/localization/translations");
 
 /**
  * POST /api/location/chat
- * AI Chat endpoint for natural language friend location queries
+ * AI Chat endpoint for natural language connect location queries
  * Body: { latitude, longitude, message, lang }
  *
  * Example: POST /api/location/chat
@@ -97,16 +97,16 @@ exports.chatLocationQuery = async (req, res, next) => {
 };
 
 /**
- * GET /api/location/friend-details/:friendId
- * Get complete friend details for chat display
+ * GET /api/location/connect-details/:connectId
+ * Get complete connect details for chat display
  * Query params: lang (optional)
  *
- * Example: GET /api/location/friend-details/65f1a2b3c4d5e6f7g8h9i0j1?lang=bn
+ * Example: GET /api/location/connect-details/65f1a2b3c4d5e6f7g8h9i0j1?lang=bn
  */
-exports.getFriendDetailsForChat = async (req, res, next) => {
+exports.getConnectDetailsForChat = async (req, res, next) => {
   try {
     const { lang = "eng" } = req.query;
-    const { friendId } = req.params;
+    const { connectId } = req.params;
     const profileId = req.profile?._id;
 
     if (!profileId) {
@@ -116,23 +116,23 @@ exports.getFriendDetailsForChat = async (req, res, next) => {
       });
     }
 
-    const details = await getFullFriendDetails(friendId, profileId, lang);
+    const details = await getFullConnectDetails(connectId, profileId, lang);
 
     return res.status(details.success ? 200 : 400).json(details);
   } catch (error) {
-    console.error("Error in getFriendDetailsForChat:", error);
+    console.error("Error in getConnectDetailsForChat:", error);
     next(error);
   }
 };
 
 /**
- * POST /api/location/bulk-friend-details
- * Get details for multiple friends at once
- * Body: { friendIds: [], lang }
+ * POST /api/location/bulk-connect-details
+ * Get details for multiple connects at once
+ * Body: { connectIds: [], lang }
  */
-exports.getBulkFriendDetails = async (req, res, next) => {
+exports.getBulkConnectDetails = async (req, res, next) => {
   try {
-    const { friendIds = [], lang = "eng" } = req.body;
+    const { connectIds = [], lang = "eng" } = req.body;
     const profileId = req.profile?._id;
 
     if (!profileId) {
@@ -142,20 +142,20 @@ exports.getBulkFriendDetails = async (req, res, next) => {
       });
     }
 
-    if (!Array.isArray(friendIds) || friendIds.length === 0) {
+    if (!Array.isArray(connectIds) || connectIds.length === 0) {
       return res.status(400).json({
         error: true,
         message:
           lang === "bn"
             ? "বন্ধু আইডির তালিকা প্রয়োজন।"
-            : "Array of friend IDs is required.",
+            : "Array of connect IDs is required.",
       });
     }
 
     const allDetails = [];
 
-    for (const friendId of friendIds) {
-      const details = await getFullFriendDetails(friendId, profileId, lang);
+    for (const connectId of connectIds) {
+      const details = await getFullConnectDetails(connectId, profileId, lang);
       if (details.success) {
         allDetails.push(details);
       }
@@ -164,21 +164,21 @@ exports.getBulkFriendDetails = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       count: allDetails.length,
-      friends: allDetails,
+      connects: allDetails,
       language: lang,
     });
   } catch (error) {
-    console.error("Error in getBulkFriendDetails:", error);
+    console.error("Error in getBulkConnectDetails:", error);
     next(error);
   }
 };
 
 /**
- * POST /api/location/chat-list-friends
- * Get a formatted list of all friends for chat display
+ * POST /api/location/chat-list-connects
+ * Get a formatted list of all connects for chat display
  * Body: { latitude, longitude, lang }
  */
-exports.getChatFriendsList = async (req, res, next) => {
+exports.getChatConnectsList = async (req, res, next) => {
   try {
     const { latitude, longitude, lang = "eng" } = req.body;
     const profileId = req.profile?._id;
@@ -201,7 +201,7 @@ exports.getChatFriendsList = async (req, res, next) => {
     }
 
     const userProfile = await Profile.findById(profileId).populate({
-      path: "friends",
+      path: "connects",
       select: [
         "_id",
         "fullName",
@@ -214,29 +214,29 @@ exports.getChatFriendsList = async (req, res, next) => {
       ],
     });
 
-    if (!userProfile || !userProfile.friends) {
+    if (!userProfile || !userProfile.connects) {
       return res.status(200).json({
         success: true,
-        friends: [],
+        connects: [],
         message:
-          lang === "bn" ? "আপনার কোনো বন্ধু নেই।" : "You have no friends yet.",
+          lang === "bn" ? "আপনার কোনো বন্ধু নেই।" : "You have no connects yet.",
       });
     }
 
-    // Format friends data
-    const friendsList = userProfile.friends
-      .map((friend, index) => {
+    // Format connects data
+    const connectsList = userProfile.connects
+      .map((connect, index) => {
         let distanceInfo = null;
 
-        if (friend.lastLocation) {
+        if (connect.lastLocation) {
           const R = 6371;
-          const dLat = (friend.lastLocation.latitude - lat) * (Math.PI / 180);
-          const dLon = (friend.lastLocation.longitude - lon) * (Math.PI / 180);
+          const dLat = (connect.lastLocation.latitude - lat) * (Math.PI / 180);
+          const dLon = (connect.lastLocation.longitude - lon) * (Math.PI / 180);
 
           const a =
             Math.sin(dLat / 2) * Math.sin(dLat / 2) +
             Math.cos(lat * (Math.PI / 180)) *
-              Math.cos(friend.lastLocation.latitude * (Math.PI / 180)) *
+              Math.cos(connect.lastLocation.latitude * (Math.PI / 180)) *
               Math.sin(dLon / 2) *
               Math.sin(dLon / 2);
 
@@ -245,19 +245,19 @@ exports.getChatFriendsList = async (req, res, next) => {
 
           distanceInfo = {
             distance: parseFloat(distance.toFixed(2)),
-            latitude: friend.lastLocation.latitude,
-            longitude: friend.lastLocation.longitude,
+            latitude: connect.lastLocation.latitude,
+            longitude: connect.lastLocation.longitude,
             hasLocation: true,
           };
         }
 
         return {
           index: index + 1,
-          id: friend._id,
-          name: friend.fullName || friend.displayName,
-          profilePic: friend.profilePic,
-          isActive: friend.isActive,
-          address: friend.presentAddress || friend.permanentAddress,
+          id: connect._id,
+          name: connect.fullName || connect.displayName,
+          profilePic: connect.profilePic,
+          isActive: connect.isActive,
+          address: connect.presentAddress || connect.permanentAddress,
           distance: distanceInfo,
           emoji: getEmojiForDistance(distanceInfo),
         };
@@ -272,43 +272,43 @@ exports.getChatFriendsList = async (req, res, next) => {
     // Generate chat message
     let message =
       lang === "bn"
-        ? `👥 **আপনার ${friendsList.length} জন বন্ধু রয়েছে:**\n\n`
-        : `👥 **You have ${friendsList.length} friends:**\n\n`;
+        ? `👥 **আপনার ${connectsList.length} জন বন্ধু রয়েছে:**\n\n`
+        : `👥 **You have ${connectsList.length} connects:**\n\n`;
 
-    friendsList.forEach((friend, idx) => {
-      message += `${idx + 1}. ${friend.emoji} **${friend.name}**\n`;
-      if (friend.distance) {
+    connectsList.forEach((connect, idx) => {
+      message += `${idx + 1}. ${connect.emoji} **${connect.name}**\n`;
+      if (connect.distance) {
         message +=
           lang === "bn"
-            ? `   📍 ${friend.distance.distance} কিমি দূরে\n`
-            : `   📍 ${friend.distance.distance} km away\n`;
+            ? `   📍 ${connect.distance.distance} কিমি দূরে\n`
+            : `   📍 ${connect.distance.distance} km away\n`;
       } else {
         message +=
           lang === "bn"
             ? `   ⚠️ অবস্থান শেয়ার করেননি\n`
             : `   ⚠️ Location not shared\n`;
       }
-      if (friend.address) {
+      if (connect.address) {
         message +=
           lang === "bn"
-            ? `   📌 ${friend.address}\n`
-            : `   📌 ${friend.address}\n`;
+            ? `   📌 ${connect.address}\n`
+            : `   📌 ${connect.address}\n`;
       }
-      message += `   ${friend.isActive ? "🟢 সক্রিয়" : "🔴 অফলাইন"}\n\n`;
+      message += `   ${connect.isActive ? "🟢 সক্রিয়" : "🔴 অফলাইন"}\n\n`;
     });
 
     return res.status(200).json({
       success: true,
       message,
-      friends: friendsList,
-      total: friendsList.length,
-      nearbyCount: friendsList.filter(
+      connects: connectsList,
+      total: connectsList.length,
+      nearbyCount: connectsList.filter(
         (f) => f.distance && f.distance.distance <= 50,
       ).length,
       language: lang,
     });
   } catch (error) {
-    console.error("Error in getChatFriendsList:", error);
+    console.error("Error in getChatConnectsList:", error);
     next(error);
   }
 };

@@ -4,13 +4,13 @@
  */
 
 /**
- * Generate Leaflet map markers from friends data
- * @param {array} friends - Friends with location data
+ * Generate Leaflet map markers from connects data
+ * @param {array} connects - Connects with location data
  * @param {object} userLocation - User's current location {latitude, longitude}
  * @param {string} lang - Language code
  * @returns {object} - Markers and map config
  */
-function generateMapMarkers(friends, userLocation, lang = 'eng') {
+function generateMapMarkers(connects, userLocation, lang = 'eng') {
   const markers = [];
 
   // Add user marker
@@ -25,24 +25,24 @@ function generateMapMarkers(friends, userLocation, lang = 'eng') {
     zIndex: 1000
   });
 
-  // Add friend markers
-  friends.forEach((friend, index) => {
-    if (friend.distance === null) return; // Skip friends without location
+  // Add connect markers
+  connects.forEach((connect, index) => {
+    if (connect.distance === null) return; // Skip connects without location
 
     markers.push({
-      id: friend.id,
-      type: 'friend',
-      latitude: friend.lastLocation.latitude,
-      longitude: friend.lastLocation.longitude,
-      title: friend.name,
-      username: friend.username,
-      distance: friend.distance,
-      direction: friend.direction,
-      address: friend.address,
-      profilePic: friend.profilePic,
-      icon: getIconForDistance(friend.distance),
-      color: getColorForDistance(friend.distance),
-      emoji: getEmojiForDistance(friend.distance),
+      id: connect.id,
+      type: 'connect',
+      latitude: connect.lastLocation.latitude,
+      longitude: connect.lastLocation.longitude,
+      title: connect.name,
+      username: connect.username,
+      distance: connect.distance,
+      direction: connect.direction,
+      address: connect.address,
+      profilePic: connect.profilePic,
+      icon: getIconForDistance(connect.distance),
+      color: getColorForDistance(connect.distance),
+      emoji: getEmojiForDistance(connect.distance),
       zIndex: 999 - index
     });
   });
@@ -129,7 +129,7 @@ function calculateMapBounds(markers) {
  * @param {string} lang - Language code
  * @returns {string} - HTML for map
  */
-function generateMapHTML(markers, bounds, mapId = 'friendsMap', lang = 'eng') {
+function generateMapHTML(markers, bounds, mapId = 'connectsMap', lang = 'eng') {
   const html = `
     <div id="${mapId}" style="width: 100%; height: 500px; border-radius: 8px; margin: 20px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"></div>
 
@@ -213,14 +213,14 @@ function generateMapHTML(markers, bounds, mapId = 'friendsMap', lang = 'eng') {
 
 /**
  * Generate map data object for API response
- * @param {array} friends - Friends with location
+ * @param {array} connects - Connects with location
  * @param {object} userLocation - User location
  * @param {string} lang - Language
  * @returns {object} - Map data for response
  */
-function generateMapData(friends, userLocation, lang = 'eng') {
-  const nearbyfriends = friends.filter(f => f.distance !== null);
-  const markers = generateMapMarkers(nearbyfriends, userLocation, lang);
+function generateMapData(connects, userLocation, lang = 'eng') {
+  const nearbyconnects = connects.filter(f => f.distance !== null);
+  const markers = generateMapMarkers(nearbyconnects, userLocation, lang);
   const bounds = calculateMapBounds(markers);
 
   return {
@@ -295,7 +295,7 @@ function generateKML(markers, lang = 'eng') {
     <Placemark>
       <name>${marker.title}</name>
       <description>
-        ${marker.type === 'friend' ? `Distance: ${marker.distance} km<br/>Direction: ${marker.direction}<br/>Address: ${marker.address}` : 'Your location'}
+        ${marker.type === 'connect' ? `Distance: ${marker.distance} km<br/>Direction: ${marker.direction}<br/>Address: ${marker.address}` : 'Your location'}
       </description>
       <Point>
         <coordinates>${marker.longitude},${marker.latitude},0</coordinates>
@@ -313,8 +313,8 @@ function generateKML(markers, lang = 'eng') {
   return `<?xml version="1.0" encoding="UTF-8"?>
     <kml xmlns="http://www.opengis.net/kml/2.2">
       <Document>
-        <name>Friends Locations</name>
-        <description>Friend locations map</description>
+        <name>Connects Locations</name>
+        <description>Connect locations map</description>
         ${placemarks}
       </Document>
     </kml>`;

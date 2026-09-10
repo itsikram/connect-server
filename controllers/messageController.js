@@ -129,11 +129,11 @@ exports.getChatList = async(req,res,next) => {
         sentAgg.forEach((row) => consider(row._id, row.lastMessage));
         receivedAgg.forEach((row) => consider(row._id, row.lastMessage));
 
-        // Get profile with slim friend fields (avoid shipping tokens, push subs, nested friends)
+        // Get profile with slim connect fields (avoid shipping tokens, push subs, nested connects)
         const myProfile = await Profile.findOne({ _id: profileId })
-            .select('_id friends')
+            .select('_id connects')
             .populate({
-                path: 'friends',
+                path: 'connects',
                 select: '_id fullName displayName username nickname profilePic isActive lastActive user',
                 populate: { path: 'user', select: 'firstName surname' },
             });
@@ -145,23 +145,23 @@ exports.getChatList = async(req,res,next) => {
             return res.status(400).json({ message: 'Profile Not Found' });
         }
 
-        if (myProfile?.friends == null || myProfile.friends.length === 0) {
+        if (myProfile?.connects == null || myProfile.connects.length === 0) {
             clearTimeout(timeout);
-            return res.status(200).json({ message: 'No Friends Found' });
+            return res.status(200).json({ message: 'No Connects Found' });
         }
 
         // Create a map for quick lookup of last messages
         const messageMap = lastMessagesByPeer;
 
         // Build profile contacts array
-        const profileContacts = myProfile.friends.map(friendProfile => {
-            const lastActive = friendProfile.lastActive ? new Date(friendProfile.lastActive) : null;
-            const isOnline = Boolean(friendProfile.isActive) ||
+        const profileContacts = myProfile.connects.map(connectProfile => {
+            const lastActive = connectProfile.lastActive ? new Date(connectProfile.lastActive) : null;
+            const isOnline = Boolean(connectProfile.isActive) ||
                 (lastActive && (now - lastActive) < 5 * 60 * 1000);
             
             return {
-                person: friendProfile,
-                messages: messageMap.get(friendProfile._id.toString()) ? [messageMap.get(friendProfile._id.toString())] : [],
+                person: connectProfile,
+                messages: messageMap.get(connectProfile._id.toString()) ? [messageMap.get(connectProfile._id.toString())] : [],
                 isOnline: isOnline,
                 lastSeen: lastActive
             };
@@ -192,15 +192,15 @@ exports.getChatList = async(req,res,next) => {
 exports.getChatHistory = async(req,res,next) => {
     try {
         let profileId = req.query.profileId || req.profile._id
-        let friendId = req.query.friendId
+        let connectId = req.query.connectId
         let limit = parseInt(req.query.limit) || 20
         let skip = parseInt(req.query.skip) || 0
                 
         // Build query for messages between these users
         const query = {
             $or: [
-                { senderId: profileId, receiverId: friendId },
-                { senderId: friendId, receiverId: profileId }
+                { senderId: profileId, receiverId: connectId },
+                { senderId: connectId, receiverId: profileId }
             ]
         };
 
@@ -234,16 +234,16 @@ exports.getChatHistory = async(req,res,next) => {
 exports.getOldMessages = async(req,res,next) => {
     try {
         let profileId = req.query.profileId || req.profile._id
-        let friendId = req.query.friendId
+        let connectId = req.query.connectId
         let limit = parseInt(req.query.limit) || 20
         let beforeTimestamp = req.query.beforeTimestamp
         
         // Validate required parameters
-        if (!friendId) {
+        if (!connectId) {
             return res.status(400).json({ 
                 messages: [], 
                 hasMore: false,
-                error: 'friendId is required'
+                error: 'connectId is required'
             });
         }
         
@@ -272,8 +272,8 @@ exports.getOldMessages = async(req,res,next) => {
         // Build query for messages between these users before the given timestamp
         const query = {
             $or: [
-                { senderId: profileId, receiverId: friendId },
-                { senderId: friendId, receiverId: profileId }
+                { senderId: profileId, receiverId: connectId },
+                { senderId: connectId, receiverId: profileId }
             ],
             timestamp: { $lt: timestamp }
         };
@@ -360,18 +360,18 @@ exports.sendMessage = async (req, res, next) => {
         // Emit via socket for real-time updates
         io.to(room).emit('newMessage', { updatedMessage, senderName, senderPP, chatPage: true });
         
-        let friendProfile = await Profile.findById(senderId).populate('user');
-        io.to(receiverId).emit('newMessageToUser', { updatedMessage, senderName, senderPP, chatPage: false, friendProfile });
+        let connectProfile = await Profile.findById(senderId).populate('user');
+        io.to(receiverId).emit('newMessageToUser', { updatedMessage, senderName, senderPP, chatPage: false, connectProfile });
 
         // Data-only FCM so the receiver gets a notification when the app is swiped away / killed (no socket).
         try {
-            if (String(receiverId) !== String(senderId) && friendProfile) {
+            if (String(receiverId) !== String(senderId) && connectProfile) {
                 await sendChatMessageDataPush(receiverId, {
                     senderId,
                     updatedMessage,
                     senderName,
                     senderPP,
-                    friendProfile,
+                    connectProfile,
                     room,
                 });
             }
@@ -402,7 +402,7 @@ const updateLastActive = async (userId) => {
 // HTTP-based new messages polling
 exports.getNewMessages = async (req, res, next) => {
     try {
-        const { profileId, friendId, lastMessageId } = req.query;
+        const { profileId, connectId, lastMessageId } = req.query;
         
         if (!profileId) {
             return res.status(400).json({ messages: [] });
@@ -410,12 +410,12 @@ exports.getNewMessages = async (req, res, next) => {
 
         let query;
         
-        if (friendId) {
+        if (connectId) {
             // Get messages between two specific users (for Chat.js)
             query = {
                 $or: [
-                    { senderId: profileId, receiverId: friendId },
-                    { senderId: friendId, receiverId: profileId }
+                    { senderId: profileId, receiverId: connectId },
+                    { senderId: connectId, receiverId: profileId }
                 ]
             };
             
@@ -473,7 +473,7 @@ exports.getNewMessages = async (req, res, next) => {
             const senderProfile = senderMap.get(String(msg.senderId));
             return {
                 ...msg,
-                senderName: senderProfile?.name || msg.senderName || 'Friend',
+                senderName: senderProfile?.name || msg.senderName || 'Connect',
                 senderPP:
                     senderProfile?.profilePic ||
                     msg.senderPP ||
@@ -621,16 +621,16 @@ exports.deleteMessage = async (req, res, next) => {
 exports.deleteConversation = async (req, res, next) => {
     try {
         const profileId = String(req.profile?._id || '');
-        const friendId = req.body?.friendId;
+        const connectId = req.body?.connectId;
 
-        if (!profileId || !friendId) {
-            return res.status(400).json({ message: 'Profile ID and friend ID are required' });
+        if (!profileId || !connectId) {
+            return res.status(400).json({ message: 'Profile ID and connect ID are required' });
         }
 
         const conversationQuery = {
             $or: [
-                { senderId: profileId, receiverId: String(friendId) },
-                { senderId: String(friendId), receiverId: profileId },
+                { senderId: profileId, receiverId: String(connectId) },
+                { senderId: String(connectId), receiverId: profileId },
             ],
         };
 
@@ -642,12 +642,12 @@ exports.deleteConversation = async (req, res, next) => {
         if (io) {
             io.to(profileId).emit('conversationDeleted', {
                 profileId,
-                friendId: String(friendId),
+                connectId: String(connectId),
                 deletedCount: result.deletedCount || 0,
             });
-            io.to(String(friendId)).emit('conversationDeleted', {
-                profileId: String(friendId),
-                friendId: profileId,
+            io.to(String(connectId)).emit('conversationDeleted', {
+                profileId: String(connectId),
+                connectId: profileId,
                 deletedCount: result.deletedCount || 0,
             });
         }
@@ -665,10 +665,10 @@ exports.deleteConversation = async (req, res, next) => {
 exports.sendBump = async (req, res, next) => {
     try {
         const io = req.app.get('io');
-        const friendProfile = req.body?.friendProfile;
+        const connectProfile = req.body?.connectProfile;
         const myProfile = req.body?.myProfile || req.profile?._id;
         const result = await require('../utils/sendBump').sendBump(io, {
-            friendProfile,
+            connectProfile,
             myProfile,
         });
         if (!result.ok) {

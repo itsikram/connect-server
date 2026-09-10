@@ -50,12 +50,14 @@ let profileSchema = new Schema(
       maxLength: 200,
       default: "Hello World, I am a new User",
     },
-    friends: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "Profile",
-      },
-    ],
+    connects: {
+      type: [
+        {
+          type: Schema.Types.ObjectId,
+          ref: "Profile",
+        },
+      ],
+    },
     lastEmotion: String,
     lastEmotionText: String,
     lastEmotionEmoji: String,
@@ -69,12 +71,14 @@ let profileSchema = new Schema(
         timestamp: Date.now(),
       },
     },
-    friendReqs: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "Profile",
-      },
-    ],
+    connectReqs: {
+      type: [
+        {
+          type: Schema.Types.ObjectId,
+          ref: "Profile",
+        },
+      ],
+    },
     workPlaces: [
       {
         type: Object,
@@ -171,7 +175,11 @@ let profileSchema = new Schema(
       ref: "User",
     },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  },
 );
 
 let Profile = model("Profile", profileSchema);

@@ -1,7 +1,7 @@
 const authRoutes = require("./authRoutes");
 const profileRoutes = require("./profileRoutes");
 const PostRoutes = require("./postRoutes");
-const friendRoutes = require("./friendRoutes");
+const relationshipRoutes = require("./relationshipRoutes");
 const reactRoutes = require("./reactRoutes");
 const commentRoutes = require("./commentRoutes");
 const uploadRoute = require("./uploadRoute");
@@ -14,7 +14,7 @@ const path = require("path");
 const watchRoutes = require("./watchRoutes");
 const agoraRoutes = require("./agoraRoutes");
 const adminRoutes = require("./adminRoutes");
-const connectRoutes = require("./connectRoutes");
+const connectDataRoutes = require("./connectRoutes");
 const webNotificationRoutes = require("./webNotificationRoutes");
 const ludoRoutes = require("./ludoRoutes");
 const notesRoutes = require("./notesRoutes");
@@ -32,6 +32,9 @@ const contentRoutes = require("./contentRoutes");
 const reportRoutes = require("./reportRoutes");
 const fitnessRoutes = require("./fitnessRoutes");
 const feedRoutes = require("./feedRoutes");
+const configRoutes = require("./configRoutes");
+const paymentsRoutes = require("./paymentsRoutes");
+const walletRoutes = require("./walletRoutes");
 
 let rootRoute = async (req, res) => {
   return res.sendFile(path.join(__dirname, "build", "index.html"));
@@ -50,8 +53,13 @@ const routes = [
     handler: PostRoutes,
   },
   {
+    path: "/api/connects",
+    handler: relationshipRoutes,
+  },
+  {
+    // Backward-compatible alias while clients cut over to /api/connects.
     path: "/api/friend",
-    handler: friendRoutes,
+    handler: relationshipRoutes,
   },
   {
     path: "/api/react",
@@ -99,7 +107,7 @@ const routes = [
   },
   {
     path: "/api/connect",
-    handler: connectRoutes,
+    handler: connectDataRoutes,
   },
   {
     path: "/api/web-notification",
@@ -168,6 +176,18 @@ const routes = [
   {
     path: "/api/feed",
     handler: feedRoutes,
+  },
+  {
+    path: "/api/config",
+    handler: configRoutes,
+  },
+  {
+    path: "/api/payments",
+    handler: paymentsRoutes,
+  },
+  {
+    path: "/api/wallet",
+    handler: walletRoutes,
   },
 ];
 

@@ -473,13 +473,13 @@ exports.rejectIncomingCallFromPush = async (req, res, next) => {
       if (isAudio) {
         io.to(callerId).emit("audio-call-rejected", {
           to: callerId,
-          friendId: calleeId,
+          connectId: calleeId,
           channelName,
         });
       } else {
         io.to(callerId).emit("video-call-rejected", {
           to: callerId,
-          friendId: calleeId,
+          connectId: calleeId,
           channelName,
         });
       }

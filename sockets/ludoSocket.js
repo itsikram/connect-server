@@ -519,7 +519,7 @@ function ludoSocket(io, socket, profileId) {
     } catch (_e) {}
   });
 
-  // Host sends an invite specifying target friend profile id
+  // Host sends an invite specifying target connect profile id
   socket.on("ludo:invite", (payload = {}) => {
     const { to, gameId } = payload;
     if (!to) {
@@ -643,8 +643,8 @@ function ludoSocket(io, socket, profileId) {
         const emitted = {
           ...payload,
           slotIndex: payload?.slotIndex,
-          friend: {
-            ...payload?.friend,
+          connect: {
+            ...payload?.connect,
             _id: pid,
           },
           serverTs: Date.now(),
@@ -683,11 +683,11 @@ function ludoSocket(io, socket, profileId) {
         acceptedSlot = alreadyInGameIndex;
         game.lastPlayers.players[acceptedSlot] = {
           ...players[acceptedSlot],
-          name: payload?.friend?.fullName || players[acceptedSlot].name,
-          avatar: payload?.friend?.profilePic || players[acceptedSlot].avatar,
+          name: payload?.connect?.fullName || players[acceptedSlot].name,
+          avatar: payload?.connect?.profilePic || players[acceptedSlot].avatar,
           cover:
-            payload?.friend?.coverPic ||
-            payload?.friend?.cover ||
+            payload?.connect?.coverPic ||
+            payload?.connect?.cover ||
             players[acceptedSlot].cover,
           isActive: true,
           isOffline: false,
@@ -701,11 +701,11 @@ function ludoSocket(io, socket, profileId) {
       ) {
         game.lastPlayers.players[acceptedSlot] = {
           ...players[acceptedSlot],
-          name: payload?.friend?.fullName || players[acceptedSlot].name,
-          avatar: payload?.friend?.profilePic || players[acceptedSlot].avatar,
+          name: payload?.connect?.fullName || players[acceptedSlot].name,
+          avatar: payload?.connect?.profilePic || players[acceptedSlot].avatar,
           cover:
-            payload?.friend?.coverPic ||
-            payload?.friend?.cover ||
+            payload?.connect?.coverPic ||
+            payload?.connect?.cover ||
             players[acceptedSlot].cover,
           profileId: pid,
           isActive: true,
@@ -722,11 +722,11 @@ function ludoSocket(io, socket, profileId) {
           acceptedSlot = fallbackSlot;
           game.lastPlayers.players[acceptedSlot] = {
             ...players[acceptedSlot],
-            name: payload?.friend?.fullName || players[acceptedSlot].name,
-            avatar: payload?.friend?.profilePic || players[acceptedSlot].avatar,
+            name: payload?.connect?.fullName || players[acceptedSlot].name,
+            avatar: payload?.connect?.profilePic || players[acceptedSlot].avatar,
             cover:
-              payload?.friend?.coverPic ||
-              payload?.friend?.cover ||
+              payload?.connect?.coverPic ||
+              payload?.connect?.cover ||
               players[acceptedSlot].cover,
             profileId: pid,
             isActive: true,
@@ -741,8 +741,8 @@ function ludoSocket(io, socket, profileId) {
       const emitted = {
         ...payload,
         slotIndex: acceptedSlot >= 0 ? acceptedSlot : payload?.slotIndex,
-        friend: {
-          ...payload?.friend,
+        connect: {
+          ...payload?.connect,
           _id: pid,
         },
         serverTs: Date.now(),
@@ -847,13 +847,13 @@ function ludoSocket(io, socket, profileId) {
               playersArr[assignedSlot] = {
                 ...playersArr[assignedSlot],
                 name:
-                  pending?.friend?.fullName || playersArr[assignedSlot].name,
+                  pending?.connect?.fullName || playersArr[assignedSlot].name,
                 avatar:
-                  pending?.friend?.profilePic ||
+                  pending?.connect?.profilePic ||
                   playersArr[assignedSlot].avatar,
                 cover:
-                  pending?.friend?.coverPic ||
-                  pending?.friend?.cover ||
+                  pending?.connect?.coverPic ||
+                  pending?.connect?.cover ||
                   playersArr[assignedSlot].cover,
                 profileId: pPid,
                 isActive: true,
@@ -871,13 +871,13 @@ function ludoSocket(io, socket, profileId) {
                 playersArr[assignedSlot] = {
                   ...playersArr[assignedSlot],
                   name:
-                    pending?.friend?.fullName || playersArr[assignedSlot].name,
+                    pending?.connect?.fullName || playersArr[assignedSlot].name,
                   avatar:
-                    pending?.friend?.profilePic ||
+                    pending?.connect?.profilePic ||
                     playersArr[assignedSlot].avatar,
                   cover:
-                    pending?.friend?.coverPic ||
-                    pending?.friend?.cover ||
+                    pending?.connect?.coverPic ||
+                    pending?.connect?.cover ||
                     playersArr[assignedSlot].cover,
                   profileId: pPid,
                   isActive: true,

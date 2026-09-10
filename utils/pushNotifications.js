@@ -713,14 +713,14 @@ async function sendDataPushToProfile(profileId, data = {}) {
  * FCM for new chat messages (receiver app killed / no socket).
  * Native FCM: data-only on Android so JS background handler + Notifee display; iOS gets APNS alert in same send.
  * @param {string} receiverId - profile id of message recipient
- * @param {{ senderId: any, updatedMessage: any, senderName: string, senderPP: string, friendProfile: any, room: string }} payload
+ * @param {{ senderId: any, updatedMessage: any, senderName: string, senderPP: string, connectProfile: any, room: string }} payload
  */
 async function sendChatMessageDataPush(receiverId, payload) {
-  const { senderId, updatedMessage, senderName, senderPP, friendProfile, room } = payload || {};
+  const { senderId, updatedMessage, senderName, senderPP, connectProfile, room } = payload || {};
   if (!receiverId || !senderId || String(receiverId) === String(senderId)) {
     return { successCount: 0, failureCount: 0 };
   }
-  if (!updatedMessage || !friendProfile) {
+  if (!updatedMessage || !connectProfile) {
     return { successCount: 0, failureCount: 0 };
   }
   const messageBody =
@@ -739,7 +739,7 @@ async function sendChatMessageDataPush(receiverId, payload) {
     messageId: String(updatedMessage._id),
     message: String(messageBody || ''),
     senderName: String(senderName || ''),
-    senderPic: String(friendProfile.profilePic || senderPP || ''),
+    senderPic: String(connectProfile.profilePic || senderPP || ''),
   });
 
   const profile = await Profile.findOne({

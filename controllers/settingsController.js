@@ -16,21 +16,21 @@ const defaultSettings = () => ({
     ringtone: 1,
     themeMode: 'dark',
     postVisibility: 'public',
-    friendRequestVisibility: 'public',
+    connectRequestVisibility: 'public',
     timelinePostVisibility: 'public',
-    friendRequestReceived: true,
-    friendRequestAccepted: true,
+    connectRequestReceived: true,
+    connectRequestAccepted: true,
     newMessageReceived: true,
-    newFriendPost: true,
-    newFriendStory: true,
-    newFriendWatch: true,
-    friendRequestReceivedEmail: false,
-    friendRequestAcceptedEmail: false,
+    newConnectPost: true,
+    newConnectStory: true,
+    newConnectWatch: true,
+    connectRequestReceivedEmail: false,
+    connectRequestAcceptedEmail: false,
     newMessageReceivedEmail: false,
-    newFriendPostEmail: false,
-    newFriendStoryEmail: false,
-    newFriendWatchEmail: false,
-    friendChatSettings: {},
+    newConnectPostEmail: false,
+    newConnectStoryEmail: false,
+    newConnectWatchEmail: false,
+    connectChatSettings: {},
 })
 
 exports.getSetting = async (req, res, next) => {
@@ -81,11 +81,11 @@ exports.updateSetting = async (req, res, next) => {
             settingObject.ringtone = Number(settingObject.ringtone) || 1
         }
 
-        if (typeof settingObject.friendChatSettings === 'string') {
+        if (typeof settingObject.connectChatSettings === 'string') {
             try {
-                settingObject.friendChatSettings = JSON.parse(settingObject.friendChatSettings)
+                settingObject.connectChatSettings = JSON.parse(settingObject.connectChatSettings)
             } catch (error) {
-                delete settingObject.friendChatSettings
+                delete settingObject.connectChatSettings
             }
         }
 

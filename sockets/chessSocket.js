@@ -1,4 +1,4 @@
-// Chess game socket handler for online multiplayer and friend invites
+// Chess game socket handler for online multiplayer and connect invites
 
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 

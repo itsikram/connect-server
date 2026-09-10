@@ -6,9 +6,9 @@ const sendEmailNotification = require("../utils/sendEmailNotification.js");
 const checkIsActive = require("../utils/checkIsActive.js");
 const { asId, idsMatch, listHasId } = require("../utils/ids");
 
-const emitFriendCacheUpdate = (io, profileId, list, action, targetProfileId) => {
+const emitConnectCacheUpdate = (io, profileId, list, action, targetProfileId) => {
   if (!io || !profileId) return;
-  io.to(String(profileId)).emit("friendCacheUpdate", {
+  io.to(String(profileId)).emit("connectCacheUpdate", {
     profileId: String(profileId),
     list,
     action,
@@ -18,14 +18,14 @@ const emitFriendCacheUpdate = (io, profileId, list, action, targetProfileId) => 
 
 const emitRelationshipUpdate = (io, profileId, actorId, targetId, status) => {
   if (!io || !profileId) return;
-  io.to(String(profileId)).emit("friendRelationshipUpdate", {
+  io.to(String(profileId)).emit("connectRelationshipUpdate", {
     actorId: String(actorId),
     targetId: String(targetId),
     status,
   });
 };
 
-exports.postFrndReq = async (req, res, next) => {
+exports.postConnectReq = async (req, res, next) => {
   try {
     let profile = req.body.profile || req.body.profileId || req.query.profileId;
     if (profile && typeof profile === "object") {
@@ -45,30 +45,30 @@ exports.postFrndReq = async (req, res, next) => {
     if (idsMatch(myProfile._id, profile)) {
       return res
         .status(400)
-        .json({ message: "Cannot send friend request to yourself" });
+        .json({ message: "Cannot send connect request to yourself" });
     }
 
-    if (listHasId(myProfile.friends, profile)) {
+    if (listHasId(myProfile.connects, profile)) {
       return res.json({
-        message: "Already Friend",
-        alreadyFriend: true,
+        message: "Already Connect",
+        alreadyConnect: true,
       });
     }
 
-    let frndProfile = await Profile.findById(profile).populate("user");
+    let connectProfile = await Profile.findById(profile).populate("user");
 
-    if (!frndProfile) {
+    if (!connectProfile) {
       return res.status(404).json({ message: "Profile not found" });
     }
 
-    if (listHasId(frndProfile.friends, myProfile._id)) {
+    if (listHasId(connectProfile.connects, myProfile._id)) {
       return res.json({
-        message: "Already Friend",
-        alreadyFriend: true,
+        message: "Already Connect",
+        alreadyConnect: true,
       });
     }
 
-    if (listHasId(frndProfile.friendReqs, myProfile._id)) {
+    if (listHasId(connectProfile.connectReqs, myProfile._id)) {
       return res.json({
         message: "Already Requested",
         alreadyRequested: true,
@@ -77,17 +77,17 @@ exports.postFrndReq = async (req, res, next) => {
 
     const updated = await Profile.findOneAndUpdate(
       {
-        _id: frndProfile._id,
-        friendReqs: { $ne: myProfile._id },
+        _id: connectProfile._id,
+        connectReqs: { $ne: myProfile._id },
       },
-      { $addToSet: { friendReqs: myProfile._id } },
-      { new: true, select: "_id friendReqs" },
+      { $addToSet: { connectReqs: myProfile._id } },
+      { new: true, select: "_id connectReqs" },
     );
 
     if (!updated) {
       const currentRequest = await Profile.exists({
-        _id: frndProfile._id,
-        friendReqs: myProfile._id,
+        _id: connectProfile._id,
+        connectReqs: myProfile._id,
       });
       if (currentRequest) {
         return res.json({
@@ -95,25 +95,25 @@ exports.postFrndReq = async (req, res, next) => {
           alreadyRequested: true,
         });
       }
-      return res.status(500).json({ message: "Failed to send friend request" });
+      return res.status(500).json({ message: "Failed to send connect request" });
     }
 
-    if (!listHasId(updated.friendReqs, myProfile._id)) {
-      return res.status(500).json({ message: "Failed to send friend request" });
+    if (!listHasId(updated.connectReqs, myProfile._id)) {
+      return res.status(500).json({ message: "Failed to send connect request" });
     }
 
-    const receiverId = asId(frndProfile._id);
+    const receiverId = asId(connectProfile._id);
     const senderId = asId(myProfile._id);
 
-    emitFriendCacheUpdate(io, receiverId, "requests", "refresh");
-    emitFriendCacheUpdate(io, senderId, "suggestions", "remove", receiverId);
+    emitConnectCacheUpdate(io, receiverId, "requests", "refresh");
+    emitConnectCacheUpdate(io, senderId, "suggestions", "remove", receiverId);
     emitRelationshipUpdate(io, receiverId, senderId, receiverId, "incoming");
     emitRelationshipUpdate(io, senderId, senderId, receiverId, "incoming");
 
     try {
       let { isActive } = await checkIsActive(profile);
       const activeBrowserIds =
-        frndProfile.browserIds
+        connectProfile.browserIds
           ?.filter((browser) => browser?.isActive)
           ?.map((browser) => browser.browserId)
           .filter(Boolean) || [];
@@ -121,10 +121,10 @@ exports.postFrndReq = async (req, res, next) => {
       if (io && typeof io.to === "function") {
         await saveNotification(io, {
           receiverId,
-          text: myProfile.fullName + " Sent you friend Request",
+          text: myProfile.fullName + " Sent you connect Request",
           link: "/" + senderId,
           icon: myProfile.profilePic,
-          type: "friendReq",
+          type: "connectReq",
           browserIds: activeBrowserIds,
           data: {
             senderId,
@@ -132,7 +132,7 @@ exports.postFrndReq = async (req, res, next) => {
             senderProfilePic: myProfile.profilePic,
           },
         });
-        io.to(receiverId).emit("friendRequestNotification", {
+        io.to(receiverId).emit("connectRequestNotification", {
           senderName: myProfile.fullName,
           senderPP: myProfile.profilePic,
           senderId,
@@ -142,27 +142,27 @@ exports.postFrndReq = async (req, res, next) => {
       if (!isActive) {
         try {
           await sendPushToProfile(receiverId, {
-            title: "New friend request",
-            body: `${myProfile.fullName} sent you a friend request`,
-            data: { type: "friend_request", senderId },
+            title: "New connect request",
+            body: `${myProfile.fullName} sent you a connect request`,
+            data: { type: "connect_request", senderId },
           });
         } catch (e) {}
         Promise.resolve(
           sendEmailNotification(
-            frndProfile?.user?.email,
-            "You've received a friend requiest",
-            myProfile.fullName + " Sent you friend Request On Connect",
+            connectProfile?.user?.email,
+            "You've received a connect requiest",
+            myProfile.fullName + " Sent you connect Request On Connect",
             myProfile.fullName,
           ),
         ).catch(() => {});
       }
     } catch (notifyErr) {
-      console.error("Friend request saved but notify failed:", notifyErr);
+      console.error("Connect request saved but notify failed:", notifyErr);
     }
 
     return res.json({
       success: true,
-      message: "Friend request sent",
+      message: "Connect request sent",
       _id: asId(updated._id),
     });
   } catch (error) {
@@ -170,16 +170,17 @@ exports.postFrndReq = async (req, res, next) => {
   }
 };
 
-exports.postBlockFrnd = async (req, res, next) => {
+exports.postBlockConnect = async (req, res, next) => {
   try {
-    let friendId = req.body.friendId;
+    // friendId is accepted only as a legacy request-body compatibility key.
+    let connectId = req.body.connectId || req.body.friendId;
     let profile = req.profile;
 
     let updateProfile = await Profile.findOneAndUpdate(
       { _id: profile._id },
       {
         $push: {
-          blockedUsers: friendId,
+          blockedUsers: connectId,
         },
       },
     );
@@ -190,7 +191,7 @@ exports.postBlockFrnd = async (req, res, next) => {
         const io = req.app.get("io");
         if (io) {
           const by = String(profile._id);
-          const target = String(friendId);
+          const target = String(connectId);
           const payload = { by, target };
           const chatRoom = [by, target].sort().join("_");
           io.to(by).emit("userBlocked", payload);
@@ -218,42 +219,48 @@ exports.getBlockStatus = async (req, res, next) => {
       Expires: "0",
     });
 
-    const friendId = req.query.friendId || req.body.friendId;
+    const connectId =
+      req.query.connectId ||
+      req.body.connectId ||
+      // Legacy clients may still send friendId; never expose it in responses.
+      req.query.friendId ||
+      req.body.friendId;
     const myId = req.profile?._id;
-    if (!friendId || !mongoose.Types.ObjectId.isValid(String(friendId))) {
-      return res.status(400).json({ message: "Invalid or missing friendId" });
+    if (!connectId || !mongoose.Types.ObjectId.isValid(String(connectId))) {
+      return res.status(400).json({ message: "Invalid or missing connectId" });
     }
     if (!myId) {
       return res.status(401).json({ message: "Authentication required" });
     }
 
-    const [me, friend] = await Promise.all([
+    const [me, connect] = await Promise.all([
       Profile.findById(myId).select("blockedUsers"),
-      Profile.findById(friendId).select("blockedUsers"),
+      Profile.findById(connectId).select("blockedUsers"),
     ]);
 
-    if (!friend) {
+    if (!connect) {
       return res.status(404).json({ message: "User not found" });
     }
 
     return res.status(200).json({
-      iBlocked: listHasId(me?.blockedUsers, friendId),
-      blockedMe: listHasId(friend?.blockedUsers, myId),
+      iBlocked: listHasId(me?.blockedUsers, connectId),
+      blockedMe: listHasId(connect?.blockedUsers, myId),
     });
   } catch (error) {
     next(error);
   }
 };
-exports.postUnblockFrnd = async (req, res, next) => {
+exports.postUnblockConnect = async (req, res, next) => {
   try {
-    let friendId = req.body.friendId;
+    // friendId is accepted only as a legacy request-body compatibility key.
+    let connectId = req.body.connectId || req.body.friendId;
     let profile = req.profile;
 
     let updateProfile = await Profile.findOneAndUpdate(
       { _id: profile._id },
       {
         $pull: {
-          blockedUsers: friendId,
+          blockedUsers: connectId,
         },
       },
     );
@@ -264,7 +271,7 @@ exports.postUnblockFrnd = async (req, res, next) => {
         const io = req.app.get("io");
         if (io) {
           const by = String(profile._id);
-          const target = String(friendId);
+          const target = String(connectId);
           const payload = { by, target };
           const chatRoom = [by, target].sort().join("_");
           io.to(by).emit("userUnblocked", payload);
@@ -283,13 +290,13 @@ exports.postUnblockFrnd = async (req, res, next) => {
   }
 };
 
-exports.getFrndReq = async (req, res, next) => {
+exports.getConnectReq = async (req, res, next) => {
   try {
     let myProfile = req.profile;
     let myProfileReqsId = [
-      ...new Set((myProfile.friendReqs || []).map((id) => String(id))),
+      ...new Set((myProfile.connectReqs || []).map((id) => String(id))),
     ];
-    let getFrndReqsInfo = await Profile.find({
+    let getConnectReqsInfo = await Profile.find({
       _id: myProfileReqsId,
     })
       .populate({
@@ -298,28 +305,33 @@ exports.getFrndReq = async (req, res, next) => {
       })
       .select("profilePic")
       .sort({ createdAt: -1 });
-    return res.status(200).json(getFrndReqsInfo);
+    return res.status(200).json(getConnectReqsInfo);
   } catch (error) {
     next(error);
   }
 };
-exports.getProfileFrnd = async (req, res, next) => {
+exports.getProfileConnect = async (req, res, next) => {
   try {
-    let profile = req.query.profile;
+    const profileId = req.query.profile || req.query.profileId;
 
-    if (profile == false) return next();
-    let isSingle = req.query.single && req.query.single;
+    if (!profileId || profileId === "false") {
+      return res.status(400).json({ message: "Profile ID is required" });
+    }
+    if (!mongoose.Types.ObjectId.isValid(String(profileId))) {
+      return res.status(400).json({ message: "Invalid profile id" });
+    }
+    const isSingle = Boolean(req.query.single);
     if (isSingle) {
-      let friendData = await profile.findOne({ _id: profile });
-      return res.json(friendData);
+      const connectData = await Profile.findOne({ _id: profileId });
+      return res.json(connectData);
     }
 
-    let friendProfile = await Profile.findOne({
-      _id: profile,
+    const connectProfile = await Profile.findOne({
+      _id: profileId,
     })
-      .select(["friends"])
+      .select(["connects"])
       .populate({
-        path: "friends",
+        path: "connects",
         select: [
           "profilePic",
           "fullName",
@@ -338,16 +350,16 @@ exports.getProfileFrnd = async (req, res, next) => {
         },
       });
 
-    const friendsData = [];
-    const seenFriendIds = new Set();
-    for (const friend of friendProfile?.friends || []) {
-      const friendId = String(friend?._id || "");
-      if (friendId && !seenFriendIds.has(friendId)) {
-        seenFriendIds.add(friendId);
-        friendsData.push(friend);
+    const connectsData = [];
+    const seenConnectIds = new Set();
+    for (const connect of connectProfile?.connects || []) {
+      const connectId = String(connect?._id || "");
+      if (connectId && !seenConnectIds.has(connectId)) {
+        seenConnectIds.add(connectId);
+        connectsData.push(connect);
       }
     }
-    res.json(friendsData);
+    res.json(connectsData);
   } catch (error) {
     next(error);
   }
@@ -356,22 +368,22 @@ exports.getProfileFrnd = async (req, res, next) => {
 exports.getProfileSuggetions = async (req, res, next) => {
   try {
     let profile = req.profile;
-    let myFriends = req.profile.friends;
+    let myConnects = req.profile.connects || [];
 
-    let getFrndSuggetions = await Profile.find({
+    let getConnectSuggetions = await Profile.find({
       _id: {
-        $nin: myFriends,
+        $nin: myConnects,
         $ne: profile._id,
       },
     }).populate("user");
 
-    res.json(getFrndSuggetions);
+    res.json(getConnectSuggetions);
   } catch (error) {
     next(error);
   }
 };
 
-exports.postFrndAccept = async (req, res, next) => {
+exports.postConnectAccept = async (req, res, next) => {
   try {
     let profile = req.body.profile;
 
@@ -381,28 +393,28 @@ exports.postFrndAccept = async (req, res, next) => {
       return res.status(400).json({ message: "Invalid or missing profile id" });
     }
 
-    const friendProfile = await Profile.findById(profile);
-    if (!friendProfile) {
+    const connectProfile = await Profile.findById(profile);
+    if (!connectProfile) {
       return res.status(404).json({ message: "Profile not found" });
     }
 
     const acceptedRequest = await Profile.findOneAndUpdate(
       {
         _id: myProfile._id,
-        friendReqs: profile,
+        connectReqs: profile,
       },
-      { $pull: { friendReqs: profile } },
+      { $pull: { connectReqs: profile } },
       { new: true, select: "_id" },
     );
     if (!acceptedRequest) {
-      return res.status(409).json({ message: "Friend request is no longer pending" });
+      return res.status(409).json({ message: "Connect request is no longer pending" });
     }
 
-    let updateFrndProfile = await Profile.findOneAndUpdate(
+    let updateConnectProfile = await Profile.findOneAndUpdate(
       { _id: profile },
       {
         $addToSet: {
-          friends: myProfile._id,
+          connects: myProfile._id,
         },
       },
     );
@@ -410,23 +422,23 @@ exports.postFrndAccept = async (req, res, next) => {
       { _id: myProfile._id },
       {
         $addToSet: {
-          friends: profile,
+          connects: profile,
         },
       },
     );
 
-    // Get the friend's profile to access browser IDs
+    // Get the connect's profile to access browser IDs
     const activeBrowserIds =
-      friendProfile?.browserIds
+      connectProfile?.browserIds
         ?.filter((browser) => browser.isActive)
         ?.map((browser) => browser.browserId) || [];
 
     let notificationData = {
       receiverId: profile,
-      text: myProfile.fullName + " Accepted your friend Request",
+      text: myProfile.fullName + " Accepted your connect Request",
       link: "/" + myProfile._id,
       icon: myProfile.profilePic,
-      type: "friendReqAccept",
+      type: "connectReqAccept",
       browserIds: activeBrowserIds,
       data: {
         senderId: myProfile._id,
@@ -437,102 +449,44 @@ exports.postFrndAccept = async (req, res, next) => {
 
     saveNotification(io, notificationData);
 
-    // Also emit specific socket event for friend request acceptance
-    io.to(profile).emit("friendRequestAcceptNotification", {
-      senderName: myProfile.fullName,
-      senderPP: myProfile.profilePic,
-      senderId: myProfile._id,
-    });
-    emitFriendCacheUpdate(io, myProfile._id, "requests", "remove", profile);
-    emitFriendCacheUpdate(io, myProfile._id, "suggestions", "remove", profile);
-    emitFriendCacheUpdate(io, profile, "suggestions", "remove", myProfile._id);
-    emitRelationshipUpdate(io, myProfile._id, myProfile._id, profile, "friends");
-    emitRelationshipUpdate(io, profile, myProfile._id, profile, "friends");
+    // Also emit specific socket event for connect request acceptance
+    if (io && typeof io.to === "function") {
+      io.to(profile).emit("connectRequestAcceptNotification", {
+        senderName: myProfile.fullName,
+        senderPP: myProfile.profilePic,
+        senderId: myProfile._id,
+      });
+    }
+    emitConnectCacheUpdate(io, myProfile._id, "requests", "remove", profile);
+    emitConnectCacheUpdate(io, myProfile._id, "suggestions", "remove", profile);
+    emitConnectCacheUpdate(io, profile, "suggestions", "remove", myProfile._id);
+    emitRelationshipUpdate(io, myProfile._id, myProfile._id, profile, "connects");
+    emitRelationshipUpdate(io, profile, myProfile._id, profile, "connects");
 
     try {
       const { isActive } = await checkIsActive(profile);
       if (!isActive) {
         await sendPushToProfile(profile, {
-          title: "Friend request accepted",
-          body: `${myProfile.fullName} accepted your friend request`,
-          data: { type: "friend_accept", senderId: String(myProfile._id) },
+          title: "Connect request accepted",
+          body: `${myProfile.fullName} accepted your connect request`,
+          data: { type: "connect_accept", senderId: String(myProfile._id) },
         });
       }
     } catch (e) {}
 
     return res.status(200).json({
-      message: "Friend Request Accepted",
+      message: "Connect Request Accepted",
     });
   } catch (error) {
     next(error);
   }
 };
 
-exports.postFrndDelete = async (req, res, next) => {
+exports.postConnectDelete = async (req, res, next) => {
   try {
-    let friendProfileId = req.body.profile;
+    let connectProfileId = req.body.profile;
     let myProfile = req.profile;
-
-    let updateMyProfile = await Profile.findOneAndUpdate(
-      {
-        _id: myProfile._id,
-      },
-      {
-        $pull: {
-          friendReqs: friendProfileId,
-        },
-      },
-      { new: true },
-    );
-
-    if (updateMyProfile) {
-      const io = req.app.get("io");
-      emitFriendCacheUpdate(io, myProfile._id, "requests", "remove", friendProfileId);
-      emitFriendCacheUpdate(io, friendProfileId, "suggestions", "refresh");
-      emitRelationshipUpdate(io, myProfile._id, myProfile._id, friendProfileId, "none");
-      emitRelationshipUpdate(io, friendProfileId, myProfile._id, friendProfileId, "none");
-    }
-    res.json(updateMyProfile);
-  } catch (error) {
-    next(error);
-  }
-};
-
-exports.postRemoveFrndReq = async (req, res, next) => {
-  try {
-    let frndProfileId = req.body.profile;
-    let myProfile = req.profile;
-
-    let updateFrnd = await Profile.findOneAndUpdate(
-      {
-        _id: frndProfileId,
-      },
-      {
-        $pull: {
-          friendReqs: myProfile._id,
-        },
-      },
-      { new: true },
-    );
-    if (updateFrnd) {
-      const io = req.app.get("io");
-      emitFriendCacheUpdate(io, frndProfileId, "suggestions", "refresh");
-      emitFriendCacheUpdate(io, myProfile._id, "suggestions", "refresh");
-      emitRelationshipUpdate(io, frndProfileId, myProfile._id, frndProfileId, "none");
-      emitRelationshipUpdate(io, myProfile._id, myProfile._id, frndProfileId, "none");
-    }
-    res.json(updateFrnd);
-  } catch (e) {
-    next(e);
-  }
-};
-
-exports.postRemoveFrnd = async (req, res, next) => {
-  try {
-    let myProfile = req.profile;
-    let frndProfile =
-      req.body.profile || req.body.profileId || req.query.profileId;
-    if (!frndProfile || !mongoose.Types.ObjectId.isValid(frndProfile)) {
+    if (!connectProfileId || !mongoose.Types.ObjectId.isValid(connectProfileId)) {
       return res.status(400).json({ message: "Invalid or missing profile id" });
     }
 
@@ -542,27 +496,93 @@ exports.postRemoveFrnd = async (req, res, next) => {
       },
       {
         $pull: {
-          friends: frndProfile,
+          connectReqs: connectProfileId,
         },
       },
+      { new: true },
     );
 
-    let updateFrndProfile = await Profile.findByIdAndUpdate(
-      { _id: frndProfile },
+    if (updateMyProfile) {
+      const io = req.app.get("io");
+      emitConnectCacheUpdate(io, myProfile._id, "requests", "remove", connectProfileId);
+      emitConnectCacheUpdate(io, connectProfileId, "suggestions", "refresh");
+      emitRelationshipUpdate(io, myProfile._id, myProfile._id, connectProfileId, "none");
+      emitRelationshipUpdate(io, connectProfileId, myProfile._id, connectProfileId, "none");
+    }
+    res.json(updateMyProfile);
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.postRemoveConnectReq = async (req, res, next) => {
+  try {
+    let connectProfileId = req.body.profile;
+    let myProfile = req.profile;
+    if (!connectProfileId || !mongoose.Types.ObjectId.isValid(connectProfileId)) {
+      return res.status(400).json({ message: "Invalid or missing profile id" });
+    }
+
+    let updateConnect = await Profile.findOneAndUpdate(
+      {
+        _id: connectProfileId,
+      },
       {
         $pull: {
-          friends: myProfile._id,
+          connectReqs: myProfile._id,
+        },
+      },
+      { new: true },
+    );
+    if (updateConnect) {
+      const io = req.app.get("io");
+      emitConnectCacheUpdate(io, connectProfileId, "suggestions", "refresh");
+      emitConnectCacheUpdate(io, myProfile._id, "suggestions", "refresh");
+      emitRelationshipUpdate(io, connectProfileId, myProfile._id, connectProfileId, "none");
+      emitRelationshipUpdate(io, myProfile._id, myProfile._id, connectProfileId, "none");
+    }
+    res.json(updateConnect);
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.postRemoveConnect = async (req, res, next) => {
+  try {
+    let myProfile = req.profile;
+    let connectProfile =
+      req.body.profile || req.body.profileId || req.query.profileId;
+    if (!connectProfile || !mongoose.Types.ObjectId.isValid(connectProfile)) {
+      return res.status(400).json({ message: "Invalid or missing profile id" });
+    }
+
+    let updateMyProfile = await Profile.findOneAndUpdate(
+      {
+        _id: myProfile._id,
+      },
+      {
+        $pull: {
+          connects: connectProfile,
         },
       },
     );
 
-    if (updateMyProfile && updateFrndProfile) {
+    let updateConnectProfile = await Profile.findByIdAndUpdate(
+      { _id: connectProfile },
+      {
+        $pull: {
+          connects: myProfile._id,
+        },
+      },
+    );
+
+    if (updateMyProfile && updateConnectProfile) {
       return res.json({
-        message: "Friend removed From your profile",
+        message: "Connect removed From your profile",
       });
     }
 
-    return res.status(404).json({ message: "Friend relationship not found" });
+    return res.status(404).json({ message: "Connect relationship not found" });
   } catch (error) {
     next(error);
   }
