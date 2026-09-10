@@ -7,7 +7,7 @@ exports.getWallet = async (req, res, next) => {
   try {
     const userId = req.profile?.user?._id || req.profile?.user || req.profile?._id;
     const user = await User.findById(userId).select(
-      "walletBalanceCoins creatorEarningsCoins subscriptionStatus subscriptionTier subscriptionExpiresAt lastDailyCoinRewardDate",
+      "walletBalanceCoins creatorEarningsCoins payoutReservedCoins subscriptionStatus subscriptionTier subscriptionExpiresAt lastDailyCoinRewardDate",
     );
 
     if (!user) {
@@ -31,7 +31,11 @@ exports.getWallet = async (req, res, next) => {
 
     return res.json({
       walletBalanceCoins: user.walletBalanceCoins || 0,
-      creatorEarningsCoins: user.creatorEarningsCoins || 0,
+      creatorEarningsCoins: Math.max(
+        0,
+        (user.creatorEarningsCoins || 0) - (user.payoutReservedCoins || 0),
+      ),
+      payoutReservedCoins: user.payoutReservedCoins || 0,
       subscriptionStatus: hasExpired ? "expired" : user.subscriptionStatus || "none",
       subscriptionTier: hasExpired ? "none" : user.subscriptionTier || "none",
       subscriptionExpiresAt: user.subscriptionExpiresAt || null,

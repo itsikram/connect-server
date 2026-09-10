@@ -21,6 +21,7 @@ const settingsDefaults = () => ({
   },
   coinPacks: DEFAULT_COIN_PACKS,
   tipping: { platformFeePercent: 20 },
+  payout: { coinToBDTRate: 0.1, minimumCoins: 100, actionRewardCoins: 10 },
 });
 
 const serialize = (settings) => {
@@ -37,6 +38,7 @@ const serialize = (settings) => {
     subscriptionTiers: { ...defaults.subscriptionTiers, ...(raw?.subscriptionTiers || {}) },
     coinPacks: raw?.coinPacks?.length ? raw.coinPacks : defaults.coinPacks,
     tipping: { ...defaults.tipping, ...(raw?.tipping || {}) },
+    payout: { ...defaults.payout, ...(raw?.payout || {}) },
   };
 };
 
@@ -81,6 +83,18 @@ const validatePayload = (payload) => {
       Number(payload.tipping.platformFeePercent) > 100)) {
     return "platformFeePercent must be between 0 and 100";
   }
+  if (payload.payout) {
+    const { coinToBDTRate, minimumCoins, actionRewardCoins } = payload.payout;
+    if (coinToBDTRate !== undefined &&
+      (!Number.isFinite(Number(coinToBDTRate)) || Number(coinToBDTRate) <= 0)) {
+      return "coinToBDTRate must be greater than zero";
+    }
+    for (const [name, value] of [["minimumCoins", minimumCoins], ["actionRewardCoins", actionRewardCoins]]) {
+      if (value !== undefined && (!Number.isInteger(Number(value)) || Number(value) < 1)) {
+        return `${name} must be a positive integer`;
+      }
+    }
+  }
   if (payload.coinPacks !== undefined) {
     if (!Array.isArray(payload.coinPacks)) return "coinPacks must be an array";
     for (const pack of payload.coinPacks) {
@@ -115,6 +129,7 @@ const updateMonetizationSettings = async (req, res, next) => {
       paymentNumbers: { ...current.paymentNumbers, ...(payload.paymentNumbers || {}) },
       subscriptionTiers: { ...current.subscriptionTiers, ...(payload.subscriptionTiers || {}) },
       tipping: { ...current.tipping, ...(payload.tipping || {}) },
+      payout: { ...current.payout, ...(payload.payout || {}) },
       updatedByAdminId: String(req.admin?._id || ""),
     });
     const settingsToSave = {
@@ -124,6 +139,7 @@ const updateMonetizationSettings = async (req, res, next) => {
       subscriptionTiers: nextSettings.subscriptionTiers,
       coinPacks: nextSettings.coinPacks,
       tipping: nextSettings.tipping,
+      payout: nextSettings.payout,
       updatedByAdminId: nextSettings.updatedByAdminId,
     };
     const saved = await MonetizationSettings.findOneAndUpdate(
@@ -147,6 +163,7 @@ const getPublicMonetizationConfig = async (_req, res) => {
       subscriptionTiers: serialized.subscriptionTiers,
       coinPacks: serialized.coinPacks.filter((pack) => pack.enabled),
       tipping: serialized.tipping,
+      payout: serialized.payout,
     });
   } catch (error) {
     console.error("Unable to load monetization settings:", error);
@@ -156,6 +173,7 @@ const getPublicMonetizationConfig = async (_req, res) => {
       subscriptionTiers: settingsDefaults().subscriptionTiers,
       coinPacks: DEFAULT_COIN_PACKS,
       tipping: settingsDefaults().tipping,
+      payout: settingsDefaults().payout,
     });
   }
 };

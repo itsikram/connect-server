@@ -1,5 +1,16 @@
 const Task = require('../models/Task');
 
+const isValidReminderTime = (value) => typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+const isValidTimezone = (value) => {
+    if (typeof value !== 'string' || !value.trim()) return false;
+    try {
+        new Intl.DateTimeFormat('en-US', { timeZone: value }).format();
+        return true;
+    } catch {
+        return false;
+    }
+};
+
 // Get all tasks for authenticated user
 exports.getAllTasks = async (req, res, next) => {
     try {
@@ -31,7 +42,7 @@ exports.getAllTasks = async (req, res, next) => {
 // Create task
 exports.createTask = async (req, res, next) => {
     try {
-        const { text } = req.body;
+        const { text, reminderTime, reminderTimezone } = req.body;
         const profileId = req.profile?._id;
 
         if (!profileId) {
@@ -47,11 +58,22 @@ exports.createTask = async (req, res, next) => {
                 message: 'Task text is required'
             });
         }
+        if (reminderTime !== undefined && reminderTime !== null && !isValidReminderTime(reminderTime)) {
+            return res.status(400).json({ success: false, message: 'Reminder time must use HH:mm format' });
+        }
+        if (reminderTimezone !== undefined && reminderTimezone !== null && !isValidTimezone(reminderTimezone)) {
+            return res.status(400).json({ success: false, message: 'Reminder timezone is invalid' });
+        }
+        if (reminderTime && !reminderTimezone) {
+            return res.status(400).json({ success: false, message: 'Reminder timezone is required' });
+        }
 
         const task = new Task({
             user: profileId,
             text: text.trim(),
-            completed: false
+            completed: false,
+            reminderTime: reminderTime || undefined,
+            reminderTimezone: reminderTimezone || undefined
         });
 
         const savedTask = await task.save();
@@ -75,7 +97,7 @@ exports.createTask = async (req, res, next) => {
 exports.updateTask = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { text, completed } = req.body;
+        const { text, completed, reminderTime, reminderTimezone } = req.body;
         const profileId = req.profile?._id;
 
         if (!profileId) {
@@ -84,7 +106,12 @@ exports.updateTask = async (req, res, next) => {
                 message: 'Authentication required'
             });
         }
-
+        if (reminderTime !== undefined && reminderTime !== null && !isValidReminderTime(reminderTime)) {
+            return res.status(400).json({ success: false, message: 'Reminder time must use HH:mm format' });
+        }
+        if (reminderTimezone !== undefined && reminderTimezone !== null && !isValidTimezone(reminderTimezone)) {
+            return res.status(400).json({ success: false, message: 'Reminder timezone is invalid' });
+        }
         const task = await Task.findOne({ _id: id, user: profileId });
 
         if (!task) {
@@ -93,12 +120,23 @@ exports.updateTask = async (req, res, next) => {
                 message: 'Task not found'
             });
         }
+        if (reminderTime && !reminderTimezone && !task.reminderTimezone) {
+            return res.status(400).json({ success: false, message: 'Reminder timezone is required' });
+        }
 
         if (text !== undefined) {
             task.text = text.trim();
         }
         if (completed !== undefined) {
             task.completed = completed;
+        }
+        if (reminderTime !== undefined) {
+            task.reminderTime = reminderTime || undefined;
+            task.lastReminderDate = null;
+        }
+        if (reminderTimezone !== undefined) {
+            task.reminderTimezone = reminderTimezone || undefined;
+            task.lastReminderDate = null;
         }
 
         const updatedTask = await task.save();

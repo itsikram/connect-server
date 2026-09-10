@@ -19,6 +19,7 @@ const {
   grantSubscription,
   revokeSubscription,
 } = require('../controllers/adminSubscriptionController');
+const { listPayouts, approvePayout, rejectPayout } = require("../controllers/adminPayoutController");
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -61,6 +62,9 @@ Router.put('/reports/:id/status', updateReportStatus)
 Router.get('/payments', isAdminRole, listPayments)
 Router.post('/payments/:id/approve', isAdminRole, approvePayment)
 Router.post('/payments/:id/reject', isAdminRole, rejectPayment)
+Router.get('/payouts', isAdminRole, listPayouts)
+Router.post('/payouts/:id/approve', isAdminRole, approvePayout)
+Router.post('/payouts/:id/reject', isAdminRole, rejectPayout)
 Router.get('/monetization/settings', isAdminRole, getMonetizationSettings)
 Router.put('/monetization/settings', isAdminRole, updateMonetizationSettings)
 Router.get('/subscriptions', isAdminRole, listSubscriptions)

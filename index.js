@@ -35,6 +35,7 @@ const fs = require("fs");
 const { startUnseenMessageReminderWorker } = require("./utils/unseenMessageReminderWorker");
 const { startDailyPromptWorker } = require("./utils/dailyPromptWorker");
 const { startFitnessReminderWorker } = require("./utils/fitnessReminderWorker");
+const { startTaskReminderWorker } = require("./utils/taskReminderWorker");
 const { startCpuSampler, getMetrics } = require("./utils/cpuMetrics");
 const {
   attachPeerAdapter,
@@ -767,6 +768,7 @@ mongoose
       startUnseenMessageReminderWorker();
       startDailyPromptWorker();
       startFitnessReminderWorker();
+      startTaskReminderWorker();
     } else {
       console.log("Background workers skipped on this instance");
     }

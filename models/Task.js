@@ -18,6 +18,18 @@ const taskSchema = new Schema({
         type: Boolean,
         default: false
     },
+    reminderTime: {
+        type: String,
+        match: /^([01]\d|2[0-3]):[0-5]\d$/
+    },
+    reminderTimezone: {
+        type: String,
+        trim: true
+    },
+    lastReminderDate: {
+        type: String,
+        default: null
+    },
     createdAt: {
         type: Date,
         default: Date.now

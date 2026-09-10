@@ -71,6 +71,11 @@ let userSchema = new Schema({
         default: 0,
         min: 0
     },
+    payoutReservedCoins: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
     lastDailyCoinRewardDate: {
         type: String,
         default: null

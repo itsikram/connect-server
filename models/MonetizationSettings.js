@@ -37,6 +37,11 @@ const monetizationSettingsSchema = new Schema(
     tipping: {
       platformFeePercent: { type: Number, default: 20, min: 0, max: 100 },
     },
+    payout: {
+      coinToBDTRate: { type: Number, default: 0.1, min: 0.000001 },
+      minimumCoins: { type: Number, default: 100, min: 1 },
+      actionRewardCoins: { type: Number, default: 10, min: 1 },
+    },
     updatedByAdminId: {
       type: String,
       default: null,
