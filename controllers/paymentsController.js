@@ -30,6 +30,7 @@ const validateSubmission = (body = {}) => {
   const coachingPlanId =
     typeof body.coachingPlanId === "string" ? body.coachingPlanId.trim() : null;
   const amountBDT = body.amountBDT;
+  const coinsAmount = body.coinsAmount;
   const errors = {};
 
   if (!PAYMENT_METHODS.has(paymentMethod)) {
@@ -40,6 +41,10 @@ const validateSubmission = (body = {}) => {
     !/[0-9]/.test(senderMsisdn)
   ) {
     errors.senderMsisdn = "senderMsisdn must be a valid phone number";
+  }
+  if (type === "wallet_topup" && coinsAmount !== undefined &&
+    (!Number.isInteger(coinsAmount) || coinsAmount <= 0)) {
+    errors.coinsAmount = "coinsAmount must be a positive integer for wallet top-ups";
   }
   if (!transactionId || transactionId.length > 100) {
     errors.transactionId = "transactionId is required and must be 100 characters or fewer";
@@ -72,6 +77,7 @@ const validateSubmission = (body = {}) => {
       transactionId,
       type,
       amountBDT,
+      coinsAmount: type === "wallet_topup" ? coinsAmount : null,
       subscriptionTier,
       coachingPlanId,
     },

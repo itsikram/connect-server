@@ -4,12 +4,14 @@ const CoachingPurchase = require("../models/CoachingPurchase");
 
 const PAYMENT_STATUSES = new Set(["pending", "approved", "rejected"]);
 const SUBSCRIPTION_TIERS = new Set(["plus_basic", "plus_pro"]);
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const adminId = (req) => String(req.admin?._id || "");
 const reviewTimestamp = () => new Date();
 
 const listPayments = async (req, res) => {
   const status = req.query.status || "pending";
+  const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
   if (!PAYMENT_STATUSES.has(status)) {
     return res.status(400).json({
       success: false,
@@ -18,7 +20,15 @@ const listPayments = async (req, res) => {
   }
 
   try {
-    const transactions = await Transaction.find({ status })
+    const query = { status };
+    const safeSearch = escapeRegex(search);
+    if (search) {
+      query.$or = [
+        { transactionId: { $regex: safeSearch, $options: "i" } },
+        { senderMsisdn: { $regex: safeSearch, $options: "i" } },
+      ];
+    }
+    const transactions = await Transaction.find(query)
       .sort({ submittedAt: -1 })
       .populate("userId", "firstName surname email")
       .lean();

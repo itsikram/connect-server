@@ -59,11 +59,22 @@ const withCloudinaryConfig = async (config, operation) => {
 };
 
 const replaceCloudinaryReferences = async (resources, source, destination) => {
-  const replacements = new Map(
-    resources
-      .filter((resource) => resource.source?.secure_url && resource.destination?.secure_url)
-      .map((resource) => [resource.source.secure_url, resource.destination.secure_url]),
-  );
+  const replacements = new Map();
+  const addReplacement = (from, to) => {
+    if (typeof from === 'string' && from && typeof to === 'string' && to && from !== to) {
+      replacements.set(from, to);
+    }
+  };
+
+  resources.forEach((resource) => {
+    const sourceResource = resource.source || {};
+    const destinationResource = resource.destination || {};
+    addReplacement(sourceResource.secure_url, destinationResource.secure_url);
+    addReplacement(sourceResource.url, destinationResource.url);
+    addReplacement(sourceResource.public_id, destinationResource.public_id);
+    addReplacement(sourceResource.asset_id, destinationResource.asset_id);
+  });
+
   const sourceMarker = `res.cloudinary.com/${source.cloud_name}/`;
   const destinationMarker = `res.cloudinary.com/${destination.cloud_name}/`;
   const database = { documentsUpdated: 0, referencesUpdated: 0, errors: [] };
@@ -82,20 +93,27 @@ const replaceCloudinaryReferences = async (resources, source, destination) => {
     });
   };
 
-  for (const model of Object.values(mongoose.connection.models)) {
+  const connection = mongoose.connection;
+  if (connection.readyState !== 1 || !connection.db) {
+    throw new Error('MongoDB must be connected before Cloudinary references can be updated');
+  }
+
+  const collections = await connection.db.collections();
+  for (const collection of collections) {
+    if (collection.collectionName.startsWith('system.')) continue;
     try {
-      const documents = await model.find({}).lean();
-      for (const document of documents) {
+      const cursor = collection.find({});
+      for await (const document of cursor) {
         const updates = {};
         visit(document, '', updates);
         if (Object.keys(updates).length) {
-          await model.updateOne({ _id: document._id }, { $set: updates });
+          await collection.updateOne({ _id: document._id }, { $set: updates });
           database.documentsUpdated += 1;
           database.referencesUpdated += Object.keys(updates).length;
         }
       }
     } catch (error) {
-      database.errors.push({ collection: model.collection.name, reason: error.message || 'Database update failed' });
+      database.errors.push({ collection: collection.collectionName, reason: error.message || 'Database update failed' });
     }
   }
 
@@ -105,10 +123,31 @@ const replaceCloudinaryReferences = async (resources, source, destination) => {
 const migrateResources = async (resources, overwrite, onProgress) => {
   const result = { migrated: [], skipped: [], failed: [] };
 
+  const addMigrated = (resource, uploaded, reused = false) => {
+    result.migrated.push({
+      identifier: resource.public_id || resource.asset_id || resource.secure_url,
+      source: {
+        secure_url: resource.secure_url,
+        url: resource.url,
+        public_id: resource.public_id,
+        asset_id: resource.asset_id,
+      },
+      destination: {
+        secure_url: uploaded.secure_url,
+        url: uploaded.url,
+        public_id: uploaded.public_id,
+        asset_id: uploaded.asset_id,
+        resource_type: uploaded.resource_type,
+        ...(reused ? { reused: true } : {}),
+      },
+    });
+  };
+
   for (const resource of resources) {
     const identifier = resource.public_id || resource.asset_id || resource.secure_url;
     if (!resource.secure_url || !identifier) {
       result.skipped.push({ identifier: identifier || 'unknown', reason: 'Resource has no delivery URL' });
+      onProgress?.(result);
       continue;
     }
 
@@ -120,19 +159,32 @@ const migrateResources = async (resources, overwrite, onProgress) => {
         overwrite,
         invalidate: true,
       });
-      result.migrated.push({
-        identifier,
-        source: { secure_url: resource.secure_url },
-        destination: {
-          secure_url: uploaded.secure_url,
-          public_id: uploaded.public_id,
-          resource_type: uploaded.resource_type,
-        },
-      });
+      addMigrated(resource, uploaded);
     } catch (error) {
+      let destinationLookupReason = '';
+      // A previous migration may already have copied this public ID. Reconcile
+      // that asset instead of reporting it as failed and skipping DB updates.
+      if (resource.public_id) {
+        try {
+          const existing = await cloudinary.api.resource(resource.public_id, {
+            resource_type: resource.resource_type || 'image',
+            type: resource.type || 'upload',
+          });
+          addMigrated(resource, existing, true);
+          onProgress?.(result);
+          continue;
+        } catch (lookupError) {
+          // Preserve the original upload error when no destination asset exists.
+          destinationLookupReason = lookupError?.error?.message || lookupError?.message || '';
+        }
+      }
+
       result.failed.push({
         identifier,
-        reason: error?.error?.message || error.message || 'Upload failed',
+        reason: [
+          error?.error?.message || error.message || 'Upload failed',
+          destinationLookupReason ? `Destination lookup: ${destinationLookupReason}` : '',
+        ].filter(Boolean).join('. '),
       });
     }
     onProgress?.(result);

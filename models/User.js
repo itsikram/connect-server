@@ -66,6 +66,15 @@ let userSchema = new Schema({
         default: 0,
         min: 0
     },
+    creatorEarningsCoins: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+    lastDailyCoinRewardDate: {
+        type: String,
+        default: null
+    },
     subscriptionStatus: {
         type: String,
         enum: ['none', 'active', 'expired', 'cancelled'],

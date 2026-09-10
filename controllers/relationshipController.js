@@ -547,7 +547,7 @@ exports.postRemoveConnectReq = async (req, res, next) => {
   }
 };
 
-exports.postRemoveConnect = async (req, res, next) => {
+exports.postDisconnect = async (req, res, next) => {
   try {
     let myProfile = req.profile;
     let connectProfile =
@@ -578,7 +578,7 @@ exports.postRemoveConnect = async (req, res, next) => {
 
     if (updateMyProfile && updateConnectProfile) {
       return res.json({
-        message: "Connect removed From your profile",
+        message: "Disconnected from your profile",
       });
     }
 

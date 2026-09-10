@@ -423,6 +423,7 @@ class DeepgramBridge {
     const normalized = String(language || "bn")
       .trim()
       .toLowerCase();
+    if (normalized === "auto") return "multi";
     if (normalized.startsWith("bn")) return "bn";
     if (normalized.startsWith("en")) return "en-US";
     return normalized || "bn";

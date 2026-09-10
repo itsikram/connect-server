@@ -35,6 +35,7 @@ const feedRoutes = require("./feedRoutes");
 const configRoutes = require("./configRoutes");
 const paymentsRoutes = require("./paymentsRoutes");
 const walletRoutes = require("./walletRoutes");
+const tipsRoutes = require("./tipsRoutes");
 
 let rootRoute = async (req, res) => {
   return res.sendFile(path.join(__dirname, "build", "index.html"));
@@ -188,6 +189,10 @@ const routes = [
   {
     path: "/api/wallet",
     handler: walletRoutes,
+  },
+  {
+    path: "/api/tips",
+    handler: tipsRoutes,
   },
 ];
 
