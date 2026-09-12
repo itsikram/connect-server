@@ -15,6 +15,7 @@ const defaultSettings = () => ({
     showIsTyping: true,
     ringtone: 1,
     themeMode: 'dark',
+    language: 'eng',
     postVisibility: 'public',
     connectRequestVisibility: 'public',
     timelinePostVisibility: 'public',
@@ -79,6 +80,14 @@ exports.updateSetting = async (req, res, next) => {
 
         if (settingObject.ringtone !== undefined) {
             settingObject.ringtone = Number(settingObject.ringtone) || 1
+        }
+
+        if (settingObject.language !== undefined) {
+            const languageAliases = { en: 'eng', 'en-US': 'eng', 'bn-BD': 'bn' }
+            settingObject.language = languageAliases[settingObject.language] || settingObject.language
+            if (!['eng', 'bn'].includes(settingObject.language)) {
+                return res.status(400).json({ message: 'Invalid language. Use eng or bn' })
+            }
         }
 
         if (typeof settingObject.connectChatSettings === 'string') {

@@ -46,6 +46,11 @@ let userSchema = new Schema({
         trim: true,
         required: false // Make optional for Google users
     },
+    language: {
+        type: String,
+        enum: ['eng', 'bn'],
+        default: 'eng',
+    },
     lastLogin :{
         type : Number,
         default: new Date(Date.now()).getTime(),

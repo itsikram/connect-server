@@ -248,7 +248,7 @@ exports.resetPassword = async (req, res, next) => {
 }
 
 exports.signUp = async (req, res, next) => {
-    let { firstName, surname, password, DOB, gender } = req.body
+    let { firstName, surname, password, DOB, gender, language = 'eng' } = req.body
     let email = (req.body.email).toLowerCase();
 
     try {
@@ -258,13 +258,18 @@ exports.signUp = async (req, res, next) => {
 
             let hashPassword = await bcrypt.hash(password, 10);
 
+            if (!['eng', 'bn'].includes(language)) {
+                return res.status(400).json({ message: 'Invalid language. Use eng or bn' })
+            }
+
             let saveUser = User({
                 firstName,
                 surname,
                 email,
                 password: hashPassword,
                 DOB,
-                gender
+                gender,
+                language
             })
 
             let userData = await saveUser.save();
@@ -291,6 +296,7 @@ exports.signUp = async (req, res, next) => {
                         user_id: updatedUser._id,
                         surname: updatedUser.surname,
                         profile: updatedUser.profile,
+                        language: updatedUser.language || 'eng',
                         accessToken
                     })
                 }
@@ -458,6 +464,7 @@ exports.login = async (req, res, next) => {
             user_id: user._id,
             surname: user.surname,
             profile: user.profile,
+            language: user.language || 'eng',
             faceLoginEnabled: Boolean(user.faceLoginEnabled),
             accessToken
         })
@@ -682,6 +689,7 @@ exports.googleSignIn = async (req, res, next) => {
                 user_id: user._id,
                 surname: user.surname,
                 profile: user.profile,
+                language: user.language || 'eng',
                 faceLoginEnabled: Boolean(user.faceLoginEnabled),
                 accessToken
             });
@@ -696,7 +704,8 @@ exports.googleSignIn = async (req, res, next) => {
                 password: null,
                 // Set default values for required fields
                 DOB: null,
-                gender: 'other'
+                gender: 'other',
+                language: 'eng',
             });
 
             let userData = await newUser.save();
@@ -729,6 +738,7 @@ exports.googleSignIn = async (req, res, next) => {
                         user_id: updatedUser._id,
                         surname: updatedUser.surname,
                         profile: updatedUser.profile,
+                        language: updatedUser.language || 'eng',
                         accessToken
                     });
                 }

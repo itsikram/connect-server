@@ -31,6 +31,11 @@ let settingSchema = new Schema({
         type: String,
         default: 'dark',
     },
+    language: {
+        type: String,
+        enum: ['eng', 'bn'],
+        default: 'eng',
+    },
     postVisibility: {
         type: String,
         default: 'public',
