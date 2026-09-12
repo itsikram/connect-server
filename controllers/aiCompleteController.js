@@ -725,7 +725,10 @@ const completeGemini = async ({
       temperature,
       topK: json ? 4 : 12,
       topP: json ? 0.6 : 0.8,
-      maxOutputTokens: json ? Math.min(maxTokens, 160) : Math.min(maxTokens, 220),
+      // Auto-post JSON contains a caption, hashtags, and an image prompt.
+      // Keep enough room for the complete object; 160 tokens can truncate it
+      // mid-string, which then appears to the caller as invalid JSON.
+      maxOutputTokens: json ? Math.min(maxTokens, 700) : Math.min(maxTokens, 220),
       candidateCount: 1,
       ...(!json ? {} : {}),
       ...(/gemini-(2\.5|3)/i.test(String(model))
@@ -896,6 +899,9 @@ exports.completeAiChat = async (req, res) => {
     });
   }
 };
+
+// Reused by trusted backend workflows; API keys are resolved server-side by the caller.
+exports.completeGemini = completeGemini;
 
 const openSse = (res) => {
   res.status(200);
@@ -1207,7 +1213,7 @@ const streamGeminiProvider = async ({
       temperature,
       topK: json ? 4 : 12,
       topP: json ? 0.6 : 0.8,
-      maxOutputTokens: json ? Math.min(maxTokens, 160) : Math.min(maxTokens, 220),
+      maxOutputTokens: json ? Math.min(maxTokens, 700) : Math.min(maxTokens, 220),
       candidateCount: 1,
       ...(json ? { responseMimeType: "application/json" } : {}),
       ...(/gemini-(2\.5|3)/i.test(String(model))

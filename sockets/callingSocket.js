@@ -58,6 +58,11 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
     // Agora calling socket
     const MISSED_CALL_TIMEOUT_MS = 300000;
     const callTimeouts = new Map(); // key -> { timer, to, from, isAudio, transport, channelName }
+    const clearCallTimeout = (key) => {
+        const entry = callTimeouts.get(key);
+        if (entry?.timer) clearTimeout(entry.timer);
+        callTimeouts.delete(key);
+    };
     // Track acceptance state and recently-created call messages to avoid duplicates
     const callStateByRoom = new Map(); // roomKey -> { accepted?: boolean, recentEvents?: Map<string, number> }
 
@@ -162,7 +167,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             console.warn('video-call-cancel: Missing to or channelName', { to, channelName });
             return;
         }
-        callTimeouts.delete(`agora:${channelName}`);
+        clearCallTimeout(`agora:${channelName}`);
         io.to(String(to)).emit('video-call-cancelled', { to, connectId: profileId, channelName });
     });
 
@@ -171,12 +176,12 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             console.warn('video-call-reject: Missing to or channelName', { to, channelName });
             return;
         }
-        callTimeouts.delete(`agora:${channelName}`);
+        clearCallTimeout(`agora:${channelName}`);
         io.to(String(to)).emit('video-call-rejected', { to, connectId: profileId, channelName });
     });
 
     socket.on("video-call-end", async ({ to, channelName }) => {
-        callTimeouts.delete(`agora:${channelName}`);
+        clearCallTimeout(`agora:${channelName}`);
 
         let connectId = to;
 
@@ -321,7 +326,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             console.warn('audio-call-cancel: Missing to or channelName', { to, channelName });
             return;
         }
-        callTimeouts.delete(`agora:${channelName}`);
+        clearCallTimeout(`agora:${channelName}`);
         io.to(String(to)).emit('audio-call-cancelled', { to, connectId: profileId, channelName });
     });
 
@@ -336,7 +341,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
         if (wasAccepted(roomKey)) {
             return;
         }
-        callTimeouts.delete(`agora:${channelName}`);
+        clearCallTimeout(`agora:${channelName}`);
         io.to(String(to)).emit('audio-call-rejected', { to, connectId: profileId, channelName });
     });
 

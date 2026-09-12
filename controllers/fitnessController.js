@@ -6,6 +6,7 @@ const Reminder = require("../models/Reminder");
 const { calculateNutrition } = require("../utils/fitnessCalculations");
 const { loadAiSettings, getProviderKey, isProviderEnabled } = require("../utils/aiSettingsStore");
 const { normalizeNutrition } = require("../utils/fitnessNutrition");
+const { sendPushToProfile } = require("../utils/pushNotifications");
 
 const startOfDay = (value = new Date()) => {
   const date = new Date(value);
@@ -33,6 +34,80 @@ const getDailyTotals = async (userId, date) => {
     { $group: { _id: null, calories: { $sum: "$calories" }, proteinG: { $sum: "$proteinG" }, carbsG: { $sum: "$carbsG" }, fatG: { $sum: "$fatG" }, fiberG: { $sum: "$fiberG" } } },
   ]);
   return totals[0] || { calories: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0 };
+};
+
+const notifyHealthTargets = async (userId, date, totals) => {
+  const profile = await FitnessProfile.findOne({ user: userId });
+  if (!profile) return;
+
+  const dayKey = startOfDay(date).toISOString().slice(0, 10);
+  const previous = profile.targetNotifications?.date === dayKey
+    ? profile.targetNotifications
+    : { date: dayKey, calories: false, protein: false, weight: false };
+  const notifications = [];
+  if (!previous.calories && profile.targetCalories > 0 && totals.calories >= profile.targetCalories) {
+    notifications.push({
+      key: "calories",
+      title: "Daily calorie target reached",
+      body: `You reached your ${Math.round(profile.targetCalories)} kcal target today. Keep your next choices balanced.`,
+    });
+  }
+  if (!previous.protein && profile.macros?.proteinG > 0 && totals.proteinG >= profile.macros.proteinG) {
+    notifications.push({
+      key: "protein",
+      title: "Protein target reached",
+      body: `You reached your ${Math.round(profile.macros.proteinG)} g protein target today. Great work.`,
+    });
+  }
+  if (!notifications.length) return;
+
+  const claimed = { ...previous };
+  notifications.forEach(({ key }) => { claimed[key] = true; });
+  await FitnessProfile.updateOne({ _id: profile._id }, { $set: { targetNotifications: claimed } });
+  for (const notification of notifications) {
+    try {
+      await sendPushToProfile(userId, {
+        title: notification.title,
+        body: notification.body,
+        data: { type: "fitness_target", target: notification.key, date: dayKey },
+      });
+    } catch (error) {
+      console.error("[fitness-target] push failed:", error?.message || error);
+    }
+  }
+};
+
+const notifyWeightTarget = async (userId, weightKg) => {
+  const profile = await FitnessProfile.findOne({ user: userId });
+  if (!profile?.targetWeightKg || profile.targetNotifications?.weight) return;
+  const reached = profile.goal === "gain"
+    ? weightKg >= profile.targetWeightKg
+    : profile.goal === "lose"
+      ? weightKg <= profile.targetWeightKg
+      : false;
+  if (!reached) return;
+  await FitnessProfile.updateOne({ _id: profile._id }, { $set: { "targetNotifications.weight": true } });
+  try {
+    await sendPushToProfile(userId, {
+      title: "Weight target reached",
+      body: `You reached your ${profile.targetWeightKg} kg goal. Celebrate your progress and maintain healthy habits.`,
+      data: { type: "fitness_target", target: "weight" },
+    });
+  } catch (error) {
+    console.error("[fitness-target] weight push failed:", error?.message || error);
+  }
+};
+
+const notifyAiFitnessUpdate = async (userId, title, body, target) => {
+  try {
+    await sendPushToProfile(userId, {
+      title,
+      body,
+      data: { type: "fitness_ai_update", target },
+    });
+  } catch (error) {
+    console.error("[fitness-ai] push failed:", error?.message || error);
+  }
 };
 
 const getProfile = async (req, res) => {
@@ -94,8 +169,16 @@ const createMeal = async (req, res) => {
   try {
     const { date, mealType, name, servings, calories, proteinG, carbsG, fatG, fiberG, notes, source, imageUrl, analysis, foods } = req.body;
     if (!name || !String(name).trim()) return badRequest(res, "Meal name is required");
-    const meal = await Meal.create({ user: owner(req), date: startOfDay(date), mealType, name, servings, calories, proteinG, carbsG, fatG, fiberG, notes, source, imageUrl, analysis, foods, userConfirmedAt: new Date() });
-    return res.status(201).json({ success: true, meal, totals: await getDailyTotals(owner(req), meal.date) });
+    const mealDate = new Date(date || Date.now());
+    if (Number.isNaN(mealDate.getTime())) return badRequest(res, "A valid meal date is required");
+    const meal = await Meal.create({ user: owner(req), date: mealDate, mealType, name, servings, calories, proteinG, carbsG, fatG, fiberG, notes, source, imageUrl, analysis, foods, userConfirmedAt: new Date() });
+    const totals = await getDailyTotals(owner(req), meal.date);
+    try {
+      await notifyHealthTargets(owner(req), meal.date, totals);
+    } catch (error) {
+      console.error("[fitness-target] meal milestone check failed:", error?.message || error);
+    }
+    return res.status(201).json({ success: true, meal, totals });
   } catch (error) { return handleError(res, error); }
 };
 
@@ -113,7 +196,10 @@ const updateMeal = async (req, res) => {
   try {
     const update = pick(req.body, ["date", "mealType", "name", "servings", "calories", "proteinG", "carbsG", "fatG", "fiberG", "notes", "source", "imageUrl", "analysis", "foods"]);
     update.userConfirmedAt = new Date();
-    if (update.date) update.date = startOfDay(update.date);
+    if (update.date) {
+      update.date = new Date(update.date);
+      if (Number.isNaN(update.date.getTime())) return badRequest(res, "A valid meal date is required");
+    }
     const meal = await Meal.findOneAndUpdate({ _id: req.params.id, user: owner(req) }, update, { new: true, runValidators: true });
     if (!meal) return res.status(404).json({ success: false, message: "Meal not found" });
     return res.json({ success: true, meal });
@@ -130,6 +216,7 @@ const deleteMeal = async (req, res) => {
 
 const analyzeMeal = async (req, res) => {
   const name = String(req.body?.name || req.body?.description || "").trim();
+  const mealType = ["breakfast", "lunch", "dinner", "snack"].includes(req.body?.mealType) ? req.body.mealType : "snack";
   if (name.length > 500) return badRequest(res, "A food description up to 500 characters is required");
   if (!name && !req.file) return badRequest(res, "Add a food name or photo to analyze");
   try {
@@ -139,7 +226,7 @@ const analyzeMeal = async (req, res) => {
     if (!enabled || !key) {
       return res.json({ success: true, provider: "placeholder", requiresConfirmation: true, analysis: { name: name || "Analyzed meal", serving: "1 serving", calories: null, proteinG: null, carbsG: null, fatG: null, fiberG: null } });
     }
-    const prompt = `Analyze this food image${name ? ` or description: ${name}` : ""} for one serving. Identify the food name from the image when possible. Return ONLY JSON with name, serving, calories, proteinG, carbsG, fatG, fiberG. Use conservative numeric estimates; never use null.`;
+    const prompt = `Analyze this ${mealType} food image${name ? ` or description: ${name}` : ""} for one serving. Identify the food name from the image when possible. Return ONLY JSON with name, serving, calories, proteinG, carbsG, fatG, fiberG. Use conservative numeric estimates; never use null.`;
     const model = settings.models?.gemini || "gemini-2.0-flash";
     const response = await axios.post(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,
@@ -163,6 +250,12 @@ const analyzeMeal = async (req, res) => {
     } catch (error) {
       return res.status(502).json({ success: false, message: "Food analysis returned invalid nutrition data" });
     }
+    await notifyAiFitnessUpdate(
+      owner(req),
+      "Food analysis ready",
+      "Your AI nutrition estimate is ready to review and save.",
+      "food_analysis",
+    );
     return res.json({ success: true, provider: "gemini", requiresConfirmation: true, analysis });
   } catch (error) {
     if (isProviderTimeout(error)) {
@@ -181,6 +274,11 @@ const listWeights = async (req, res) => {
 const addWeight = async (req, res) => {
   try {
     const weight = await WeightLog.findOneAndUpdate({ user: owner(req), date: startOfDay(req.body.date) }, { ...req.body, user: owner(req), date: startOfDay(req.body.date) }, { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true });
+    try {
+      await notifyWeightTarget(owner(req), weight.weightKg);
+    } catch (error) {
+      console.error("[fitness-target] weight milestone check failed:", error?.message || error);
+    }
     return res.status(201).json({ success: true, weight });
   } catch (error) { return handleError(res, error); }
 };
@@ -232,9 +330,13 @@ const coach = async (req, res) => {
   const question = String(req.body?.question || "").trim();
   if (!question || question.length > 500) return badRequest(res, "A question up to 500 characters is required");
   try {
-    const [profile, totals] = await Promise.all([
+    const [profile, totals, meals] = await Promise.all([
       FitnessProfile.findOne({ user: owner(req) }).lean(),
       getDailyTotals(owner(req), new Date()),
+      Meal.find({ user: owner(req), date: { $gte: startOfDay(new Date()), $lt: endOfDay(new Date()) } })
+        .sort({ date: -1 })
+        .select("name mealType calories proteinG carbsG fatG fiberG date")
+        .lean(),
     ]);
     if (!profile) return badRequest(res, "Complete your fitness profile first");
     const key = await getProviderKey("gemini");
@@ -247,6 +349,16 @@ const coach = async (req, res) => {
       targetCalories: profile.targetCalories,
       macros: profile.macros,
       today: totals,
+      meals: meals.map((meal) => ({
+        name: meal.name,
+        mealType: meal.mealType,
+        calories: meal.calories,
+        proteinG: meal.proteinG,
+        carbsG: meal.carbsG,
+        fatG: meal.fatG,
+        fiberG: meal.fiberG,
+        date: meal.date,
+      })),
     });
     const response = await axios.post(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(settings.models?.gemini || "gemini-2.0-flash")}:generateContent?key=${encodeURIComponent(key)}`,
@@ -273,9 +385,13 @@ const coach = async (req, res) => {
 
 const recommendations = async (req, res) => {
   try {
-    const [profile, totals] = await Promise.all([
+    const [profile, totals, meals] = await Promise.all([
       FitnessProfile.findOne({ user: owner(req) }).lean(),
       getDailyTotals(owner(req), new Date()),
+      Meal.find({ user: owner(req), date: { $gte: startOfDay(new Date()), $lt: endOfDay(new Date()) } })
+        .sort({ date: -1 })
+        .select("name mealType calories proteinG carbsG fatG fiberG date")
+        .lean(),
     ]);
     if (!profile) return badRequest(res, "Complete your fitness profile first");
 
@@ -287,9 +403,9 @@ const recommendations = async (req, res) => {
     };
     const fallback = {
       recommendations: [
-        { name: "Dal, rice and vegetables", calories: 520, proteinG: 20, carbsG: 82, fatG: 11, why: "Balanced local meal with fiber and plant protein." },
-        { name: "Grilled fish with salad", calories: 380, proteinG: 34, carbsG: 18, fatG: 18, why: "Protein-rich option with vegetables and healthy fats." },
-        { name: "Egg and roti plate", calories: 410, proteinG: 21, carbsG: 48, fatG: 15, why: "Practical meal with protein and steady carbohydrates." },
+        { name: "Dal, rice and vegetables", mealType: "lunch", calories: 520, proteinG: 20, carbsG: 82, fatG: 11, why: "Balanced local meal with fiber and plant protein." },
+        { name: "Grilled fish with salad", mealType: "dinner", calories: 380, proteinG: 34, carbsG: 18, fatG: 18, why: "Protein-rich option with vegetables and healthy fats." },
+        { name: "Egg and roti plate", mealType: "breakfast", calories: 410, proteinG: 21, carbsG: 48, fatG: 15, why: "Practical meal with protein and steady carbohydrates." },
       ],
       healthNotes: ["Choose mostly whole foods and include vegetables or fruit with meals.", "Drink water regularly and adjust portions to your hunger and activity.", "These are general wellness suggestions, not medical advice."],
     };
@@ -302,7 +418,7 @@ const recommendations = async (req, res) => {
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(settings.models?.gemini || "gemini-2.0-flash")}:generateContent?key=${encodeURIComponent(key)}`,
       {
         systemInstruction: { parts: [{ text: "You are a safe nutrition coach. Never diagnose or prescribe. Use only supplied targets. Return JSON only. Recommend common South Asian foods when appropriate." }] },
-        contents: [{ role: "user", parts: [{ text: `Create 3 meal recommendations for this user. Context: ${JSON.stringify({ goal: profile.goal, remaining, totals })}. JSON shape: {"recommendations":[{"name":"string","calories":number,"proteinG":number,"carbsG":number,"fatG":number,"why":"string"}],"healthNotes":["string"]}. Keep values plausible and include a disclaimer in healthNotes.` }] }],
+        contents: [{ role: "user", parts: [{ text: `Create 3 meal recommendations for this user. Context: ${JSON.stringify({ goal: profile.goal, remaining, totals, meals: meals.map((meal) => ({ name: meal.name, mealType: meal.mealType, calories: meal.calories, proteinG: meal.proteinG, carbsG: meal.carbsG, fatG: meal.fatG, fiberG: meal.fiberG, date: meal.date })) })}. Use the logged meal types to avoid repeating an already completed meal when possible. JSON shape: {"recommendations":[{"name":"string","mealType":"breakfast|lunch|dinner|snack","calories":number,"proteinG":number,"carbsG":number,"fatG":number,"why":"string"}],"healthNotes":["string"]}. Keep values plausible and include a disclaimer in healthNotes.` }] }],
         generationConfig: { temperature: 0.3, responseMimeType: "application/json", maxOutputTokens: 700 },
       },
       { timeout: 20000, validateStatus: () => true },
@@ -320,8 +436,15 @@ const recommendations = async (req, res) => {
       proteinG: Math.max(0, Math.min(200, Math.round(Number(item.proteinG) || 0))),
       carbsG: Math.max(0, Math.min(300, Math.round(Number(item.carbsG) || 0))),
       fatG: Math.max(0, Math.min(150, Math.round(Number(item.fatG) || 0))),
+      mealType: ["breakfast", "lunch", "dinner", "snack"].includes(item.mealType) ? item.mealType : "snack",
       why: String(item.why || "A balanced option within your remaining targets.").slice(0, 300),
     }));
+    await notifyAiFitnessUpdate(
+      owner(req),
+      "Fitness recommendations ready",
+      "Your personalized meal recommendations are ready to view.",
+      "recommendations",
+    );
     return res.json({ success: true, source: "gemini", totals, remaining, recommendations: safeRecommendations, healthNotes: Array.isArray(result.healthNotes) ? result.healthNotes.slice(0, 5).map((note) => String(note).slice(0, 300)) : fallback.healthNotes });
   } catch (error) {
     if (isProviderTimeout(error)) return res.status(504).json({ success: false, message: "Recommendations timed out. Please try again shortly." });

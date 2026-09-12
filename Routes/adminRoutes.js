@@ -77,10 +77,23 @@ const {
   listAdminCursorModels,
   testAdminAiProvider,
 } = require('../controllers/aiSettingsController');
+const aiAutoPostController = require('../controllers/aiAutoPostController');
 
 Router.get('/ai-settings', isAdminAuth, getAdminAiSettings);
 Router.put('/ai-settings', isAdminAuth, updateAdminAiSettings);
 Router.get('/ai-settings/models', isAdminAuth, listAdminCursorModels);
 Router.post('/ai-settings/test', isAdminAuth, testAdminAiProvider);
+
+Router.get('/ai-auto-post/config', isAdminRole, aiAutoPostController.getConfig);
+Router.put('/ai-auto-post/config', isAdminRole, aiAutoPostController.updateConfig);
+Router.post('/ai-auto-post/generate-now', isAdminRole, aiAutoPostController.generateNow);
+Router.post('/ai-auto-post/generate', isAdminRole, aiAutoPostController.generateNow);
+Router.get('/ai-auto-post/history', isAdminRole, aiAutoPostController.listHistory);
+Router.post('/ai-auto-post/:id/publish', isAdminRole, aiAutoPostController.publish);
+Router.post('/ai-auto-post/:id/regenerate', isAdminRole, aiAutoPostController.regenerate);
+Router.put('/ai-auto-post/:id', isAdminRole, aiAutoPostController.updateGenerated);
+Router.delete('/ai-auto-post/:id', isAdminRole, aiAutoPostController.deleteGenerated);
+Router.post('/ai-auto-post/pause', isAdminRole, (req, res, next) => aiAutoPostController.setPaused({ ...req, body: { ...(req.body || {}), paused: true } }, res, next));
+Router.post('/ai-auto-post/resume', isAdminRole, (req, res, next) => aiAutoPostController.setPaused({ ...req, body: { ...(req.body || {}), paused: false } }, res, next));
 
 module.exports = Router;

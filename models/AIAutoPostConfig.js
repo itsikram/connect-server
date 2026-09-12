@@ -1,0 +1,40 @@
+const { Schema, model } = require("mongoose");
+
+const aiAutoPostConfigSchema = new Schema(
+  {
+    singletonKey: { type: String, unique: true, default: "default" },
+    enabled: { type: Boolean, default: false },
+    categories: { type: [String], default: ["technology", "ai", "programming"] },
+    customCategories: { type: [String], default: [] },
+    topics: { type: [String], default: [] },
+    keywords: { type: [String], default: [] },
+    excludedTopics: { type: [String], default: [] },
+    contentThemes: { type: [String], default: [] },
+    customInstructions: { type: String, default: "", maxlength: 2000 },
+    language: { type: String, default: "English" },
+    customLanguage: { type: String, default: "" },
+    tone: { type: String, default: "natural" },
+    contentTypes: { type: [String], default: ["educational", "discussion", "funny"] },
+    useUserPreferences: { type: Boolean, default: true },
+    useEngagementSignals: { type: Boolean, default: true },
+    useRecentTrends: { type: Boolean, default: true },
+    imageEnabled: { type: Boolean, default: true },
+    imageProvider: { type: String, default: "configured" },
+    imageStyle: { type: String, default: "clean editorial illustration" },
+    includeHashtags: { type: Boolean, default: true },
+    maxHashtags: { type: Number, min: 0, max: 8, default: 4 },
+    postsPerDay: { type: Number, min: 1, max: 10, default: 1 },
+    schedule: { type: [String], default: ["09:00"] },
+    timezone: { type: String, default: "UTC" },
+    autoPublish: { type: Boolean, default: false },
+    paused: { type: Boolean, default: false },
+    maxAttemptsPerRun: { type: Number, min: 1, max: 3, default: 2 },
+    provider: { type: String, default: "gemini" },
+    model: { type: String, default: "" },
+    lastRunAt: { type: Date, default: null },
+    updatedBy: { type: Schema.Types.ObjectId, ref: "Admin" },
+  },
+  { timestamps: true },
+);
+
+module.exports = model("AIAutoPostConfig", aiAutoPostConfigSchema);

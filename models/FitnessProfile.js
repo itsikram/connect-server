@@ -14,6 +14,12 @@ const fitnessProfileSchema = new Schema(
     bmr: Number,
     tdee: Number,
     macros: { proteinG: Number, carbsG: Number, fatG: Number },
+    targetNotifications: {
+      date: String,
+      calories: { type: Boolean, default: false },
+      protein: { type: Boolean, default: false },
+      weight: { type: Boolean, default: false },
+    },
     dietaryPreferences: { type: [String], default: [] },
     allergies: { type: [String], default: [] },
     onboardingCompleted: { type: Boolean, default: false },
