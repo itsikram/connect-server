@@ -3,7 +3,7 @@ const path = require("path");
 const AiSettings = require("../models/AiSettings");
 
 const CACHE_TTL_MS = 15000;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
 let cache = { at: 0, doc: null };
 
 const PROVIDERS = ["gemini", "openai", "cursor", "grok", "groq", "ollama"];
@@ -102,9 +102,12 @@ const normalizeDoc = (doc = {}) => {
     enabled: { ...base.enabled, ...(doc.enabled || {}) },
     models: configuredModels,
     keys: { ...base.keys, ...(doc.keys || {}) },
-    defaultProvider: PROVIDERS.includes(doc.defaultProvider)
-      ? doc.defaultProvider
-      : "gemini",
+    defaultProvider:
+      doc.defaultProvider === "ollama"
+        ? "gemini"
+        : PROVIDERS.includes(doc.defaultProvider)
+          ? doc.defaultProvider
+          : "gemini",
     cursorRepoUrl: String(doc.cursorRepoUrl || "").trim(),
   };
 };

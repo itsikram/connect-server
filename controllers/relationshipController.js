@@ -1,10 +1,27 @@
 const Profile = require("../models/Profile");
+const Relationship = require("../models/Relationship");
 const mongoose = require("mongoose");
 const { saveNotification } = require("./notificationController");
 const { sendPushToProfile } = require("../utils/pushNotifications");
 const sendEmailNotification = require("../utils/sendEmailNotification.js");
 const checkIsActive = require("../utils/checkIsActive.js");
 const { asId, idsMatch, listHasId } = require("../utils/ids");
+
+const normalizeRelationTypes = (value) => {
+  const values = Array.isArray(value) ? value : [value];
+  return [...new Set(values.map((item) => String(item || "").trim()).filter((item) => item && item.length <= 80))];
+};
+
+const saveRelationships = async (first, second, relationTypes, createdBy) => {
+  const [userA, userB] = [String(first), String(second)].sort();
+  await Promise.all(relationTypes.map((relationType) =>
+    Relationship.updateOne(
+      { userA, userB, relationType },
+      { $setOnInsert: { userA, userB, relationType, createdBy } },
+      { upsert: true },
+    ),
+  ));
+};
 
 const emitConnectCacheUpdate = (io, profileId, list, action, targetProfileId) => {
   if (!io || !profileId) return;
@@ -32,6 +49,10 @@ exports.postConnectReq = async (req, res, next) => {
       profile = profile._id || profile.id || profile.profileId;
     }
     profile = asId(profile);
+    const relationTypes = normalizeRelationTypes(req.body.relationTypes || req.body.relationType);
+    if (!relationTypes.length) {
+      return res.status(400).json({ message: "At least one relationship type is required" });
+    }
     if (!profile || !mongoose.Types.ObjectId.isValid(profile)) {
       return res.status(400).json({ message: "Invalid or missing profile id" });
     }
@@ -80,7 +101,10 @@ exports.postConnectReq = async (req, res, next) => {
         _id: connectProfile._id,
         connectReqs: { $ne: myProfile._id },
       },
-      { $addToSet: { connectReqs: myProfile._id } },
+      {
+        $addToSet: { connectReqs: myProfile._id },
+        $pull: { pendingConnectRelations: { requester: myProfile._id } },
+      },
       { new: true, select: "_id connectReqs" },
     );
 
@@ -101,6 +125,10 @@ exports.postConnectReq = async (req, res, next) => {
     if (!listHasId(updated.connectReqs, myProfile._id)) {
       return res.status(500).json({ message: "Failed to send connect request" });
     }
+    await Profile.updateOne(
+      { _id: connectProfile._id },
+      { $push: { pendingConnectRelations: { requester: myProfile._id, relationTypes } } },
+    );
 
     const receiverId = asId(connectProfile._id);
     const senderId = asId(myProfile._id);
@@ -350,13 +378,25 @@ exports.getProfileConnect = async (req, res, next) => {
         },
       });
 
+    const relationshipRows = await Relationship.find({
+      $or: [{ userA: profileId }, { userB: profileId }],
+    }).select("userA userB relationType");
+    const relationshipMap = new Map();
+    relationshipRows.forEach((row) => {
+      const otherId = String(row.userA) === String(profileId) ? String(row.userB) : String(row.userA);
+      const types = relationshipMap.get(otherId) || [];
+      if (!types.includes(row.relationType)) types.push(row.relationType);
+      relationshipMap.set(otherId, types);
+    });
     const connectsData = [];
     const seenConnectIds = new Set();
     for (const connect of connectProfile?.connects || []) {
       const connectId = String(connect?._id || "");
       if (connectId && !seenConnectIds.has(connectId)) {
         seenConnectIds.add(connectId);
-        connectsData.push(connect);
+        const connectData = connect.toObject ? connect.toObject() : connect;
+        connectData.relationshipTypes = relationshipMap.get(connectId) || [];
+        connectsData.push(connectData);
       }
     }
     res.json(connectsData);
@@ -386,6 +426,7 @@ exports.getProfileSuggetions = async (req, res, next) => {
 exports.postConnectAccept = async (req, res, next) => {
   try {
     let profile = req.body.profile;
+    const requestedRelationTypes = normalizeRelationTypes(req.body.relationTypes || req.body.relationType);
 
     let myProfile = req.profile;
     let io = req.app.get("io");
@@ -397,13 +438,22 @@ exports.postConnectAccept = async (req, res, next) => {
     if (!connectProfile) {
       return res.status(404).json({ message: "Profile not found" });
     }
+    const pendingRelation = (myProfile.pendingConnectRelations || []).find((item) =>
+      idsMatch(item.requester, profile),
+    );
+    const relationTypes = requestedRelationTypes.length
+      ? requestedRelationTypes
+      : normalizeRelationTypes(pendingRelation?.relationTypes);
+    if (!relationTypes.length) {
+      return res.status(400).json({ message: "At least one relationship type is required" });
+    }
 
     const acceptedRequest = await Profile.findOneAndUpdate(
       {
         _id: myProfile._id,
         connectReqs: profile,
       },
-      { $pull: { connectReqs: profile } },
+      { $pull: { connectReqs: profile, pendingConnectRelations: { requester: profile } } },
       { new: true, select: "_id" },
     );
     if (!acceptedRequest) {
@@ -417,6 +467,7 @@ exports.postConnectAccept = async (req, res, next) => {
           connects: myProfile._id,
         },
       },
+      { new: true, select: "_id connects" },
     );
     let updateMyProfile = await Profile.findByIdAndUpdate(
       { _id: myProfile._id },
@@ -425,7 +476,12 @@ exports.postConnectAccept = async (req, res, next) => {
           connects: profile,
         },
       },
+      { new: true, select: "_id connects" },
     );
+    if (!updateConnectProfile || !updateMyProfile) {
+      return res.status(500).json({ message: "Failed to update both connection lists" });
+    }
+    await saveRelationships(myProfile._id, profile, relationTypes, myProfile._id);
 
     // Get the connect's profile to access browser IDs
     const activeBrowserIds =
@@ -476,7 +532,48 @@ exports.postConnectAccept = async (req, res, next) => {
 
     return res.status(200).json({
       message: "Connect Request Accepted",
+      relationTypes,
+      myProfile: updateMyProfile,
+      connectProfile: updateConnectProfile,
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getRequestStatus = async (req, res, next) => {
+  try {
+    const targetId = req.query.profileId || req.query.profile;
+    if (!targetId || !mongoose.Types.ObjectId.isValid(String(targetId))) {
+      return res.status(400).json({ message: "Invalid or missing profile id" });
+    }
+    const [me, target] = await Promise.all([
+      Profile.findById(req.profile._id).select("connects connectReqs"),
+      Profile.findById(targetId).select("connects connectReqs"),
+    ]);
+    return res.json({
+      connected: listHasId(me?.connects, targetId),
+      outgoing: listHasId(target?.connectReqs, req.profile._id),
+      incoming: listHasId(me?.connectReqs, targetId),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getRelationships = async (req, res, next) => {
+  try {
+    const targetId = req.query.profileId || req.query.profile;
+    if (!targetId || !mongoose.Types.ObjectId.isValid(String(targetId))) {
+      return res.status(400).json({ message: "Invalid or missing profile id" });
+    }
+    const rows = await Relationship.find({
+      $or: [
+        { userA: req.profile._id, userB: targetId },
+        { userA: targetId, userB: req.profile._id },
+      ],
+    }).select("relationType createdAt");
+    return res.json({ relationTypes: rows.map((row) => row.relationType), relationships: rows });
   } catch (error) {
     next(error);
   }
@@ -565,6 +662,7 @@ exports.postDisconnect = async (req, res, next) => {
           connects: connectProfile,
         },
       },
+      { new: true },
     );
 
     let updateConnectProfile = await Profile.findByIdAndUpdate(
@@ -574,11 +672,23 @@ exports.postDisconnect = async (req, res, next) => {
           connects: myProfile._id,
         },
       },
+      { new: true },
     );
 
     if (updateMyProfile && updateConnectProfile) {
+      await Relationship.deleteMany({
+        $or: [
+          { userA: myProfile._id, userB: connectProfile },
+          { userA: connectProfile, userB: myProfile._id },
+        ],
+      });
+      const io = req.app.get("io");
+      emitRelationshipUpdate(io, myProfile._id, myProfile._id, connectProfile, "none");
+      emitRelationshipUpdate(io, connectProfile, myProfile._id, connectProfile, "none");
       return res.json({
         message: "Disconnected from your profile",
+        myProfile: updateMyProfile,
+        connectProfile: updateConnectProfile,
       });
     }
 

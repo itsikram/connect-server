@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const axios = require('axios');
 const { loadAiSettings, getProviderKey, isProviderEnabled } = require('../utils/aiSettingsStore');
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
 const MAX_RETRIES = Math.max(0, Number(process.env.AI_MAX_RETRIES || 3));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 

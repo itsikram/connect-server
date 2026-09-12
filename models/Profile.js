@@ -79,6 +79,12 @@ let profileSchema = new Schema(
         },
       ],
     },
+    pendingConnectRelations: [
+      {
+        requester: { type: Schema.Types.ObjectId, ref: "Profile", required: true },
+        relationTypes: [{ type: String, trim: true, maxlength: 80 }],
+      },
+    ],
     workPlaces: [
       {
         type: Object,
