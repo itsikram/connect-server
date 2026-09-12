@@ -4,6 +4,7 @@
  */
 
 const Profile = require("../../models/Profile");
+const Relationship = require("../../models/Relationship");
 const {
   translate,
   getTranslations,
@@ -195,12 +196,29 @@ async function getConnectsLocations(
       select: ["firstName", "surname"],
     });
 
+  const relationshipRows = await Relationship.find({
+    $or: [
+      { userA: userProfile._id, userB: { $in: userProfile.connects } },
+      { userB: userProfile._id, userA: { $in: userProfile.connects } },
+    ],
+  }).select("userA userB relationType");
+  const relationshipMap = new Map();
+  relationshipRows.forEach((row) => {
+    const otherId = String(row.userA) === String(userProfile._id)
+      ? String(row.userB)
+      : String(row.userA);
+    const types = relationshipMap.get(otherId) || [];
+    if (!types.includes(row.relationType)) types.push(row.relationType);
+    relationshipMap.set(otherId, types);
+  });
+
   // Process each connect's location
   const processedConnects = [];
   let connectsWithLocation = 0;
   let connectsNearby = 0;
 
   for (const connect of connectsData) {
+    const relationshipTypes = relationshipMap.get(String(connect._id)) || [];
     // Check if connect has location data
     if (
       !connect.lastLocation ||
@@ -223,6 +241,7 @@ async function getConnectsLocations(
           connect.fullName || connect.displayName,
         ),
         address: connect.presentAddress || connect.permanentAddress,
+        relationshipTypes,
       });
       continue;
     }
@@ -270,6 +289,7 @@ async function getConnectsLocations(
         address: connect.presentAddress || connect.permanentAddress,
         hasLocation: true,
         timestamp: connect.lastLocation.timestamp,
+        relationshipTypes,
       });
     }
   }

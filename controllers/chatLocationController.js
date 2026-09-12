@@ -4,6 +4,7 @@
  */
 
 const Profile = require("../models/Profile");
+const Relationship = require("../models/Relationship");
 const {
   processLocationChatQuery,
   getFullConnectDetails,
@@ -223,6 +224,22 @@ exports.getChatConnectsList = async (req, res, next) => {
       });
     }
 
+    const relationshipRows = await Relationship.find({
+      $or: [
+        { userA: profileId, userB: { $in: userProfile.connects } },
+        { userB: profileId, userA: { $in: userProfile.connects } },
+      ],
+    }).select("userA userB relationType");
+    const relationshipMap = new Map();
+    relationshipRows.forEach((row) => {
+      const otherId = String(row.userA) === String(profileId)
+        ? String(row.userB)
+        : String(row.userA);
+      const types = relationshipMap.get(otherId) || [];
+      if (!types.includes(row.relationType)) types.push(row.relationType);
+      relationshipMap.set(otherId, types);
+    });
+
     // Format connects data
     const connectsList = userProfile.connects
       .map((connect, index) => {
@@ -260,6 +277,7 @@ exports.getChatConnectsList = async (req, res, next) => {
           address: connect.presentAddress || connect.permanentAddress,
           distance: distanceInfo,
           emoji: getEmojiForDistance(distanceInfo),
+          relationshipTypes: relationshipMap.get(String(connect._id)) || [],
         };
       })
       .sort((a, b) => {
@@ -293,6 +311,9 @@ exports.getChatConnectsList = async (req, res, next) => {
           lang === "bn"
             ? `   📌 ${connect.address}\n`
             : `   📌 ${connect.address}\n`;
+      }
+      if (connect.relationshipTypes?.length) {
+        message += `   🤝 ${connect.relationshipTypes.join(", ")}\n`;
       }
       message += `   ${connect.isActive ? "🟢 সক্রিয়" : "🔴 অফলাইন"}\n\n`;
     });

@@ -33,32 +33,8 @@ const middilewares = [
         },
     }),
     noCacheForLocalhost, // Add no-cache headers for localhost before static files
-    express.static('public', { 
-        setHeaders: (res, path) => {
-            const hostname = require('url').parse(path).hostname || 'localhost';
-            const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
-            if (isLocalhost) {
-                res.set({
-                    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-                    'Pragma': 'no-cache',
-                    'Expires': '0'
-                });
-            }
-        }
-    }),
-    express.static(path.join(__dirname, "/routes/build"), {
-        setHeaders: (res, path) => {
-            const hostname = require('url').parse(path).hostname || 'localhost';
-            const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
-            if (isLocalhost) {
-                res.set({
-                    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-                    'Pragma': 'no-cache',
-                    'Expires': '0'
-                });
-            }
-        }
-    }),
+    express.static('public'),
+    express.static(path.join(__dirname, "/routes/build")),
     bodyParser.urlencoded({extended: true, limit: '25mb'}),
     bodyParser.json({limit: '25mb'}),
     cors({

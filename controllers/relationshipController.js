@@ -134,6 +134,7 @@ exports.postConnectReq = async (req, res, next) => {
     const senderId = asId(myProfile._id);
 
     emitConnectCacheUpdate(io, receiverId, "requests", "refresh");
+    emitConnectCacheUpdate(io, senderId, "sentRequests", "refresh");
     emitConnectCacheUpdate(io, senderId, "suggestions", "remove", receiverId);
     emitRelationshipUpdate(io, receiverId, senderId, receiverId, "incoming");
     emitRelationshipUpdate(io, senderId, senderId, receiverId, "incoming");
@@ -338,6 +339,19 @@ exports.getConnectReq = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.getSentConnectReq = async (req, res, next) => {
+  try {
+    const myProfileId = req.profile._id;
+    const sentRequests = await Profile.find({ connectReqs: myProfileId })
+      .populate({ path: "user", select: ["firstName", "surname"] })
+      .select("profilePic isVerified fullName username connectReqs")
+      .sort({ createdAt: -1 });
+    return res.status(200).json(sentRequests);
+  } catch (error) {
+    next(error);
+  }
+};
 exports.getProfileConnect = async (req, res, next) => {
   try {
     const profileId = req.query.profile || req.query.profileId;
@@ -514,6 +528,7 @@ exports.postConnectAccept = async (req, res, next) => {
       });
     }
     emitConnectCacheUpdate(io, myProfile._id, "requests", "remove", profile);
+    emitConnectCacheUpdate(io, profile, "sentRequests", "remove", myProfile._id);
     emitConnectCacheUpdate(io, myProfile._id, "suggestions", "remove", profile);
     emitConnectCacheUpdate(io, profile, "suggestions", "remove", myProfile._id);
     emitRelationshipUpdate(io, myProfile._id, myProfile._id, profile, "connects");
@@ -635,6 +650,7 @@ exports.postRemoveConnectReq = async (req, res, next) => {
       const io = req.app.get("io");
       emitConnectCacheUpdate(io, connectProfileId, "suggestions", "refresh");
       emitConnectCacheUpdate(io, myProfile._id, "suggestions", "refresh");
+      emitConnectCacheUpdate(io, myProfile._id, "sentRequests", "remove", connectProfileId);
       emitRelationshipUpdate(io, connectProfileId, myProfile._id, connectProfileId, "none");
       emitRelationshipUpdate(io, myProfile._id, myProfile._id, connectProfileId, "none");
     }
@@ -683,6 +699,8 @@ exports.postDisconnect = async (req, res, next) => {
         ],
       });
       const io = req.app.get("io");
+      emitConnectCacheUpdate(io, myProfile._id, "suggestions", "refresh");
+      emitConnectCacheUpdate(io, connectProfile, "suggestions", "refresh");
       emitRelationshipUpdate(io, myProfile._id, myProfile._id, connectProfile, "none");
       emitRelationshipUpdate(io, connectProfile, myProfile._id, connectProfile, "none");
       return res.json({

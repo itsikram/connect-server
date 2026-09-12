@@ -1,9 +1,10 @@
 const Router = require('express').Router()
 const isAuth = require('../middlewares/isAuth')
-const {postConnectReq,postBlockConnect,postUnblockConnect,postDisconnect,postRemoveConnectReq,getConnectReq,getProfileSuggetions,getProfileConnect,postConnectAccept,postConnectDelete,getBlockStatus,getRelationships,getRequestStatus} = require('../controllers/relationshipController')
+const {postConnectReq,postBlockConnect,postUnblockConnect,postDisconnect,postRemoveConnectReq,getConnectReq,getSentConnectReq,getProfileSuggetions,getProfileConnect,postConnectAccept,postConnectDelete,getBlockStatus,getRelationships,getRequestStatus} = require('../controllers/relationshipController')
 
 
 Router.get('/getRequest',isAuth,getConnectReq)
+Router.get('/getSentRequest',isAuth,getSentConnectReq)
 Router.get('/getSuggetions',isAuth,getProfileSuggetions)
 Router.get('/getConnects',isAuth,getProfileConnect)
 Router.get('/block-status',isAuth,getBlockStatus)

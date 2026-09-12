@@ -188,6 +188,12 @@ function getConnectsDetails(connects, lang = "eng") {
       index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : "📍";
 
     details += `${emoji} **${connect.name}**\n`;
+    if (connect.relationshipTypes?.length) {
+      details +=
+        lang === "bn"
+          ? `   🤝 সম্পর্ক: ${connect.relationshipTypes.join(", ")}\n`
+          : `   🤝 Relationship: ${connect.relationshipTypes.join(", ")}\n`;
+    }
 
     if (connect.distance !== null) {
       details +=

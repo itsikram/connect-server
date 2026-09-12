@@ -145,6 +145,7 @@ exports.getConnectsLocationRaw = async (req, res, next) => {
         longitude: connect.lastLocation?.longitude,
         distance: connect.distance,
         profilePic: connect.profilePic,
+        relationshipTypes: connect.relationshipTypes || [],
       })),
       userLocation: { latitude: lat, longitude: lon },
     });
