@@ -25,11 +25,45 @@ async function runTaskReminderTick(now = new Date()) {
   try {
     const candidates = await Task.find({
       completed: false,
-      reminderTime: { $type: "string" },
-      reminderTimezone: { $type: "string" },
-    }).select("_id user text reminderTime reminderTimezone lastReminderDate");
+      $or: [
+        { taskTime: { $type: "date" } },
+        { reminderTime: { $type: "string" }, reminderTimezone: { $type: "string" } },
+      ],
+    }).select("_id user text taskTime notificationSent reminderTime reminderTimezone lastReminderDate");
 
     for (const task of candidates) {
+      if (task.taskTime) {
+        const taskTime = new Date(task.taskTime).getTime();
+        const elapsedMs = now.getTime() - taskTime;
+        const checkpoints = [
+          { key: "before30", offsetMs: 30 * 60 * 1000, title: "Task in 30 minutes", body: `Coming up in 30 minutes: ${task.text}` },
+          { key: "before15", offsetMs: 15 * 60 * 1000, title: "Task in 15 minutes", body: `Coming up in 15 minutes: ${task.text}` },
+          { key: "atTime", offsetMs: 0, title: "Task time", body: `It's time: ${task.text}` },
+        ];
+        for (const checkpoint of checkpoints) {
+          const isDue = checkpoint.key === "before30"
+            ? elapsedMs >= -30 * 60 * 1000 && elapsedMs < -15 * 60 * 1000
+            : checkpoint.key === "before15"
+              ? elapsedMs >= -15 * 60 * 1000 && elapsedMs < 0
+              : elapsedMs >= 0;
+          if (!isDue || task.notificationSent?.[checkpoint.key]) continue;
+          const claimed = await Task.findOneAndUpdate(
+            { _id: task._id, completed: false, taskTime: task.taskTime, [`notificationSent.${checkpoint.key}`]: { $ne: true } },
+            { $set: { [`notificationSent.${checkpoint.key}`]: true } },
+            { new: true },
+          );
+          if (!claimed) continue;
+          const payload = {
+            title: checkpoint.title,
+            body: checkpoint.body,
+            data: { type: "task_reminder", taskId: String(task._id), checkpoint: checkpoint.key },
+            link: "/tasks",
+            tag: `task-reminder-${task._id}-${checkpoint.key}`,
+          };
+          await Promise.all([sendPushToProfile(task.user, payload), sendWebPushToProfile(task.user, payload)]);
+        }
+        continue;
+      }
       let local;
       try {
         local = getLocalParts(now, task.reminderTimezone);

@@ -9,6 +9,15 @@ let postSchema = new Schema({
         type: String,
         maxLength: 500,
     },
+    hashtags: {
+        type: [String],
+        default: [],
+        index: true,
+    },
+    mentions: [{
+        type: Schema.Types.ObjectId,
+        ref: Profile,
+    }],
     photos: {
         type: String,
         maxLength: 250,

@@ -9,6 +9,37 @@ const { rankPosts } = require('../utils/feedRanking')
 const { enqueueCategorization } = require('../services/contentCategorizationQueue')
 const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
 
+const mentionTokenPattern = /@\[[^\]]+\]\(([a-f\d]{24})\)/gi
+const hashtagPattern = /(^|[^\p{L}\p{N}_])#([\p{L}\p{N}_]{1,50})/gu
+
+const extractPostTags = async (caption) => {
+    const text = String(caption || '')
+    const hashtags = new Set()
+    let hashtagMatch
+    while ((hashtagMatch = hashtagPattern.exec(text))) {
+        hashtags.add(hashtagMatch[2].toLowerCase())
+    }
+    hashtagPattern.lastIndex = 0
+
+    const mentionIds = new Set()
+    let mentionMatch
+    while ((mentionMatch = mentionTokenPattern.exec(text))) {
+        if (mongoose.isValidObjectId(mentionMatch[1])) mentionIds.add(mentionMatch[1])
+    }
+    mentionTokenPattern.lastIndex = 0
+
+    const usernames = []
+    const usernamePattern = /(^|[^\p{L}\p{N}_])@([a-zA-Z0-9_.-]{3,50})/gu
+    let usernameMatch
+    while ((usernameMatch = usernamePattern.exec(text))) usernames.push(usernameMatch[2])
+    if (usernames.length) {
+        const profiles = await Profile.find({ username: { $in: usernames } }).select('_id').lean()
+        profiles.forEach((profile) => mentionIds.add(String(profile._id)))
+    }
+
+    return { hashtags: [...hashtags], mentions: [...mentionIds] }
+}
+
 const commentAuthorPopulate = {
     path: 'author',
     model: Profile,
@@ -41,6 +72,7 @@ exports.createPost = async (req, res, next) => {
         let feelings = req.body.feelings
         let location = req.body.location
         let audience = req.body.audience ? parseInt(req.body.audience) : 3
+        const tags = await extractPostTags(caption)
         // return console.log(req.body)
         if (typeof gallery === 'string') {
             try {
@@ -61,7 +93,8 @@ exports.createPost = async (req, res, next) => {
             author: profileId,
             feelings,
             location,
-            audience
+            audience,
+            ...tags
 
         })
 
@@ -137,6 +170,7 @@ exports.sharePost = async (req, res, next) => {
         let postId = req.body.postId
         let caption = req.body.caption
         let thePost = await Post.findOne({ _id: postId })
+        const tags = await extractPostTags(caption)
 
         let sharedPost = new Post({
             caption,
@@ -144,7 +178,8 @@ exports.sharePost = async (req, res, next) => {
             gallery: thePost.gallery || [],
             author: profileId,
             parentPost: thePost._id,
-            type: 'share'
+            type: 'share',
+            ...tags
         })
 
         let savedPost = await sharedPost.save();
@@ -289,6 +324,7 @@ exports.updatePost = async (req, res, next) => {
 
         if (caption !== undefined) {
             updateData.caption = caption
+            Object.assign(updateData, await extractPostTags(caption))
         }
         
         if (feelings !== undefined) {

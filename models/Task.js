@@ -18,6 +18,15 @@ const taskSchema = new Schema({
         type: Boolean,
         default: false
     },
+    taskTime: {
+        type: Date,
+        index: true
+    },
+    notificationSent: {
+        before30: { type: Boolean, default: false },
+        before15: { type: Boolean, default: false },
+        atTime: { type: Boolean, default: false }
+    },
     reminderTime: {
         type: String,
         match: /^([01]\d|2[0-3]):[0-5]\d$/

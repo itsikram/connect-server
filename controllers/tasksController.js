@@ -10,6 +10,7 @@ const isValidTimezone = (value) => {
         return false;
     }
 };
+const isValidTaskTime = (value) => value instanceof Date && !Number.isNaN(value.getTime());
 
 // Get all tasks for authenticated user
 exports.getAllTasks = async (req, res, next) => {
@@ -42,7 +43,7 @@ exports.getAllTasks = async (req, res, next) => {
 // Create task
 exports.createTask = async (req, res, next) => {
     try {
-        const { text, reminderTime, reminderTimezone } = req.body;
+        const { text, taskTime, reminderTime, reminderTimezone } = req.body;
         const profileId = req.profile?._id;
 
         if (!profileId) {
@@ -58,6 +59,10 @@ exports.createTask = async (req, res, next) => {
                 message: 'Task text is required'
             });
         }
+        const parsedTaskTime = taskTime ? new Date(taskTime) : null;
+        if (taskTime !== undefined && taskTime !== null && !isValidTaskTime(parsedTaskTime)) {
+            return res.status(400).json({ success: false, message: 'Task time must be a valid date and time' });
+        }
         if (reminderTime !== undefined && reminderTime !== null && !isValidReminderTime(reminderTime)) {
             return res.status(400).json({ success: false, message: 'Reminder time must use HH:mm format' });
         }
@@ -72,6 +77,7 @@ exports.createTask = async (req, res, next) => {
             user: profileId,
             text: text.trim(),
             completed: false,
+            taskTime: parsedTaskTime || undefined,
             reminderTime: reminderTime || undefined,
             reminderTimezone: reminderTimezone || undefined
         });
@@ -97,7 +103,7 @@ exports.createTask = async (req, res, next) => {
 exports.updateTask = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { text, completed, reminderTime, reminderTimezone } = req.body;
+        const { text, completed, taskTime, reminderTime, reminderTimezone } = req.body;
         const profileId = req.profile?._id;
 
         if (!profileId) {
@@ -105,6 +111,10 @@ exports.updateTask = async (req, res, next) => {
                 success: false,
                 message: 'Authentication required'
             });
+        }
+        const parsedTaskTime = taskTime ? new Date(taskTime) : null;
+        if (taskTime !== undefined && taskTime !== null && !isValidTaskTime(parsedTaskTime)) {
+            return res.status(400).json({ success: false, message: 'Task time must be a valid date and time' });
         }
         if (reminderTime !== undefined && reminderTime !== null && !isValidReminderTime(reminderTime)) {
             return res.status(400).json({ success: false, message: 'Reminder time must use HH:mm format' });
@@ -129,6 +139,10 @@ exports.updateTask = async (req, res, next) => {
         }
         if (completed !== undefined) {
             task.completed = completed;
+        }
+        if (taskTime !== undefined) {
+            task.taskTime = parsedTaskTime || undefined;
+            task.notificationSent = { before30: false, before15: false, atTime: false };
         }
         if (reminderTime !== undefined) {
             task.reminderTime = reminderTime || undefined;
