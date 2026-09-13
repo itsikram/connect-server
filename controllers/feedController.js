@@ -3,7 +3,7 @@ const { getRecommendations } = require('../services/recommendationService');
 
 const audienceFilter = (profile) => ({
     $and: [
-        { $or: [{ audience: 2, author: { $in: profile.connects || [] } }, { audience: 3, author: profile._id }] },
+        { $or: [{ audience: 1 }, { audience: 2, author: { $in: profile.connects || [] } }, { audience: 3, author: profile._id }] },
         { author: { $nin: profile.blockedUsers || [] } },
     ],
 });
@@ -26,6 +26,7 @@ exports.getRankedPosts = async (req, res, next) => {
             limit,
             filter: audienceFilter(req.profile),
             fallbackFilter: publicFallbackFilter(req.profile),
+            context: { profileId: req.profile._id, connects: req.profile.connects || [] },
         });
         return res.json({
             posts: result.items,
@@ -49,6 +50,7 @@ exports.getRankedWatches = async (req, res, next) => {
             limit,
             filter: audienceFilter(feedProfile),
             fallbackFilter: publicFallbackFilter(feedProfile),
+            context: { profileId: req.profile._id, connects: feedProfile.connects || [] },
         });
         return res.json({
             watches: result.items,

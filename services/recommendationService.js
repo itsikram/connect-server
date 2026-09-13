@@ -16,21 +16,24 @@ const categoryScore = (categories, profileCategories) => (categories || []).redu
 const engagementScore = (item) => Math.min((item?.reacts?.length || 0) * 0.8 + (item?.comments?.length || 0) * 1.2 + (item?.shares?.length || 0) * 1.5, 25);
 const recencyScore = (item) => 20 * (48 / (48 + Math.max(0, (Date.now() - new Date(item.createdAt || Date.now()).getTime()) / 3600000)));
 
-const rankItems = (items, profile) => {
+const rankItems = (items, profile, context = {}) => {
     const profileCategories = profile?.categories || {};
+    const connectIds = new Set((context.connects || []).map((id) => String(id)));
+    const currentUserId = String(context.profileId || '');
     const ranked = items.map((item) => ({
         item,
-        score: categoryScore(item.aiMetadata?.categories, profileCategories) + cosineSimilarity(item.aiMetadata?.embedding, profile?.embedding) * 30 + engagementScore(item) + recencyScore(item),
+        score: (() => {
+            const authorId = String(item.author?._id || item.author || '');
+            const hoursAgo = Math.max(0, (Date.now() - new Date(item.createdAt || Date.now()).getTime()) / 3600000);
+            const relevance = categoryScore(item.aiMetadata?.categories, profileCategories) * 12
+                + cosineSimilarity(item.aiMetadata?.embedding, profile?.embedding) * 40;
+            const relationship = authorId === currentUserId
+                ? (hoursAgo <= 24 ? 4 : -28)
+                : (connectIds.has(authorId) ? 24 : 8);
+            return relevance + relationship + engagementScore(item) + recencyScore(item);
+        })(),
     })).sort((a, b) => b.score - a.score);
-    const selected = [];
-    const categoryCounts = new Map();
-    for (const entry of ranked) {
-        const primary = entry.item.aiMetadata?.categories?.[0] || 'uncategorized';
-        if ((categoryCounts.get(primary) || 0) >= 3 && selected.length < ranked.length - 1) continue;
-        categoryCounts.set(primary, (categoryCounts.get(primary) || 0) + 1);
-        selected.push(entry.item);
-    }
-    return selected;
+    return ranked.map((entry) => entry.item);
 };
 
 const getRecommendations = async ({
@@ -40,11 +43,12 @@ const getRecommendations = async ({
     limit = 10,
     filter = {},
     fallbackFilter = {},
+    context = {},
 }) => {
     const Model = kind === 'watch' ? Watch : Post;
     const profile = await rebuildInterestProfile(profileId);
     const buildQuery = (queryFilter) => {
-        const query = Model.find(queryFilter).sort({ createdAt: -1 }).limit(Math.max(limit * 20, 200));
+        const query = Model.find(queryFilter).sort({ createdAt: -1 }).limit(Math.max(limit * 50, 500));
         query.populate({ path: 'author', select: 'fullName displayName username nickname profilePic isOfficial isVerified isActive user', populate: { path: 'user', select: 'firstName surname' } });
         query.populate({
             path: 'comments',
@@ -84,7 +88,7 @@ const getRecommendations = async ({
         fallbackUsed = candidates.length > 0;
     }
 
-    const ranked = rankItems(candidates, profile);
+    const ranked = rankItems(candidates, profile, { profileId, connects: context?.connects });
     const start = (page - 1) * limit;
     return {
         items: ranked.slice(start, start + limit),
