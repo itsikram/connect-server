@@ -73,7 +73,9 @@ const getPersonalizationContext = async (config) => {
 };
 
 const buildPostGenerationPrompt = ({ config, context, category, contentType }) => {
-  const language = config.language === "Custom" ? config.customLanguage : config.language;
+  const language = config.language.trim().toLowerCase() === "custom"
+    ? config.customLanguage || "the requested custom language"
+    : config.language;
   const prompt = `Create one polished, original Connect social post.
 Return ONLY JSON: {"topic":"","caption":"","hashtags":[],"contentType":"","imagePrompt":""}.
 Write the topic, caption, hashtags, and metadata in ${language}. Every word in the caption must be in ${language}; do not translate it to English. Tone=${config.tone} (follow this tone consistently); category=${category}; format=${contentType}.

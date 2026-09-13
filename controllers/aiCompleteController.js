@@ -730,7 +730,7 @@ const completeGemini = async ({
       // mid-string, which then appears to the caller as invalid JSON.
       maxOutputTokens: json ? Math.min(maxTokens, 700) : Math.min(maxTokens, 220),
       candidateCount: 1,
-      ...(!json ? {} : {}),
+      ...(json ? { responseMimeType: "application/json" } : {}),
       ...(/gemini-(2\.5|3)/i.test(String(model))
         ? { thinkingConfig: { thinkingBudget: 0 } }
         : {}),
