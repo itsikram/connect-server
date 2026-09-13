@@ -85,6 +85,7 @@ Router.get('/ai-settings/models', isAdminAuth, listAdminCursorModels);
 Router.post('/ai-settings/test', isAdminAuth, testAdminAiProvider);
 
 Router.get('/ai-auto-post/config', isAdminRole, aiAutoPostController.getConfig);
+Router.get('/ai-auto-post/author-profiles', isAdminRole, aiAutoPostController.searchAuthorProfiles);
 Router.put('/ai-auto-post/config', isAdminRole, aiAutoPostController.updateConfig);
 Router.post('/ai-auto-post/generate-now', isAdminRole, aiAutoPostController.generateNow);
 Router.post('/ai-auto-post/generate', isAdminRole, aiAutoPostController.generateNow);

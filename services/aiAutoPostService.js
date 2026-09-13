@@ -7,6 +7,7 @@ const AIGeneratedPost = require("../models/AIGeneratedPost");
 const { ensureOfficialAccount } = require("../utils/connectOfficialAccount");
 const { getProviderKey, loadAiSettings } = require("../utils/aiSettingsStore");
 const { generateImage } = require("./imageGenerationService");
+const { Types } = require("mongoose");
 
 const DEFAULT_CATEGORIES = ["technology", "ai", "programming", "business", "education", "lifestyle"];
 const DEFAULT_TYPES = ["educational", "discussion", "funny", "tip", "industry-insight"];
@@ -21,6 +22,10 @@ const normalizeConfig = (input = {}) => ({
   enabled: Boolean(input.enabled),
   categories: splitList(input.categories).length ? splitList(input.categories) : DEFAULT_CATEGORIES,
   customCategories: splitList(input.customCategories),
+  authorProfiles: (Array.isArray(input.authorProfiles) ? input.authorProfiles : [])
+    .map((id) => String(id))
+    .filter((id) => Types.ObjectId.isValid(id))
+    .slice(0, 50),
   topics: splitList(input.topics),
   keywords: splitList(input.keywords),
   excludedTopics: splitList(input.excludedTopics),
@@ -118,7 +123,13 @@ const isDuplicate = async (caption, topic) => {
 
 const generateAutoPost = async ({ config: rawConfig, publish = false, adminId = null } = {}) => {
   const config = normalizeConfig(rawConfig || await getConfig());
-  const official = await ensureOfficialAccount();
+  const configuredAuthors = config.authorProfiles.length
+    ? await Profile.find({ _id: { $in: config.authorProfiles } })
+      .select("_id")
+      .lean()
+    : [];
+  const authorPool = configuredAuthors.length ? configuredAuthors : [await ensureOfficialAccount()];
+  const author = authorPool[Math.floor(Math.random() * authorPool.length)];
   const context = await getPersonalizationContext(config);
   const category = [...config.categories, ...config.customCategories][Math.floor(Math.random() * Math.max(1, config.categories.length + config.customCategories.length))] || "technology";
   const contentType = config.contentTypes[Math.floor(Math.random() * config.contentTypes.length)] || "educational";
@@ -162,7 +173,7 @@ const generateAutoPost = async ({ config: rawConfig, publish = false, adminId = 
   }
   const hashtags = config.includeHashtags ? generated.hashtags.slice(0, config.maxHashtags) : [];
   const record = await AIGeneratedPost.create({
-    author: official._id,
+    author: author._id,
     category,
     topic: generated.topic,
     language: config.language === "Custom" ? config.customLanguage : config.language,
@@ -183,7 +194,7 @@ const generateAutoPost = async ({ config: rawConfig, publish = false, adminId = 
     const post = await Post.create({
       caption: `${generated.caption}${hashtags.length ? `\n\n${hashtags.map((tag) => `#${tag}`).join(" ")}` : ""}`,
       photos: image.imageUrl || undefined,
-      author: official._id,
+      author: author._id,
       audience: 1,
       source: "ai-auto-post",
       type: image.imageUrl ? "image" : "post",

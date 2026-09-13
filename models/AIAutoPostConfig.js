@@ -6,6 +6,7 @@ const aiAutoPostConfigSchema = new Schema(
     enabled: { type: Boolean, default: false },
     categories: { type: [String], default: ["technology", "ai", "programming"] },
     customCategories: { type: [String], default: [] },
+    authorProfiles: { type: [{ type: Schema.Types.ObjectId, ref: "Profile" }], default: [] },
     topics: { type: [String], default: [] },
     keywords: { type: [String], default: [] },
     excludedTopics: { type: [String], default: [] },

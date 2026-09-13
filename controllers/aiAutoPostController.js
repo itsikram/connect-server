@@ -1,12 +1,26 @@
 const AIAutoPostConfig = require("../models/AIAutoPostConfig");
 const AIGeneratedPost = require("../models/AIGeneratedPost");
 const Post = require("../models/Post");
+const Profile = require("../models/Profile");
 const { getConfig, normalizeConfig, generateAutoPost } = require("../services/aiAutoPostService");
 
 const publicError = (error) => String(error?.message || "AI auto-post request failed").slice(0, 300);
 
 exports.getConfig = async (req, res, next) => {
   try { return res.json(await getConfig()); } catch (error) { return next(error); }
+};
+
+exports.searchAuthorProfiles = async (req, res, next) => {
+  try {
+    const query = String(req.query.q || "").trim();
+    const ids = String(req.query.ids || "").split(",").filter((id) => /^[a-f\d]{24}$/i.test(id)).slice(0, 50);
+    if (query.length < 2 && !ids.length) return res.json([]);
+    const filter = ids.length
+      ? { _id: { $in: ids } }
+      : { $or: [{ username: new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") }, { fullName: new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") }, { displayName: new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") }, { nickname: new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") }] };
+    const profiles = await Profile.find(filter).select("_id username fullName displayName nickname profilePic isOfficial isVerified").sort({ fullName: 1 }).limit(20).lean();
+    return res.json(profiles);
+  } catch (error) { return next(error); }
 };
 
 exports.updateConfig = async (req, res, next) => {
