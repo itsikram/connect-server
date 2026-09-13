@@ -20,11 +20,26 @@ module.exports = function socketHandler(io) {
     const offlineTimeouts = new Map();
 
     io.on('connection', async (socket) => {
-        const profileId = socket.handshake.query?.profile;
+        const profileId =
+            socket.handshake.query?.profile ||
+            socket.handshake.auth?.profile ||
+            socket.handshake.auth?.profileId;
         const browserId = socket.handshake.query?.browserId;
+
+        console.info('[realtime_socket_connected]', {
+            socketId: socket.id,
+            profileId: profileId || null,
+            browserId: browserId || null,
+            transport: socket.conn?.transport?.name || null,
+        });
 
         if (profileId && profileId !== 'undefined') {
             socket.join(String(profileId));
+            console.info('[realtime_socket_room_joined]', {
+                socketId: socket.id,
+                profileId: String(profileId),
+                roomSize: io.sockets.adapter.rooms.get(String(profileId))?.size || 0,
+            });
             
             // Cancel any pending offline timeout if user reconnects
             if (offlineTimeouts.has(profileId)) {
@@ -62,6 +77,10 @@ module.exports = function socketHandler(io) {
                 socket.join(`browser_${browserId}`);
             }
 
+            // Register event handlers before any database work. Relays emit
+            // immediately after the Socket.IO connect acknowledgement.
+            messageSocket(io, socket, profileId);
+
             // Emit connect_online to all connects (regardless of browserId)
             try {
                 if (profileConnects && profileConnects.connects && profileConnects.connects.length > 0) {
@@ -77,7 +96,6 @@ module.exports = function socketHandler(io) {
 
             // Message & notification socket modules
             try {
-                messageSocket(io, socket, profileId);
                 notificationSocket(io, socket, profileId);
                 callingSocket(io, socket, profileId, onlineUsers);
                 ludoSocket(io, socket, profileId);
@@ -214,7 +232,10 @@ module.exports = function socketHandler(io) {
 
         // Disconnect
         socket.on('disconnect', async () => {
-            console.log(`🔌 Socket disconnected: ${socket.id}`);
+            console.log(`🔌 Socket disconnected: ${socket.id}`, {
+                profileId: profileId || null,
+                reason: 'client_or_transport_disconnect',
+            });
 
             if (profileId !== 'undefined') {
                 try {

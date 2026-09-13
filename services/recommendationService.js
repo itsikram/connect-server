@@ -33,27 +33,24 @@ const rankItems = (items, profile) => {
     return selected;
 };
 
-const getRecommendations = async ({ profileId, kind, page = 1, limit = 10, filter = {} }) => {
+const getRecommendations = async ({
+    profileId,
+    kind,
+    page = 1,
+    limit = 10,
+    filter = {},
+    fallbackFilter = {},
+}) => {
     const Model = kind === 'watch' ? Watch : Post;
     const profile = await rebuildInterestProfile(profileId);
-    const query = Model.find(filter).sort({ createdAt: -1 }).limit(Math.max(limit * 5, 40));
-    query.populate({ path: 'author', select: 'fullName displayName username nickname profilePic isOfficial isVerified isActive user', populate: { path: 'user', select: 'firstName surname' } });
-    query.populate({
-        path: 'comments',
-        model: Comment,
-        options: { sort: { createdAt: -1 }, limit: 50 },
-        populate: [{
-            path: 'author',
-            model: Profile,
-            select: 'profilePic user fullName displayName username nickname',
-            populate: {
-                path: 'user',
-                select: 'firstName surname displayName fullName',
-            },
-        }, {
-            path: 'replies',
-            model: CmntReply,
-            populate: {
+    const buildQuery = (queryFilter) => {
+        const query = Model.find(queryFilter).sort({ createdAt: -1 }).limit(Math.max(limit * 20, 200));
+        query.populate({ path: 'author', select: 'fullName displayName username nickname profilePic isOfficial isVerified isActive user', populate: { path: 'user', select: 'firstName surname' } });
+        query.populate({
+            path: 'comments',
+            model: Comment,
+            options: { sort: { createdAt: -1 }, limit: 50 },
+            populate: [{
                 path: 'author',
                 model: Profile,
                 select: 'profilePic user fullName displayName username nickname',
@@ -61,14 +58,40 @@ const getRecommendations = async ({ profileId, kind, page = 1, limit = 10, filte
                     path: 'user',
                     select: 'firstName surname displayName fullName',
                 },
-            },
-        }],
-    });
-    if (kind === 'post') query.populate({ path: 'parentPost', select: 'author caption photos type createdAt' });
-    const candidates = await query.lean();
+            }, {
+                path: 'replies',
+                model: CmntReply,
+                populate: {
+                    path: 'author',
+                    model: Profile,
+                    select: 'profilePic user fullName displayName username nickname',
+                    populate: {
+                        path: 'user',
+                        select: 'firstName surname displayName fullName',
+                    },
+                },
+            }],
+        });
+        if (kind === 'post') query.populate({ path: 'parentPost', select: 'author caption photos type createdAt' });
+        return query;
+    };
+
+    let candidates = await buildQuery(filter).lean();
+    let fallbackUsed = false;
+    // If the personalized/connection-aware feed is empty, use only public content.
+    if (candidates.length === 0 && Object.keys(fallbackFilter).length > 0) {
+        candidates = await buildQuery(fallbackFilter).lean();
+        fallbackUsed = candidates.length > 0;
+    }
+
     const ranked = rankItems(candidates, profile);
     const start = (page - 1) * limit;
-    return { items: ranked.slice(start, start + limit), hasMore: start + limit < ranked.length, coldStart: !profile || !profile.interactionCount };
+    return {
+        items: ranked.slice(start, start + limit),
+        hasMore: start + limit < ranked.length,
+        coldStart: !profile || !profile.interactionCount,
+        fallbackUsed,
+    };
 };
 
 const updateInterestProfile = async ({ profileId, item }) => {

@@ -655,36 +655,6 @@ module.exports = function messageSocket(io, socket, profileId) {
         return;
       }
 
-      const updateProfile = await Profile.findOneAndUpdate(
-        { _id: profileId },
-        {
-          lastEmotion: emotion,
-          lastEmotionText: emotionText || emotion,
-          lastEmotionEmoji: emoji,
-          lastEmotionConfidence: confidence,
-          lastEmotionQuality: quality,
-        },
-        { new: true },
-      );
-
-      if (!updateProfile) {
-        console.error(
-          "Failed to update profile for emotion_change:",
-          profileId,
-        );
-        if (typeof ack === "function") {
-          ack({ ok: false, error: "Profile not found" });
-        }
-        return;
-      }
-
-      console.info("[realtime_detection_persisted]", {
-        senderProfileId: String(updateProfile._id),
-        emotion: updateProfile.lastEmotion,
-        confidence: updateProfile.lastEmotionConfidence,
-        processingMs: Date.now() - receivedAt,
-      });
-
       // Resolve target recipients
       let targets = [];
       if (Array.isArray(connectIds) && connectIds.length > 0) {
@@ -712,13 +682,16 @@ module.exports = function messageSocket(io, socket, profileId) {
         return;
       }
 
+      // Build and broadcast from the socket payload first. Profile persistence
+      // is intentionally completed after delivery so MongoDB latency cannot
+      // delay the realtime receiver.
       const data = {
-        profileId: updateProfile._id,
-        emotion: updateProfile.lastEmotion,
-        emotionText: updateProfile.lastEmotionText,
-        emoji: updateProfile.lastEmotionEmoji,
-        confidence: updateProfile.lastEmotionConfidence,
-        quality: updateProfile.lastEmotionQuality,
+        profileId: String(profileId),
+        emotion,
+        emotionText: emotionText || emotion,
+        emoji,
+        confidence,
+        quality,
         // Include expression data from payload (forward to clients)
         expression: expression || "none",
         expressionData: expressionData || {},
@@ -728,14 +701,38 @@ module.exports = function messageSocket(io, socket, profileId) {
       };
 
       // Emit to each target room (connect profileId is used as room)
-      const recipients = targets.map((toId) => ({
-        profileId: toId,
-        connectedSockets: io.sockets.adapter.rooms.get(toId)?.size || 0,
-      }));
+      const recipients = targets.map((toId) => {
+        const room = io.sockets.adapter.rooms.get(toId);
+        const roomSockets = room ? [...room] : [];
+        const fallbackSockets = [...io.sockets.sockets.values()]
+          .filter((candidate) => {
+            const candidateProfile =
+              candidate.handshake.query?.profile ||
+              candidate.handshake.auth?.profile ||
+              candidate.handshake.auth?.profileId;
+            return String(candidateProfile || '') === String(toId);
+          })
+          .map((candidate) => candidate.id);
+        const socketIds = [...new Set([...roomSockets, ...fallbackSockets])];
+        return {
+          profileId: toId,
+          connectedSockets: socketIds.length,
+          socketIds,
+        };
+      });
 
       targets.forEach((toId) => {
         try {
-          io.to(toId).emit("emotion_change", data);
+          const recipient = recipients.find(
+            ({ profileId }) => String(profileId) === String(toId),
+          );
+          if (recipient?.socketIds?.length) {
+            recipient.socketIds.forEach((socketId) => {
+              io.to(socketId).emit("emotion_change", data);
+            });
+          } else {
+            io.to(toId).emit("emotion_change", data);
+          }
         } catch (e) {
           console.error(
             "Emit emotion_change failed for",
@@ -746,13 +743,35 @@ module.exports = function messageSocket(io, socket, profileId) {
       });
 
       console.info("[realtime_detection_broadcast]", {
-        senderProfileId: String(updateProfile._id),
-        emotion: updateProfile.lastEmotion,
+        senderProfileId: String(profileId),
+        emotion: data.emotion,
         expression: data.expression,
         confidence: data.confidence,
         recipients,
         processingMs: Date.now() - receivedAt,
       });
+
+      const updateProfile = await Profile.findOneAndUpdate(
+        { _id: profileId },
+        {
+          lastEmotion: emotion,
+          lastEmotionText: emotionText || emotion,
+          lastEmotionEmoji: emoji,
+          lastEmotionConfidence: confidence,
+          lastEmotionQuality: quality,
+        },
+        { new: true },
+      );
+      if (!updateProfile) {
+        console.error("Failed to persist emotion profile:", profileId);
+      } else {
+        console.info("[realtime_detection_persisted]", {
+          senderProfileId: String(updateProfile._id),
+          emotion: updateProfile.lastEmotion,
+          confidence: updateProfile.lastEmotionConfidence,
+          processingMs: Date.now() - receivedAt,
+        });
+      }
       if (typeof ack === "function") {
         ack({
           ok: true,
