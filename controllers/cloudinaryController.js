@@ -15,6 +15,7 @@ const defaultConfig = {
 cloudinary.config(defaultConfig);
 
 const RESOURCE_TYPES = ['image', 'video', 'raw'];
+const AUDIO_FORMATS = new Set(['aac', 'flac', 'm4a', 'mp3', 'oga', 'ogg', 'opus', 'wav', 'weba', 'webm']);
 const migrationJobs = new Map();
 
 async function listResources(resourceType) {
@@ -39,16 +40,49 @@ async function listResources(resourceType) {
 }
 
 const getConfiguredAccounts = () => {
-  const accounts = [
-    { id: 'image', config: getConfiguredAccountConfig('image') },
-    { id: 'video', config: getConfiguredAccountConfig('video') },
-  ];
-  const unique = new Map();
-  for (const account of accounts) {
-    const key = `${account.config.cloud_name}:${account.config.api_key}`;
-    if (!unique.has(key)) unique.set(key, account);
+  return [{ id: 'default', config: getConfiguredAccountConfig('default') }];
+};
+
+const isAudioResource = (resource) => AUDIO_FORMATS.has(String(resource.format || '').toLowerCase());
+
+const getLegacyDatabaseResources = async (legacy) => {
+  if (!mongoose.connection.db || !legacy?.cloud_name) return [];
+  const marker = `res.cloudinary.com/${legacy.cloud_name}/`;
+  const found = new Map();
+  const visit = (value) => {
+    if (typeof value === 'string' && value.includes(marker) && value.includes('/upload/')) {
+      try {
+        const url = new URL(value);
+        const parts = url.pathname.split('/').filter(Boolean);
+        const resourceType = parts[1];
+        const uploadIndex = parts.indexOf('upload');
+        if (!['image', 'video', 'raw'].includes(resourceType) || uploadIndex < 0) return;
+        const publicParts = parts.slice(uploadIndex + 1);
+        const versionIndex = publicParts.findIndex((part) => /^v\d+$/.test(part));
+        const publicIdParts = versionIndex >= 0 ? publicParts.slice(versionIndex + 1) : publicParts;
+        if (!publicIdParts.length) return;
+        const last = publicIdParts.length - 1;
+        if (resourceType !== 'raw') publicIdParts[last] = publicIdParts[last].replace(/\.[^./]+$/, '');
+        const originalLastPart = publicParts[publicParts.length - 1] || '';
+        const publicId = publicIdParts.join('/');
+        const format = originalLastPart.match(/\.([a-z0-9]+)$/i)?.[1] || '';
+        found.set(`${resourceType}:${publicId}`, {
+          secure_url: value,
+          public_id: publicId,
+          resource_type: resourceType,
+          type: 'upload',
+          format,
+        });
+      } catch {}
+      return;
+    }
+    if (value && typeof value === 'object') Object.values(value).forEach(visit);
+  };
+  for (const collection of await mongoose.connection.db.collections()) {
+    if (collection.collectionName.startsWith('system.')) continue;
+    for await (const document of collection.find({})) visit(document);
   }
-  return [...unique.values()];
+  return [...found.values()];
 };
 
 const listResourcesForAccount = async (account) => {
@@ -164,6 +198,28 @@ const replaceCloudinaryReferences = async (resources, source, destination) => {
   return database;
 };
 
+const deleteSourceResources = async (resources, source) => {
+  const deleted = [];
+  const failed = [];
+  await withCloudinaryConfig(source, async () => {
+    for (const resource of resources) {
+      if (!resource.public_id) continue;
+      try {
+        const result = await cloudinary.uploader.destroy(resource.public_id, {
+          resource_type: resource.resource_type || 'image',
+          type: resource.type || 'upload',
+          invalidate: true,
+        });
+        if (result?.result === 'ok' || result?.result === 'not found') deleted.push(resource.public_id);
+        else failed.push({ public_id: resource.public_id, reason: result?.result || 'Delete failed' });
+      } catch (error) {
+        failed.push({ public_id: resource.public_id, reason: error?.message || 'Delete failed' });
+      }
+    }
+  });
+  return { deleted, failed };
+};
+
 const migrateResources = async (resources, overwrite, onProgress) => {
   const result = { migrated: [], skipped: [], failed: [] };
 
@@ -201,11 +257,8 @@ const migrateResources = async (resources, overwrite, onProgress) => {
             type: resource.type || 'upload',
             invalidate: true,
           });
-          if (result?.result === 'ok' || result?.result === 'not found') {
-            deleted.push(resource.public_id);
-          } else {
-            failed.push({ public_id: resource.public_id, reason: result?.result || 'Delete failed' });
-          }
+          if (result?.result === 'ok' || result?.result === 'not found') deleted.push(resource.public_id);
+          else failed.push({ public_id: resource.public_id, reason: result?.result || 'Delete failed' });
         } catch (error) {
           failed.push({ public_id: resource.public_id, reason: error?.message || 'Delete failed' });
         }
@@ -394,6 +447,80 @@ exports.migrateResources = async (req, res, next) => {
         });
       } catch (error) {
         migrationJobs.set(jobId, { ...migrationJobs.get(jobId), status: 'failed', error: error.message || 'Migration failed' });
+      }
+    })();
+    return res.status(202).json({ jobId });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+exports.migrateConfiguredResources = async (req, res, next) => {
+  try {
+    const accounts = getConfiguredAccounts();
+    const accountMap = new Map(accounts.map((account) => [account.id, account]));
+    const jobId = require('crypto').randomUUID();
+    migrationJobs.set(jobId, { status: 'starting', total: 0, processed: 0, migrated: 0, skipped: 0, failed: 0 });
+
+    void (async () => {
+      try {
+        const accountResults = await Promise.all(accounts.map(async (account) => {
+          try {
+            return { account, resources: (await listResourcesForAccount(account)).resources };
+          } catch (error) {
+            if (account.id === 'legacy') {
+              return { account, resources: await getLegacyDatabaseResources(account.config) };
+            }
+            throw error;
+          }
+        }));
+        const plans = [];
+        accountResults.forEach(({ account, resources }) => {
+          resources.forEach((resource) => {
+            const destinationId = resource.resource_type === 'image'
+              ? 'image'
+              : resource.resource_type === 'video' && isAudioResource(resource)
+                ? 'image'
+                : resource.resource_type === 'video'
+                  ? 'video'
+                  : null;
+            if (destinationId && destinationId !== account.id) {
+              plans.push({ resource, source: account, destination: accountMap.get(destinationId) });
+            }
+          });
+        });
+
+        const job = migrationJobs.get(jobId);
+        job.status = 'running';
+        job.total = plans.length;
+        const database = { documentsUpdated: 0, referencesUpdated: 0, errors: [] };
+        const sourceCleanup = { deleted: [], failed: [] };
+
+        for (const plan of plans) {
+          const result = await withCloudinaryConfig(plan.destination.config, () =>
+            migrateResources([plan.resource], true),
+          );
+          const migrated = result.migrated[0];
+          if (!migrated) {
+            job.failed += result.failed.length;
+            job.skipped += result.skipped.length;
+            job.processed += 1;
+            continue;
+          }
+          const updated = await replaceCloudinaryReferences([migrated], plan.source.config, plan.destination.config);
+          database.documentsUpdated += updated.documentsUpdated;
+          database.referencesUpdated += updated.referencesUpdated;
+          database.errors.push(...updated.errors);
+          const cleanup = await deleteSourceResources([migrated.source], plan.source.config);
+          sourceCleanup.deleted.push(...cleanup.deleted);
+          sourceCleanup.failed.push(...cleanup.failed);
+          job.migrated += 1;
+          job.processed += 1;
+        }
+
+        migrationJobs.set(jobId, { ...job, status: 'completed', database, sourceCleanup });
+      } catch (error) {
+        migrationJobs.set(jobId, { ...migrationJobs.get(jobId), status: 'failed', error: error.message || 'Configured migration failed' });
       }
     })();
     return res.status(202).json({ jobId });

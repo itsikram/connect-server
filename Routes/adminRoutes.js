@@ -1,7 +1,7 @@
 const Router = require("express").Router();
 const {signUp,login,deleteAccount,getProfiles,getProfile,updateProfile,deleteProfile,getPosts,getPost,updatePost,deletePost,getWatches,getWatch,updateWatch,deleteWatch,getStories,deleteStory,setUserPassword,getStats,getReportedPosts,getReportedProfiles,updateReportStatus,forgotPassword,resetPassword} = require('../controllers/adminController')
 const {uploadImage} = require('../controllers/uploadControllers')
-const {listResources, deleteResources, migrateResources, getMigrationStatus} = require('../controllers/cloudinaryController')
+const {listResources, deleteResources, migrateResources, migrateConfiguredResources, getMigrationStatus} = require('../controllers/cloudinaryController')
 const isAdminAuth = require('../middlewares/isAdminAuth');
 const isAdminRole = require('../middlewares/isAdminRole');
 const {
@@ -54,6 +54,12 @@ Router.post('/cloudinary/migrate', isAdminAuth, (req, res, next) => {
     return res.status(403).json({ message: 'Only administrators can migrate Cloudinary assets' });
   }
   return migrateResources(req, res, next);
+})
+Router.post('/cloudinary/migrate-configured', isAdminAuth, (req, res, next) => {
+  if (!['superAdmin', 'admin'].includes(req.admin.role)) {
+    return res.status(403).json({ message: 'Only administrators can migrate Cloudinary assets' });
+  }
+  return migrateConfiguredResources(req, res, next);
 })
 Router.get('/cloudinary/migrate/:jobId', isAdminAuth, getMigrationStatus)
 // Reports

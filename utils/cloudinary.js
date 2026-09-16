@@ -1,23 +1,13 @@
 const { v2: cloudinary } = require('cloudinary')
 let operationQueue = Promise.resolve()
 
-const getAccountConfig = (account) => {
-    const prefix = account === 'video' ? 'CLOUDINARY_VIDEO' : 'CLOUDINARY_IMAGE'
-    const dedicated = [
-        process.env[`${prefix}_CLOUD_NAME`],
-        process.env[`${prefix}_API_KEY`],
-        process.env[`${prefix}_API_SECRET`],
-    ]
-    const useDedicated = dedicated.every((value) => String(value || '').trim())
-    return {
-        cloud_name: (useDedicated ? dedicated[0] : process.env.CLOUDINARY_CLOUD_NAME) || '',
-        api_key: (useDedicated ? dedicated[1] : process.env.CLOUDINARY_API_KEY) || '',
-        api_secret: (useDedicated ? dedicated[2] : process.env.CLOUDINARY_API_SECRET) || '',
-    }
-}
+const getAccountConfig = () => ({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME || '',
+    api_key: process.env.CLOUDINARY_API_KEY || '',
+    api_secret: process.env.CLOUDINARY_API_SECRET || '',
+})
 
-const getCloudinaryAccount = (resourceType) =>
-    resourceType === 'video' || resourceType === 'raw' ? 'video' : 'image'
+const getCloudinaryAccount = () => 'default'
 
 const withCloudinaryConfig = async (config, operation) => {
     const run = operationQueue.then(async () => {
@@ -36,10 +26,7 @@ const withCloudinaryConfig = async (config, operation) => {
 const withCloudinaryAccount = (account, operation) =>
     withCloudinaryConfig(getAccountConfig(account), operation)
 
-const getAccountForCloudName = (cloudName) => {
-    if (cloudName && cloudName === getAccountConfig('video').cloud_name) return 'video'
-    return 'image'
-}
+const getAccountForCloudName = () => 'default'
 
 module.exports = {
     getAccountConfig,

@@ -1,5 +1,11 @@
 const { getAccountForCloudName, withCloudinaryAccount } = require('./cloudinary')
 
+const isMissingCloudinaryAsset = (error) =>
+    error?.http_code === 404 ||
+    error?.statusCode === 404 ||
+    error?.response?.status === 404 ||
+    /\bstatus code 404\b/i.test(String(error?.message || error))
+
 const getCloudinaryAsset = (value) => {
     if (typeof value !== 'string' || !value.includes('/upload/')) return null
 
@@ -63,6 +69,9 @@ const deleteCloudinaryResources = async (values) => {
             )
             return { ...asset, result }
         } catch (error) {
+            if (isMissingCloudinaryAsset(error)) {
+                return { ...asset, result: { result: 'not found' } }
+            }
             console.error('[cloudinary-cleanup] failed to delete asset', {
                 publicId: asset.publicId,
                 resourceType: asset.resourceType,

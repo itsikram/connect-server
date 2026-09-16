@@ -124,9 +124,9 @@ exports.uploadFile = async (req, res, next) => {
             /\.(m4a|mp3|wav|aac|flac|webm|ogg|oga|opus)$/i.test(originalName);
         const needsAudioTranscode = isAudio;
 
-        // Cloudinary uses resource_type=video for audio files. Web voice notes
-        // are transcoded to mp3 so native clients can play them consistently.
-        const account = isAudio || mime.startsWith('video/') ? 'video' : 'image';
+        // Cloudinary uses resource_type=video for audio files, but audio is
+        // kept in the image account per the media-account policy.
+        const account = 'default';
         await withCloudinaryAccount(account, (cloudinary) => new Promise((resolve, reject) => {
             const uploadStream = cloudinary.uploader.upload_stream(
                 {
