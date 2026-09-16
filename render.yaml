@@ -14,6 +14,12 @@ services:
         value: "2"
       - key: LB_BACKEND_START_PORT
         value: "4001"
+      - key: EMAIL_PROVIDER
+        value: resend
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        sync: false
       - key: SMTP_FORCE_IPV4
         value: "true"
       - key: SMTP_HOST

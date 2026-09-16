@@ -1,13 +1,7 @@
 const Setting = require('../models/Setting')
-const { v2: cloudinary } = require('cloudinary')
 const streamifier = require('streamifier')
 const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
-
-cloudinary.config({ 
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME || '', 
-    api_key: process.env.CLOUDINARY_API_KEY || '', 
-    api_secret: process.env.CLOUDINARY_API_SECRET 
-})
+const { withCloudinaryAccount } = require('../utils/cloudinary')
 
 const defaultSettings = () => ({
     isShareEmotion: false,
@@ -101,19 +95,21 @@ exports.updateSetting = async (req, res, next) => {
         // Handle chatBackground file upload if present
         if (req.file) {
             try {
-                const uploadResult = await new Promise((resolve, reject) => {
-                    const uploadStream = cloudinary.uploader.upload_stream(
-                        {
-                            resource_type: 'auto',
-                            folder: 'chat-backgrounds',
-                        },
-                        (error, result) => {
-                            if (error) reject(error)
-                            else resolve(result)
-                        }
-                    )
-                    streamifier.createReadStream(req.file.buffer).pipe(uploadStream)
-                })
+                const uploadResult = await withCloudinaryAccount('image', (cloudinary) =>
+                    new Promise((resolve, reject) => {
+                        const uploadStream = cloudinary.uploader.upload_stream(
+                            {
+                                resource_type: 'auto',
+                                folder: 'chat-backgrounds',
+                            },
+                            (error, result) => {
+                                if (error) reject(error)
+                                else resolve(result)
+                            }
+                        )
+                        streamifier.createReadStream(req.file.buffer).pipe(uploadStream)
+                    }),
+                )
                 settingObject.chatBackground = uploadResult.secure_url
             } catch (uploadError) {
                 console.error('Cloudinary upload error:', uploadError)

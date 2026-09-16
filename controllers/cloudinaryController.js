@@ -1,5 +1,10 @@
 const { v2: cloudinary } = require('cloudinary');
 const mongoose = require('mongoose');
+const {
+  getAccountConfig: getConfiguredAccountConfig,
+  withCloudinaryConfig,
+} = require('../utils/cloudinary');
+const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup');
 
 const defaultConfig = {
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME || '',
@@ -13,6 +18,9 @@ const RESOURCE_TYPES = ['image', 'video', 'raw'];
 const migrationJobs = new Map();
 
 async function listResources(resourceType) {
+  if (!cloudinary?.api || typeof cloudinary.api.resources !== 'function') {
+    throw new Error('Cloudinary API client is unavailable');
+  }
   const resources = [];
   let nextCursor;
 
@@ -22,13 +30,59 @@ async function listResources(resourceType) {
       type: 'upload',
       max_results: 500,
       ...(nextCursor ? { next_cursor: nextCursor } : {}),
-    });
-    resources.push(...(result.resources || []));
+    }) || {};
+    resources.push(...(Array.isArray(result.resources) ? result.resources : []));
     nextCursor = result.next_cursor;
   } while (nextCursor);
 
   return resources;
 }
+
+const getConfiguredAccounts = () => {
+  const accounts = [
+    { id: 'image', config: getConfiguredAccountConfig('image') },
+    { id: 'video', config: getConfiguredAccountConfig('video') },
+  ];
+  const unique = new Map();
+  for (const account of accounts) {
+    const key = `${account.config.cloud_name}:${account.config.api_key}`;
+    if (!unique.has(key)) unique.set(key, account);
+  }
+  return [...unique.values()];
+};
+
+const listResourcesForAccount = async (account) => {
+  const result = await withCloudinaryConfig(account.config, async () => {
+    const resourceResults = await Promise.all(RESOURCE_TYPES.map((resourceType) => listResources(resourceType)));
+    let usage = null;
+    try {
+      usage = await cloudinary.api.usage();
+    } catch (error) {
+      usage = { error: getCloudinaryErrorMessage(error) };
+    }
+    return { grouped: resourceResults, usage };
+  });
+  return {
+    account: account.id,
+    usage: result.usage || {},
+    resources: result.grouped.flat().map((resource) => ({
+      ...resource,
+      cloudinary_account: account.id,
+      cloudinary_cloud_name: account.config.cloud_name,
+      cloudinary_source: {
+        account: account.id,
+        cloud_name: account.config.cloud_name,
+      },
+    })),
+  };
+};
+
+const getCloudinaryErrorMessage = (error) => (
+  error?.error?.message ||
+  error?.message ||
+  (typeof error === 'string' ? error : '') ||
+  'Cloudinary request failed'
+);
 
 const isValidCloudName = (value) => /^[a-zA-Z0-9_-]{1,64}$/.test(value);
 
@@ -46,16 +100,6 @@ const getAccountConfig = (account, label) => {
   }
 
   return { cloud_name, api_key, api_secret };
-};
-
-const withCloudinaryConfig = async (config, operation) => {
-  const previous = cloudinary.config();
-  cloudinary.config(config);
-  try {
-    return await operation();
-  } finally {
-    cloudinary.config(previous);
-  }
 };
 
 const replaceCloudinaryReferences = async (resources, source, destination) => {
@@ -131,6 +175,8 @@ const migrateResources = async (resources, overwrite, onProgress) => {
         url: resource.url,
         public_id: resource.public_id,
         asset_id: resource.asset_id,
+        resource_type: resource.resource_type,
+        type: resource.type,
       },
       destination: {
         secure_url: uploaded.secure_url,
@@ -141,6 +187,31 @@ const migrateResources = async (resources, overwrite, onProgress) => {
         ...(reused ? { reused: true } : {}),
       },
     });
+  };
+
+  const deleteMigratedSourceResources = async (resources, source) => {
+    const deleted = [];
+    const failed = [];
+    await withCloudinaryConfig(source, async () => {
+      for (const resource of resources) {
+        if (!resource.public_id) continue;
+        try {
+          const result = await cloudinary.uploader.destroy(resource.public_id, {
+            resource_type: resource.resource_type || 'image',
+            type: resource.type || 'upload',
+            invalidate: true,
+          });
+          if (result?.result === 'ok' || result?.result === 'not found') {
+            deleted.push(resource.public_id);
+          } else {
+            failed.push({ public_id: resource.public_id, reason: result?.result || 'Delete failed' });
+          }
+        } catch (error) {
+          failed.push({ public_id: resource.public_id, reason: error?.message || 'Delete failed' });
+        }
+      }
+    });
+    return { deleted, failed };
   };
 
   for (const resource of resources) {
@@ -195,18 +266,75 @@ const migrateResources = async (resources, overwrite, onProgress) => {
 
 exports.listResources = async (req, res, next) => {
   try {
-    const grouped = await Promise.all(RESOURCE_TYPES.map(listResources));
-    const resources = grouped
-      .flat()
+    const accounts = getConfiguredAccounts();
+    const accountResults = await Promise.allSettled(accounts.map(listResourcesForAccount));
+    const resources = accountResults
+      .filter((result) => result.status === 'fulfilled')
+      .flatMap((result) => result.value.resources)
       .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    const usageByAccount = accountResults
+      .filter((result) => result.status === 'fulfilled')
+      .reduce((result, current) => {
+        result[current.value.account] = current.value.usage;
+        return result;
+      }, {});
+    const warnings = accountResults
+      .map((result, index) => result.status === 'rejected'
+        ? {
+          account: accounts[index].id,
+          cloud_name: accounts[index].config.cloud_name || null,
+          message: getCloudinaryErrorMessage(result.reason),
+        }
+        : null)
+      .filter(Boolean);
+
+    if (!resources.length && warnings.length) {
+      return res.status(502).json({
+        message: 'Unable to load Cloudinary resources from the configured accounts.',
+        warnings,
+      });
+    }
 
     return res.json({
       resources,
       total: resources.length,
-      totals: RESOURCE_TYPES.reduce((result, type, index) => {
-        result[type] = grouped[index].length;
+      totals: RESOURCE_TYPES.reduce((result, type) => {
+        result[type] = resources.filter((resource) => resource.resource_type === type).length;
         return result;
       }, {}),
+      accounts: accounts.map((account) => ({
+        id: account.id,
+        cloud_name: account.config.cloud_name,
+        total: resources.filter((resource) => resource.cloudinary_account === account.id).length,
+        usage: usageByAccount[account.id] || null,
+      })),
+      warnings,
+      usageByAccount,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+exports.deleteResources = async (req, res, next) => {
+  try {
+    const assets = Array.isArray(req.body?.assets) ? req.body.assets : [];
+    if (!assets.length) return res.status(400).json({ message: 'At least one asset is required' });
+    const results = await deleteCloudinaryResources(assets.map((asset) => asset.secure_url).filter(Boolean));
+    const failed = results.filter((item) => item.error || !['ok', 'not found'].includes(item.result?.result));
+    return res.json({
+      deleted: results.length - failed.length,
+      deletedAssets: results.filter((item) => !failed.includes(item)).map((item) => ({
+        cloud_name: item.cloudName,
+        public_id: item.publicId,
+        resource_type: item.resourceType,
+      })),
+      failed: failed.map((item) => ({
+        cloud_name: item.cloudName,
+        public_id: item.publicId,
+        resource_type: item.resourceType,
+        message: item.error?.message || item.result?.result || 'Delete failed',
+      })),
     });
   } catch (error) {
     return next(error);
@@ -218,13 +346,20 @@ exports.migrateResources = async (req, res, next) => {
     const source = getAccountConfig(req.body?.source, 'Source');
     const destination = getAccountConfig(req.body?.destination, 'Destination');
     const overwrite = req.body?.overwrite !== false;
+    const resourceTypes = Array.isArray(req.body?.resourceTypes)
+      ? req.body.resourceTypes.filter((type) => RESOURCE_TYPES.includes(type))
+      : RESOURCE_TYPES;
+    const deleteSource = req.body?.deleteSource === true;
+    if (!resourceTypes.length) {
+      return res.status(400).json({ message: 'Select at least one asset type to migrate' });
+    }
 
     const jobId = require('crypto').randomUUID();
     migrationJobs.set(jobId, { status: 'starting', total: 0, processed: 0, migrated: 0, skipped: 0, failed: 0 });
     void (async () => {
       try {
         const resources = await withCloudinaryConfig(source, async () => {
-          const grouped = await Promise.all(RESOURCE_TYPES.map(listResources));
+          const grouped = await Promise.all(resourceTypes.map(listResources));
           return grouped.flat();
         });
         const job = migrationJobs.get(jobId);
@@ -240,7 +375,23 @@ exports.migrateResources = async (req, res, next) => {
           }),
         );
         const database = await replaceCloudinaryReferences(result.migrated, source, destination);
-        migrationJobs.set(jobId, { ...migrationJobs.get(jobId), status: 'completed', processed: resources.length, migrated: result.migrated.length, skipped: result.skipped.length, failed: result.failed.length, database, details: result });
+        const sourceCleanup = deleteSource
+          ? await deleteMigratedSourceResources(result.migrated.map((item) => ({
+            ...item.source,
+            resource_type: item.source.resource_type || item.destination.resource_type,
+          })), source)
+          : null;
+        migrationJobs.set(jobId, {
+          ...migrationJobs.get(jobId),
+          status: 'completed',
+          processed: resources.length,
+          migrated: result.migrated.length,
+          skipped: result.skipped.length,
+          failed: result.failed.length + (sourceCleanup?.failed.length || 0),
+          database,
+          sourceCleanup,
+          details: result,
+        });
       } catch (error) {
         migrationJobs.set(jobId, { ...migrationJobs.get(jobId), status: 'failed', error: error.message || 'Migration failed' });
       }

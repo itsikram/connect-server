@@ -4,7 +4,7 @@ const axios = require("axios");
 const mongoose = require("mongoose");
 const { v4: uuidv4 } = require("uuid");
 const ytdl = require("@distube/ytdl-core");
-const { v2: cloudinary } = require("cloudinary");
+const { withCloudinaryAccount } = require("../utils/cloudinary");
 const Watch = require("../models/Watch");
 const YtDownloadProgress = require("../models/YtDownloadProgress");
 const generateAndUploadThumbnail = require("../utils/generateThumbnail");
@@ -49,12 +49,6 @@ const releaseDownloadSlot = () => {
     next();
   }
 };
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "",
-  api_key: process.env.CLOUDINARY_API_KEY || "",
-  api_secret: process.env.CLOUDINARY_API_SECRET || "",
-});
 
 if (!fs.existsSync(DOWNLOAD_DIR)) {
   fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
@@ -224,16 +218,18 @@ const downloadToFileYtdlCore = (info, format, filePath, agent, onProgress) =>
   });
 
 const uploadVideoToCloudinary = (filePath, folder = "yt-downloads") =>
-  new Promise((resolve, reject) => {
-    cloudinary.uploader.upload(
-      filePath,
-      { resource_type: "video", folder },
-      (error, result) => {
-        if (error) return reject(error);
-        resolve(result);
-      },
-    );
-  });
+  withCloudinaryAccount("video", (cloudinary) =>
+    new Promise((resolve, reject) => {
+      cloudinary.uploader.upload(
+        filePath,
+        { resource_type: "video", folder },
+        (error, result) => {
+          if (error) return reject(error);
+          resolve(result);
+        },
+      );
+    }),
+  );
 
 const createWatchFromVideo = async (videoUrl, caption, profileId, youtubeId) => {
   const watchCaption =

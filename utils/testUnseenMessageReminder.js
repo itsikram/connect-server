@@ -151,12 +151,19 @@ async function testEmail() {
   section('Email Sending Test');
 
   try {
-    // Verify email provider is configured
+    // Verify the selected email provider is configured
+    const provider = (process.env.EMAIL_PROVIDER || (process.env.RESEND_API_KEY ? 'resend' : 'smtp')).toLowerCase();
+    const hasResend = !!(process.env.RESEND_API_KEY && process.env.RESEND_FROM);
     const hasSmtp = !!(process.env.SMTP_USER && process.env.SMTP_PASS);
 
-    if (!hasSmtp) {
-      log('SMTP is not configured!', 'red');
-      log('\nSet SMTP_USER and SMTP_PASS (Gmail app password).', 'yellow');
+    if ((provider === 'resend' && !hasResend) || (provider !== 'resend' && !hasSmtp)) {
+      log(`${provider.toUpperCase()} is not configured!`, 'red');
+      log(
+        provider === 'resend'
+          ? '\nSet RESEND_API_KEY and RESEND_FROM.'
+          : '\nSet SMTP_USER and SMTP_PASS (Gmail app password).',
+        'yellow'
+      );
       return;
     }
 
@@ -185,7 +192,7 @@ async function testEmail() {
               <div style="font-size: 13px; color: #6b7280; margin-bottom: 6px;">Test Details</div>
               <div style="font-size: 15px; color: #111827;">
                 Sent: ${new Date().toISOString()}<br>
-                Email Provider: smtp
+                Email Provider: ${provider}
               </div>
             </div>
             <p style="margin: 20px 0 0; font-size: 13px; color: #6b7280;">

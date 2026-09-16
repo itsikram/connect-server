@@ -75,7 +75,7 @@ exports.resetPortfolio = async (req, res, next) => {
 };
 
 /**
- * Public contact form — sends mail via server SMTP to the portfolio owner.
+ * Public contact form — sends mail via the configured email provider to the portfolio owner.
  * Body: { name, email, message, subject? }
  */
 exports.sendContactMessage = async (req, res, next) => {
@@ -167,7 +167,9 @@ exports.sendContactMessage = async (req, res, next) => {
     return res.status(500).json({
       success: false,
       message:
-        error.message?.includes('SMTP_USER')
+        error.message?.includes('SMTP_USER') ||
+        error.message?.includes('RESEND_API_KEY') ||
+        error.message?.includes('RESEND_FROM')
           ? 'Email service is not configured on the server'
           : 'Failed to send message. Please try again later.',
     });

@@ -12,6 +12,12 @@ let transporter = null;
 let transporterPromise = null;
 let transporterKey = '';
 
+function getEmailProvider() {
+  const configuredProvider = (process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
+  if (configuredProvider) return configuredProvider;
+  return process.env.RESEND_API_KEY ? 'resend' : 'smtp';
+}
+
 function getSmtpCredentials() {
   const user = (process.env.SMTP_USER || '').trim();
   // Gmail app passwords are often copied with spaces — strip them
@@ -21,8 +27,24 @@ function getSmtpCredentials() {
 
 function getFromAddress(senderName) {
   const fromName = senderName || process.env.SMTP_FROM_NAME || 'Connect';
-  const fromAddress = (process.env.SMTP_FROM || process.env.SMTP_USER || '').trim();
+  const fromAddress = (
+    process.env.SMTP_FROM ||
+    process.env.RESEND_FROM ||
+    process.env.SMTP_USER ||
+    ''
+  ).trim();
   return { fromName, fromAddress };
+}
+
+function getResendFrom(senderName) {
+  const configuredFrom = (process.env.RESEND_FROM || '').trim();
+  if (!configuredFrom) {
+    throw new Error('Resend is not configured. Set RESEND_FROM.');
+  }
+
+  // RESEND_FROM may already contain a display name, e.g. "Connect <mail@example.com>".
+  if (configuredFrom.includes('<')) return configuredFrom;
+  return `"${senderName || 'Connect'}" <${configuredFrom}>`;
 }
 
 async function resolveSmtpHost(host) {
@@ -144,8 +166,55 @@ function resetTransporter() {
   transporterKey = '';
 }
 
+async function sendViaResend({ email, subject, message, senderName, options }) {
+  const apiKey = (process.env.RESEND_API_KEY || '').trim();
+  if (!apiKey) {
+    throw new Error('Resend is not configured. Set RESEND_API_KEY.');
+  }
+
+  const payload = {
+    from: getResendFrom(senderName),
+    to: [email],
+    subject: subject || `New message from ${senderName || 'Connect'} On Connect`,
+    text: message,
+    ...(options.html ? { html: options.html } : {}),
+    ...(options.replyTo ? { reply_to: options.replyTo } : {}),
+  };
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const responseText = await response.text();
+  let responseBody = {};
+  if (responseText) {
+    try {
+      responseBody = JSON.parse(responseText);
+    } catch {
+      responseBody = { message: responseText };
+    }
+  }
+
+  if (!response.ok) {
+    const detail = responseBody.message || responseBody.error || `HTTP ${response.status}`;
+    throw new Error(`Resend API request failed (${response.status}): ${detail}`);
+  }
+
+  if (!responseBody.id) {
+    throw new Error('Resend API returned no email id.');
+  }
+
+  console.log(`Mail sent successfully via Resend: ${responseBody.id}`);
+  return { success: true, messageId: responseBody.id, provider: 'resend' };
+}
+
 /**
- * Send an email via SMTP (Nodemailer).
+ * Send an email via the configured provider (Resend API or SMTP).
  * @param {string} email - Recipient address
  * @param {string|null} subject - Email subject (optional)
  * @param {string} message - Plain-text body
@@ -161,6 +230,10 @@ let sendEmailNotification = async (email, subject = null, message, senderName, o
   }
 
   try {
+    if (getEmailProvider() === 'resend') {
+      return await sendViaResend({ email, subject, message, senderName, options });
+    }
+
     const mailTransport = await getTransporter();
     const { fromName, fromAddress } = getFromAddress(senderName);
 

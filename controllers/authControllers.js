@@ -194,7 +194,7 @@ exports.forgotPassword = async (req, res, next) => {
             user.resetPasswordToken = undefined;
             user.resetPasswordExpire = undefined;
             await user.save();
-            console.error('Forgot password SMTP send failed:', mailError.message || mailError);
+            console.error('Forgot password email send failed:', mailError.message || mailError);
             return res.status(500).json({
                 message: 'Unable to send reset email right now. Please try again later.',
             });

@@ -1,11 +1,5 @@
 const axios = require("axios");
-const { v2: cloudinary } = require("cloudinary");
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "",
-  api_key: process.env.CLOUDINARY_API_KEY || "",
-  api_secret: process.env.CLOUDINARY_API_SECRET || "",
-});
+const { withCloudinaryAccount } = require("../utils/cloudinary");
 
 /**
  * Provider-neutral image generation boundary. A provider can be configured
@@ -40,10 +34,12 @@ const generateImage = async ({ prompt, provider = "configured" }) => {
     process.env.CLOUDINARY_API_SECRET;
   if (!hasCloudinary) return { imageUrl: String(sourceUrl).slice(0, 1000), provider: resolvedProvider };
 
-  const uploaded = await cloudinary.uploader.upload(sourceUrl, {
-    folder: "ai-auto-posts",
-    resource_type: "image",
-  });
+  const uploaded = await withCloudinaryAccount("image", (cloudinary) =>
+    cloudinary.uploader.upload(sourceUrl, {
+      folder: "ai-auto-posts",
+      resource_type: "image",
+    }),
+  );
   if (!uploaded?.secure_url) throw new Error("Generated image could not be stored in Cloudinary");
   return { imageUrl: uploaded.secure_url, provider: resolvedProvider };
 };

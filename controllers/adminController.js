@@ -836,7 +836,7 @@ exports.forgotPassword = async (req, res, next) => {
             admin.resetPasswordToken = undefined;
             admin.resetPasswordExpire = undefined;
             await admin.save();
-            console.error('Admin forgot password SMTP send failed:', mailError.message || mailError);
+            console.error('Admin forgot password email send failed:', mailError.message || mailError);
             return res.status(500).json({
                 message: 'Unable to send reset email right now. Please try again later.',
             });

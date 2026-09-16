@@ -1,11 +1,4 @@
-const { v2: cloudinary } = require('cloudinary')
-
-const cloudName = process.env.CLOUDINARY_CLOUD_NAME
-cloudinary.config({
-    cloud_name: cloudName || '',
-    api_key: process.env.CLOUDINARY_API_KEY || '',
-    api_secret: process.env.CLOUDINARY_API_SECRET || '',
-})
+const { getAccountForCloudName, withCloudinaryAccount } = require('./cloudinary')
 
 const getCloudinaryAsset = (value) => {
     if (typeof value !== 'string' || !value.includes('/upload/')) return null
@@ -17,21 +10,27 @@ const getCloudinaryAsset = (value) => {
         return null
     }
 
-    if (cloudName && url.hostname !== `${cloudName}.res.cloudinary.com`) return null
+    const pathParts = url.pathname.split('/').filter(Boolean)
+    let cloudName
+    let resourceType
+    let parts
+    if (url.hostname === 'res.cloudinary.com') {
+        [cloudName, resourceType] = pathParts
+        if (pathParts[2] !== 'upload') return null
+        parts = pathParts.slice(3)
+    } else if (url.hostname.endsWith('.res.cloudinary.com')) {
+        cloudName = url.hostname.split('.')[0]
+        resourceType = pathParts[0]
+        if (pathParts[1] !== 'upload') return null
+        parts = pathParts.slice(2)
+    } else {
+        return null
+    }
 
-    const marker = '/upload/'
-    const uploadIndex = url.pathname.indexOf(marker)
-    if (uploadIndex < 0) return null
-
-    const parts = url.pathname.slice(uploadIndex + marker.length)
-        .split('/')
-        .filter(Boolean)
+    if (!['image', 'video', 'raw'].includes(resourceType)) return null
     const versionIndex = parts.findIndex((part) => /^v\d+$/.test(part))
     const publicIdParts = versionIndex >= 0 ? parts.slice(versionIndex + 1) : parts
     if (!publicIdParts.length) return null
-
-    const resourceType = url.pathname.slice(0, uploadIndex).split('/').filter(Boolean).pop()
-    if (!['image', 'video', 'raw'].includes(resourceType)) return null
 
     const lastPart = publicIdParts[publicIdParts.length - 1]
     if (resourceType !== 'raw' && /\.[^./]+$/.test(lastPart)) {
@@ -39,6 +38,7 @@ const getCloudinaryAsset = (value) => {
     }
 
     return {
+        cloudName,
         publicId: publicIdParts.join('/'),
         resourceType,
     }
@@ -48,16 +48,19 @@ const deleteCloudinaryResources = async (values) => {
     const assets = new Map()
     for (const value of values.flat(Infinity)) {
         const asset = getCloudinaryAsset(value)
-        if (asset) assets.set(`${asset.resourceType}:${asset.publicId}`, asset)
+        if (asset) assets.set(`${asset.cloudName}:${asset.resourceType}:${asset.publicId}`, asset)
     }
 
     const results = await Promise.all([...assets.values()].map(async (asset) => {
         try {
-            const result = await cloudinary.uploader.destroy(asset.publicId, {
-                resource_type: asset.resourceType,
-                type: 'upload',
-                invalidate: true,
-            })
+            const result = await withCloudinaryAccount(
+                getAccountForCloudName(asset.cloudName),
+                (cloudinary) => cloudinary.uploader.destroy(asset.publicId, {
+                    resource_type: asset.resourceType,
+                    type: 'upload',
+                    invalidate: true,
+                }),
+            )
             return { ...asset, result }
         } catch (error) {
             console.error('[cloudinary-cleanup] failed to delete asset', {
