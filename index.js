@@ -18,6 +18,11 @@ const MONGODB_URI =
     : process.env.DEV_MONGODB_URI;
 mongoose.set("strictQuery", false);
 mongoose.set("strictPopulate", false);
+// Do not let database-backed requests sit in Mongoose's buffer while the
+// connection is unavailable. The readiness middleware below returns 503
+// immediately instead.
+mongoose.set("bufferCommands", false);
+mongoose.set("bufferTimeoutMS", 0);
 const socketIo = require("socket.io");
 const { createServer } = require("http");
 const cors = require("cors");
@@ -519,10 +524,16 @@ attachPeerAdapter(io);
 middilewares(app);
 
 app.get("/health", (req, res) => {
-  res.json(getMetrics({ io }));
+  res.status(mongoReady ? 200 : 503).json({
+    ...getMetrics({ io }),
+    database: mongoReady ? "connected" : "disconnected",
+  });
 });
 app.get("/api/health", (req, res) => {
-  res.json(getMetrics({ io }));
+  res.status(mongoReady ? 200 : 503).json({
+    ...getMetrics({ io }),
+    database: mongoReady ? "connected" : "disconnected",
+  });
 });
 
 app.get("/api/youtube/cobalt-config", (req, res) => {
@@ -609,6 +620,18 @@ app.post("/api/face-service-url", (req, res) => {
 });
 
 attachPeerRelayRoute(app, io);
+
+let mongoReady = mongoose.connection.readyState === 1;
+
+app.use("/api", (req, res, next) => {
+  if (mongoReady) return next();
+  return res.status(503).json({
+    ok: false,
+    error: "Database unavailable",
+    message:
+      "MongoDB is not connected. Check the MongoDB service or Atlas IP whitelist.",
+  });
+});
 
 // setting up routes
 routes(app);
@@ -757,20 +780,38 @@ app.get("/fcm", async (req, res) => {
 // Root route should serve index.html
 
 const mongoUri =
-  process.env.PROD_MONGODB_URI || process.env.MONGODB_URI || MONGODB_URI;
+  MONGODB_URI || process.env.MONGODB_URI || process.env.PROD_MONGODB_URI;
+
+mongoose.connection.on("connected", () => {
+  mongoReady = true;
+  console.log("MongoDB connected");
+});
+
+mongoose.connection.on("disconnected", () => {
+  mongoReady = false;
+  console.error(
+    "MongoDB disconnected — database-backed requests will return HTTP 503 until it reconnects.",
+  );
+});
+
+mongoose.connection.on("error", (e) => {
+  mongoReady = false;
+  console.error("MongoDB connection error:", e.message || e);
+});
+
+const runWorkers = () =>
+  process.env.RUN_WORKERS !== "0" &&
+  process.env.RUN_WORKERS !== "false" &&
+  process.env.DISABLE_WORKERS !== "1" &&
+  process.env.DISABLE_WORKERS !== "true";
+
 mongoose
   .connect(mongoUri, {
     serverSelectionTimeoutMS: 20000,
     family: 4, // prefer IPv4 — avoids flaky IPv6 on some local networks
   })
   .then(() => {
-    console.log("MongoDB connected");
-    const runWorkers =
-      process.env.RUN_WORKERS !== "0" &&
-      process.env.RUN_WORKERS !== "false" &&
-      process.env.DISABLE_WORKERS !== "1" &&
-      process.env.DISABLE_WORKERS !== "true";
-    if (runWorkers) {
+    if (runWorkers()) {
       startUnseenMessageReminderWorker();
       startDailyPromptWorker();
       startFitnessReminderWorker();
@@ -781,8 +822,9 @@ mongoose
     }
   })
   .catch((e) => {
+    mongoReady = false;
     console.error(
-      "MongoDB connection failed — server will still start, but DB features may not work:",
+      "MongoDB connection failed — server is running without database-backed API routes:",
       e.message || e,
     );
   });
