@@ -9,6 +9,7 @@ const fitnessProfileSchema = new Schema(
     weightKg: { type: Number, min: 25, max: 350, required: true },
     activityLevel: { type: String, enum: ["sedentary", "light", "moderate", "very_active", "extra_active"], default: "moderate" },
     goal: { type: String, enum: ["lose", "maintain", "gain"], default: "maintain" },
+    timezone: { type: String, default: "Asia/Dhaka", trim: true, maxlength: 80 },
     targetWeightKg: { type: Number, min: 25, max: 350 },
     targetCalories: Number,
     bmr: Number,

@@ -6,6 +6,7 @@ const reminderSchema = new Schema(
     title: { type: String, required: true, trim: true, maxlength: 120 },
     type: { type: String, enum: ["meal", "water", "workout", "weight", "custom"], default: "custom" },
     time: { type: String, required: true, match: /^([01]\d|2[0-3]):[0-5]\d$/ },
+    timezone: { type: String, default: "Asia/Dhaka", trim: true, maxlength: 80 },
     days: {
       type: [Number],
       default: [0, 1, 2, 3, 4, 5, 6],

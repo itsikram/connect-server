@@ -67,8 +67,11 @@ exports.uploadVideo = async (req, res, next) => {
         return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    // Optional: validate file type before uploading
-    const fileType = req.file.mimetype.split('/')[0];
+    if (!req.file.buffer || req.file.buffer.length === 0) {
+        return res.status(400).json({ error: 'Uploaded file is empty' });
+    }
+
+    const fileType = String(req.file.mimetype || '').split('/')[0];
 
     if (fileType !== 'video') {
         return res.status(400).json({ error: 'Uploaded file is not a video' });
@@ -80,7 +83,7 @@ exports.uploadVideo = async (req, res, next) => {
             const uploadStream = cloudinary.uploader.upload_stream(
                 {
                     resource_type: 'video',
-                    public_id: req.file.originalname.split('.')[0],
+                    public_id: req.file.originalname.split('.')[0].replace(/[^a-z0-9_-]/gi, '_'),
                     chunk_size: 6000000
                 },
                 (error, result) => {
@@ -88,7 +91,14 @@ exports.uploadVideo = async (req, res, next) => {
                         sendCloudinaryError(res, error, 'Cloudinary video upload failed');
                         return reject(error);
                     }
-                    res.json(result);
+                    res.json({
+                        success: true,
+                        videoId: result.public_id,
+                        url: result.secure_url || result.url,
+                        filename: req.file.originalname,
+                        size: req.file.size,
+                        ...result,
+                    });
                     resolve(result);
                 }
             );

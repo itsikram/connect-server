@@ -1,38 +1,52 @@
 const Reminder = require("../models/Reminder");
 const { sendPushToProfile } = require("./pushNotifications");
 
-const BD_OFFSET_MS = 6 * 60 * 60 * 1000;
 const INTERVAL_MS = 60 * 1000;
 let workerInterval = null;
 let isRunning = false;
 
-const getBangladeshNow = () => new Date(Date.now() + BD_OFFSET_MS);
+function getLocalParts(date, timezone) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone || "Asia/Dhaka",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  return Object.fromEntries(
+    parts.filter(({ type }) => type !== "literal").map(({ type, value }) => [type, value]),
+  );
+}
+
+const weekdayNumber = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
 async function runFitnessReminderTick() {
   if (isRunning) return;
   isRunning = true;
   try {
-    const now = getBangladeshNow();
-    const day = now.getUTCDay();
-    const hour = String(now.getUTCHours()).padStart(2, "0");
-    const minute = String(now.getUTCMinutes()).padStart(2, "0");
-    const time = `${hour}:${minute}`;
-    const slot = new Date(Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      now.getUTCDate(),
-      now.getUTCHours(),
-      now.getUTCMinutes(),
-    ) - BD_OFFSET_MS);
-
-    const reminders = await Reminder.find({
-      enabled: true,
-      time,
-      days: day,
-      $or: [{ lastNotifiedAt: null }, { lastNotifiedAt: { $lt: slot } }],
-    }).select("_id user title message time");
+    const now = new Date();
+    const reminders = await Reminder.find({ enabled: true })
+      .select("_id user title message time days timezone lastNotifiedAt")
+      .lean();
 
     for (const reminder of reminders) {
+      let local;
+      try {
+        local = getLocalParts(now, reminder.timezone);
+      } catch (error) {
+        console.warn("[fitness-reminder] invalid timezone", reminder.timezone, error?.message || error);
+        continue;
+      }
+      const day = weekdayNumber[local.weekday];
+      const time = `${local.hour}:${local.minute}`;
+      if (reminder.time !== time || !(reminder.days || [0, 1, 2, 3, 4, 5, 6]).includes(day)) continue;
+      // Use the user's local date/time as the idempotency slot. This avoids
+      // duplicate sends while allowing reminders in different timezones.
+      const slot = new Date(`${local.year}-${local.month}-${local.day}T${time}:00.000Z`);
+      if (reminder.lastNotifiedAt && reminder.lastNotifiedAt >= slot) continue;
       const claimed = await Reminder.findOneAndUpdate(
         {
           _id: reminder._id,
