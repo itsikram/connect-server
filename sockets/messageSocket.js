@@ -672,8 +672,8 @@ module.exports = function messageSocket(io, socket, profileId) {
 
       if (!targets || targets.length === 0) {
         console.warn("[realtime_detection_no_targets]", {
-          senderProfileId: String(updateProfile._id),
-          emotion: updateProfile.lastEmotion,
+          senderProfileId: String(profileId),
+          emotion,
           processingMs: Date.now() - receivedAt,
         });
         if (typeof ack === "function") {

@@ -3,6 +3,7 @@ const messageSocket = require('./messageSocket');
 const { notificationSocket } = require('../controllers/notificationController');
 const Profile = require('../models/Profile');
 const User = require('../models/User');
+const mongoose = require('mongoose');
 const Post = require('../models/Post');
 const checkIsActive = require('../utils/checkIsActive');
 const updateLastActive = require('../utils/updateLastActive');
@@ -54,7 +55,25 @@ module.exports = function socketHandler(io) {
             profileSockets.get(profileId).add(socket.id);
             onlineUsers.set(profileId, socket.id);
 
-            let profileConnects = await Profile.findById(profileId) || []
+            // Socket.IO can accept a client before the initial MongoDB
+            // connection completes. Mongoose buffering is disabled, so do
+            // not issue database queries until the connection is ready.
+            if (mongoose.connection.readyState !== 1) {
+                console.warn('[realtime_socket_db_unavailable]', {
+                    socketId: socket.id,
+                    profileId: String(profileId),
+                    readyState: mongoose.connection.readyState,
+                });
+                return;
+            }
+
+            let profileConnects;
+            try {
+                profileConnects = (await Profile.findById(profileId)) || null;
+            } catch (err) {
+                console.error('Error loading profile on socket connection:', err);
+                return;
+            }
 
             // Update user's lastLogin and isActive status on connection
             try {
