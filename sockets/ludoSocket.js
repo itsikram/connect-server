@@ -72,6 +72,7 @@ const pruneGameIfEmpty = (io, gameId) => {
     return false;
   }
 
+  clearAllInvitesForGame(io, gameId);
   games.delete(gameId);
 
   try {
@@ -131,6 +132,13 @@ function getNextActivePlayer(gameState, currentPlayerIndex) {
       return nextIndex;
     }
   }
+
+  const clearAllInvitesForGame = (io, gameId) => {
+    if (!gameId) return;
+    for (const profileId of userInvites.keys()) {
+      clearInvitesForGame(io, profileId, gameId);
+    }
+  };
 
   return currentPlayerIndex;
 }
@@ -612,23 +620,6 @@ function ludoSocket(io, socket, profileId) {
 
     const room = joinRoom(gameId);
     const game = games.get(gameId);
-
-    // A delayed invite acceptance must not reclaim a seat after the host has
-    // replaced waiting players and started the match.
-    if (game?.lastPlayers?.gameStarted) {
-      game.onlinePlayers.delete(pid);
-      game.offlinePlayers.delete(pid);
-      clearInvitesForGame(io, pid, gameId);
-      try {
-        socket.leave(room);
-        socket.emit("ludo:game:removed", {
-          gameId,
-          reason: "game_already_started",
-          serverTs: Date.now(),
-        });
-      } catch (_e) {}
-      return;
-    }
 
     // If host hasn't published initial lastPlayers yet, buffer this accept
     // so it can be merged into the first ludo:players snapshot received.

@@ -117,6 +117,10 @@ let profileSchema = new Schema(
     settings: {
       type: Object,
     },
+    appMenuOrder: {
+      type: [String],
+      default: [],
+    },
     isOfficial: {
       type: Boolean,
       default: false,

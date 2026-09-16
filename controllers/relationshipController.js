@@ -594,6 +594,34 @@ exports.getRelationships = async (req, res, next) => {
   }
 };
 
+exports.updateRelationships = async (req, res, next) => {
+  try {
+    const targetId = req.body.profileId || req.body.profile;
+    const relationTypes = normalizeRelationTypes(req.body.relationTypes || req.body.relationType);
+    if (!targetId || !mongoose.Types.ObjectId.isValid(String(targetId))) {
+      return res.status(400).json({ message: "Invalid or missing profile id" });
+    }
+    if (!relationTypes.length) {
+      return res.status(400).json({ message: "At least one relationship type is required" });
+    }
+
+    const profile = await Profile.findById(req.profile._id).select("connects");
+    if (!listHasId(profile?.connects, targetId)) {
+      return res.status(403).json({ message: "Only connected profiles can edit this relationship" });
+    }
+
+    const [userA, userB] = [String(req.profile._id), String(targetId)].sort();
+    await Relationship.deleteMany({ userA, userB });
+    await saveRelationships(req.profile._id, targetId, relationTypes, req.profile._id);
+    const io = req.app.get("io");
+    emitRelationshipUpdate(io, req.profile._id, req.profile._id, targetId, "updated");
+    emitRelationshipUpdate(io, targetId, req.profile._id, targetId, "updated");
+    return res.json({ relationTypes });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.postConnectDelete = async (req, res, next) => {
   try {
     let connectProfileId = req.body.profile;

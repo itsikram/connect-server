@@ -17,7 +17,7 @@ const CONNECT_PUBLIC_FIELDS =
 const USER_PUBLIC_FIELDS = "firstName surname";
 const USER_OWN_FIELDS = "firstName surname email faceLoginEnabled";
 const LITE_PROFILE_FIELDS =
-  "_id fullName displayName username nickname profilePic coverPic bio isOfficial isVerified isActive lastActive lastLocation blockedUsers connects connectReqs following followers user";
+  "_id fullName displayName username nickname profilePic coverPic bio isOfficial isVerified isActive lastActive lastLocation blockedUsers connects connectReqs following followers appMenuOrder user";
 
 const isMongoId = (value) => MONGO_ID_RE.test(String(value || ""));
 
@@ -249,6 +249,18 @@ exports.updateBioPost = async (req, res, next) => {
 exports.updateProfile = async (req, res, next) => {
   try {
     let reqData = { ...req.body };
+
+    if (Object.prototype.hasOwnProperty.call(req.body, "appMenuOrder")) {
+      if (
+        !Array.isArray(req.body.appMenuOrder) ||
+        req.body.appMenuOrder.some(
+          (item) => typeof item !== "string" || item.length > 100,
+        )
+      ) {
+        return res.status(400).json({ message: "Invalid app menu order" });
+      }
+      reqData.appMenuOrder = [...new Set(req.body.appMenuOrder)];
+    }
 
     if (req.body.firstName && req.body.surname) {
       reqData.fullName = req.body.firstName + " " + req.body.surname;
