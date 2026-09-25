@@ -1,7 +1,9 @@
+const { isValidObjectId } = require('mongoose')
 const Message = require('../models/Message')
 const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
 const Profile = require('../models/Profile')
-const { sendChatMessageDataPush } = require('../utils/pushNotifications')
+const { notifyNewChatMessage } = require('../utils/chatNotifications')
+const { senderDisplayName } = require('../utils/messagePreview')
 const { listHasId } = require('../utils/ids')
 
 
@@ -315,8 +317,22 @@ exports.getOldMessages = async(req,res,next) => {
 exports.sendMessage = async (req, res, next) => {
     try {
         const io = req.app.get('io');
-        const { room, senderId: bodySenderId, receiverId, message, attachment, parent, isAi = false, messageType = 'text', callType, callEvent, tempId } = req.body;
-        const senderId = bodySenderId || req.profile?._id;
+        const { receiverId, message, attachment, parent, messageType = 'text', callType, callEvent, tempId } = req.body;
+        // Authenticated identity is the sender; the body value is a legacy fallback only.
+        const senderId = String(req.profile?._id || req.body.senderId || '');
+        if (!senderId || !receiverId) {
+            return res.status(400).json({ message: 'senderId and receiverId are required' });
+        }
+        // Same canonical room the socket path and both clients use.
+        const room = [senderId, String(receiverId)].sort().join('_');
+
+        // Idempotent retries: return the existing copy of this optimistic message.
+        if (tempId) {
+            const existing = await Message.findOne({ senderId, tempId }).populate('parent');
+            if (existing) {
+                return res.status(200).json({ message: 'Message sent successfully', data: existing, duplicate: true });
+            }
+        }
 
         // Prevent messaging if either user has blocked the other
         if (senderId && receiverId && String(senderId) !== String(receiverId)) {
@@ -336,12 +352,18 @@ exports.sendMessage = async (req, res, next) => {
             }
         }
 
-        let newMessage;
-        if (parent == false) {
-            newMessage = new Message({ room, senderId, receiverId, message, attachment, messageType, callType, callEvent, tempId });
-        } else {
-            newMessage = new Message({ room, senderId, receiverId, message, attachment, parent, messageType, callType, callEvent, tempId });
-        }
+        const newMessage = new Message({
+            room,
+            senderId,
+            receiverId: String(receiverId),
+            message,
+            attachment: attachment || undefined,
+            ...(parent && isValidObjectId(parent) ? { parent } : {}),
+            messageType,
+            callType,
+            callEvent,
+            tempId,
+        });
         await newMessage.save();
 
         // Update last active time for sending message
@@ -354,30 +376,27 @@ exports.sendMessage = async (req, res, next) => {
             return res.status(404).json({ message: 'Sender profile not found' });
         }
         
-        let senderName = profileData.user?.firstName + ' ' + profileData.user?.surname;
+        const senderName = senderDisplayName(profileData);
         let senderPP = profileData.profilePic || '/default-avatar.png';
         
-        // Emit via socket for real-time updates
-        io.to(room).emit('newMessage', { updatedMessage, senderName, senderPP, chatPage: true });
-        
-        let connectProfile = await Profile.findById(senderId).populate('user');
-        io.to(receiverId).emit('newMessageToUser', { updatedMessage, senderName, senderPP, chatPage: false, connectProfile });
+        // Emit via socket for real-time updates (same events as the socket send path)
+        const messagePayload = { updatedMessage, senderName, senderPP, chatPage: true, isRealTime: true, tempId };
+        io.to(room).emit('newMessage', messagePayload);
+        io.to(senderId).emit('messageSent', messagePayload);
 
-        // Data-only FCM so the receiver gets a notification when the app is swiped away / killed (no socket).
-        try {
-            if (String(receiverId) !== String(senderId) && connectProfile) {
-                await sendChatMessageDataPush(receiverId, {
-                    senderId,
-                    updatedMessage,
-                    senderName,
-                    senderPP,
-                    connectProfile,
-                    room,
-                });
-            }
-        } catch (pushErr) {
-            console.error('HTTP sendMessage: FCM chat push failed:', pushErr?.message || pushErr);
-        }
+        const connectProfile = profileData;
+        io.to(String(receiverId)).emit('newMessageToUser', { updatedMessage, senderName, senderPP, chatPage: false, connectProfile, isRealTime: true });
+
+        // Same mobile + web notification fan-out as the socket path
+        await notifyNewChatMessage(io, {
+            updatedMessage,
+            senderId,
+            receiverId,
+            senderName,
+            senderPP,
+            senderProfile: profileData,
+            room,
+        });
 
         return res.status(200).json({
             message: 'Message sent successfully',
@@ -551,18 +570,29 @@ exports.markMessageAsSeen = async (req, res, next) => {
             return res.status(400).json({ message: 'Message ID(s) required' });
         }
 
-        const result = await Message.updateMany(
-            { _id: { $in: ids }, isSeen: { $ne: true } },
-            { $set: { isSeen: true } }
-        );
+        const myId = String(req.profile._id);
+        const validIds = ids.map(String).filter((id) => isValidObjectId(id));
+        // Only the receiver can mark a message as seen.
+        const seenFilter = { _id: { $in: validIds }, receiverId: myId, isSeen: { $ne: true } };
+        const toUpdate = await Message.find(seenFilter).select('_id room senderId receiverId timestamp').lean();
+        const result = toUpdate.length > 0
+            ? await Message.updateMany({ _id: { $in: toUpdate.map((m) => m._id) } }, { $set: { isSeen: true } })
+            : { modifiedCount: 0, matchedCount: 0 };
 
         if (result.modifiedCount > 0) {
             const io = req.app.get('io');
             if (io) {
-                ids.forEach((id) => {
-                    io.emit('messageSeen', {
-                        messageId: id,
-                        seenBy: req.profile._id,
+                // Deliver only to the two participants (all their devices),
+                // never broadcast to every connected client.
+                toUpdate.forEach((m) => {
+                    io.to([m.room, String(m.senderId), String(m.receiverId)].filter(Boolean)).emit('messageSeen', {
+                        messageId: String(m._id),
+                        _id: String(m._id),
+                        room: m.room,
+                        senderId: String(m.senderId),
+                        receiverId: String(m.receiverId),
+                        messageTimestamp: m.timestamp,
+                        seenBy: myId,
                         timestamp: new Date()
                     });
                 });
@@ -607,8 +637,11 @@ exports.deleteMessage = async (req, res, next) => {
         
         // Emit real-time event to all users in the chat room
         const io = req.app.get('io');
-        if (io && message.room) {
-            io.to(message.room).emit('deleteMessage', messageId);
+        if (io) {
+            // Room + both participants so the other side's chat list and any
+            // device without the chat open also drop the message.
+            io.to([message.room, String(message.senderId), String(message.receiverId)].filter(Boolean))
+                .emit('deleteMessage', String(messageId));
         }
         
         return res.status(200).json({ message: 'Message deleted successfully' });

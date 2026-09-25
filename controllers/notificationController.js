@@ -86,14 +86,15 @@ exports.saveNotification = async (io, data) => {
       data.data?.messageId ||
       newNotification?._id ||
       `${notificationType || "n"}-${Date.now()}`;
+    const pushBody = data.pushBody || notificationText;
     sendWebPushToProfile(receiverId, {
       title: notificationTitle,
-      body: notificationText,
-      text: notificationText,
+      body: pushBody,
+      text: pushBody,
       icon: notificationIcon || "/apple-touch-icon.png",
       link: notificationLink,
       type: notificationType,
-      tag: `connect-${String(dedupeId)}`,
+      tag: data.pushTag || `connect-${String(dedupeId)}`,
       data: data.data || {},
     }).catch((err) => {
       console.warn(

@@ -3,17 +3,24 @@ const { spawn } = require("child_process");
 const ffmpegInstaller = require("@ffmpeg-installer/ffmpeg");
 const { createClient, LiveTranscriptionEvents } = require("@deepgram/sdk");
 const { WebSocketServer } = require("ws");
+const {
+  transcribeWithGemini,
+  isGeminiRefineReady,
+} = require("./geminiTranscriber");
 
 const JWT_SECRET = process.env.JWT_SECRET_KEY;
 const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
 const DEFAULT_DEEPGRAM_MODEL = process.env.DEEPGRAM_MODEL || "nova-3";
 const DEFAULT_BANGLA_MODEL = process.env.DEEPGRAM_BANGLA_MODEL || "nova-3";
 const FINALIZE_GRACE_MS = Number(process.env.SPEECH_FINALIZE_GRACE_MS || 280);
+const UTTERANCE_END_MS = Number(process.env.SPEECH_UTTERANCE_END_MS || 1100);
+// Keep at most this much audio per utterance for the Gemini second pass.
+const MAX_UTTERANCE_PCM_BYTES = 16000 * 2 * 40;
 const BANGLA_ENDPOINTING_MS = Number(
-  process.env.SPEECH_BANGLA_ENDPOINTING_MS || 180,
+  process.env.SPEECH_BANGLA_ENDPOINTING_MS || 450,
 );
 const ENGLISH_ENDPOINTING_MS = Number(
-  process.env.SPEECH_ENGLISH_ENDPOINTING_MS || 200,
+  process.env.SPEECH_ENGLISH_ENDPOINTING_MS || 350,
 );
 
 const BANGLA_KEYTERMS = [
@@ -480,7 +487,7 @@ class DeepgramBridge {
       punctuate: true,
       smart_format: true,
       vad_events: true,
-      utterance_end_ms: 1000,
+      utterance_end_ms: UTTERANCE_END_MS,
       endpointing: isBangla ? BANGLA_ENDPOINTING_MS : ENGLISH_ENDPOINTING_MS,
       filler_words: false,
       numerals: true,
@@ -532,6 +539,13 @@ const createSpeechSession = (ws, transcriber) => {
     deepgramFinalizeSent: false,
     lastTranscriptAt: 0,
     lastEmittedFinal: "",
+    // Language hint for the Gemini pass: "bn", "en" or "auto".
+    refineLanguage: "bn",
+    refineEnabled: false,
+    utterancePcm: [],
+    utterancePcmBytes: 0,
+    pcmSampleRate: 16000,
+    refineChain: Promise.resolve(),
   };
 
   const send = (payload) => {
@@ -559,6 +573,8 @@ const createSpeechSession = (ws, transcriber) => {
     state.lastEmittedFinal = "";
     state.pendingPcmChunks = [];
     state.pendingPcmBytes = 0;
+    state.utterancePcm = [];
+    state.utterancePcmBytes = 0;
     state.usePcmStream = isLinear16Audio(state.mimeType, state.encoding);
     state.useNativeContainer =
       !state.usePcmStream && canStreamNativeContainer(state.mimeType);
@@ -619,6 +635,57 @@ const createSpeechSession = (ws, transcriber) => {
     }
   };
 
+  const recordUtterancePcm = (chunk) => {
+    if (!state.refineEnabled || state.useNativeContainer) return;
+    state.utterancePcm.push(chunk);
+    state.utterancePcmBytes += chunk.length;
+    while (
+      state.utterancePcmBytes > MAX_UTTERANCE_PCM_BYTES &&
+      state.utterancePcm.length > 1
+    ) {
+      state.utterancePcmBytes -= state.utterancePcm.shift().length;
+    }
+  };
+
+  const takeUtterancePcm = () => {
+    const pcm = state.utterancePcm.length
+      ? Buffer.concat(state.utterancePcm)
+      : null;
+    state.utterancePcm = [];
+    state.utterancePcmBytes = 0;
+    // Keep 16-bit sample alignment.
+    return pcm && pcm.length % 2 ? pcm.subarray(0, pcm.length - 1) : pcm;
+  };
+
+  /**
+   * Sends one final transcript. With Gemini available the utterance audio is
+   * re-transcribed first; finals are chained so they arrive in speech order.
+   */
+  const sendRefinedFinal = (draftText, pcm) => {
+    const run = async () => {
+      let text = draftText;
+      if (state.refineEnabled && pcm) {
+        send({ type: "status", message: "refining" });
+        const refined = await transcribeWithGemini(pcm, {
+          sampleRate: state.pcmSampleRate,
+          language: state.refineLanguage,
+          draft: draftText,
+        });
+        if (typeof refined === "string") text = normalizeText(refined);
+      }
+      if (!text) {
+        send({ type: "final", text: "", isFinal: true, empty: true });
+        return;
+      }
+      console.log(
+        `[speech] session=${state.sessionLabel} sending final text="${text}"`,
+      );
+      send({ type: "final", text, confidence: 1, isFinal: true });
+    };
+    state.refineChain = state.refineChain.then(run, run);
+    return state.refineChain;
+  };
+
   const emitUtteranceFinal = () => {
     const text = normalizeText(
       state.lastPartial || state.confirmedTranscript || "",
@@ -626,14 +693,9 @@ const createSpeechSession = (ws, transcriber) => {
     if (!text) return;
     if (state.lastEmittedFinal && state.lastEmittedFinal === text) return;
     state.lastEmittedFinal = text;
-    send({
-      type: "final",
-      text,
-      confidence: 1,
-      isFinal: true,
-    });
     state.confirmedTranscript = "";
     state.lastPartial = "";
+    sendRefinedFinal(text, takeUtterancePcm());
   };
 
   const finalizeSession = () => {
@@ -647,30 +709,20 @@ const createSpeechSession = (ws, transcriber) => {
     const finalText = normalizeText(
       state.lastPartial || state.confirmedTranscript || "",
     );
-
-    if (finalText) {
-      if (state.lastEmittedFinal && state.lastEmittedFinal === finalText) {
-        closeDeepgramConnection();
-        killFfmpegProcess();
-        return;
-      }
-      state.lastEmittedFinal = finalText;
-      state.confirmedTranscript = finalText;
-      state.lastPartial = finalText;
-    }
-
-    console.log(
-      `[speech] session=${state.sessionLabel} sending final text="${finalText}"`,
-    );
-    send({
-      type: "final",
-      text: finalText,
-      confidence: 1,
-      isFinal: true,
-    });
-
+    const pcm = takeUtterancePcm();
     closeDeepgramConnection();
     killFfmpegProcess();
+
+    if (finalText && state.lastEmittedFinal === finalText) return;
+    // Nothing new was said since the last utterance final.
+    if (!finalText && !pcm) {
+      send({ type: "final", text: "", confidence: 1, isFinal: true });
+      return;
+    }
+    state.lastEmittedFinal = finalText;
+    state.confirmedTranscript = finalText;
+    state.lastPartial = finalText;
+    sendRefinedFinal(finalText, pcm);
   };
 
   const flushPendingPcmChunks = () => {
@@ -696,6 +748,7 @@ const createSpeechSession = (ws, transcriber) => {
 
   const sendPcmToDeepgram = (chunk) => {
     if (!chunk || !chunk.length) return;
+    recordUtterancePcm(chunk);
 
     if (state.deepgramConnection && state.deepgramOpen) {
       try {
@@ -820,7 +873,7 @@ const createSpeechSession = (ws, transcriber) => {
           isFinal,
           confidence: picked.confidence,
         });
-        if (speechFinal && !state.isStopping) {
+        if (speechFinal && !state.isStopping && !state.refineEnabled) {
           emitUtteranceFinal();
         }
       }
@@ -945,7 +998,20 @@ const createSpeechSession = (ws, transcriber) => {
   const startRecording = (payload = {}) => {
     resetSessionState();
 
-    state.language = payload.language || "bn";
+    const requestedLanguage = String(payload.language || "bn").toLowerCase();
+    const autoLanguage = ["auto", "multi"].includes(requestedLanguage);
+    state.refineEnabled = isGeminiRefineReady();
+    state.refineLanguage = autoLanguage
+      ? "auto"
+      : requestedLanguage.startsWith("en")
+        ? "en"
+        : "bn";
+    state.language =
+      autoLanguage && state.refineEnabled
+        ? String(payload.hint || "").toLowerCase().startsWith("en")
+          ? "en-US"
+          : "bn"
+        : payload.language || "bn";
     state.mimeType = payload.mimeType || "audio/webm";
     state.encoding = payload.encoding || "";
     state.sampleRate = Number(payload.sampleRate || 16000) || 16000;
@@ -953,6 +1019,8 @@ const createSpeechSession = (ws, transcriber) => {
     state.usePcmStream = isLinear16Audio(state.mimeType, state.encoding);
     state.useNativeContainer =
       !state.usePcmStream && canStreamNativeContainer(state.mimeType);
+    // ffmpeg always emits 16 kHz; raw PCM clients declare their own rate.
+    state.pcmSampleRate = state.usePcmStream ? state.sampleRate : 16000;
     state.isRecording = true;
 
     if (state.transcriber.bootError) {
@@ -987,7 +1055,11 @@ const createSpeechSession = (ws, transcriber) => {
       console.log(
         `[speech] session=${state.sessionLabel} start language=${state.language} mimeType=${state.mimeType} pcm=${state.usePcmStream} native=${state.useNativeContainer} chunkDurationMs=${state.chunkDurationMs}`,
       );
-      send({ type: "ready", message: "Speech stream started" });
+      send({
+        type: "ready",
+        message: "Speech stream started",
+        refine: state.refineEnabled,
+      });
     } catch (error) {
       console.error(
         `[speech] session=${state.sessionLabel} failed to start speech session:`,

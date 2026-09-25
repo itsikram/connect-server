@@ -15,7 +15,7 @@ services:
       - key: LB_BACKEND_START_PORT
         value: "4001"
       - key: EMAIL_PROVIDER
-        value: resend
+        value: smtp
       - key: RESEND_API_KEY
         sync: false
       - key: RESEND_FROM

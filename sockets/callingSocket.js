@@ -1,14 +1,87 @@
-const { isValidObjectId } = require('mongoose');
 const Message = require('../models/Message')
 const Profile = require('../models/Profile')
-const checkIsActive = require('../utils/checkIsActive')
-const axios = require('axios')
-const { sendPushToProfile, sendDataPushToProfile } = require('../utils/pushNotifications')
+const { sendPushToProfile } = require('../utils/pushNotifications')
 const { sendWebPushToProfile } = require('../utils/webPush')
 const { getIncomingCallAlertForProfile } = require('../utils/ringtone')
 const config = require('../config/config.json');
 
-const sendEmailNotification = require('../utils/sendEmailNotification')
+// How long an unanswered call rings before it becomes a missed call.
+const RING_TIMEOUT_MS = 60000;
+// Accepted calls whose end event never arrived (app killed, network lost) are
+// dropped after this long so the registry cannot grow without bound.
+const STALE_CALL_MS = 6 * 60 * 60 * 1000;
+
+// Call state MUST be shared by every socket. The caller and callee are on
+// different sockets (often different platforms: web / Expo), so per-socket
+// state meant the callee's answer never cleared the caller's missed-call
+// timer and the caller never knew the call had been accepted.
+//
+// channelName -> {
+//   channelName, callerId, calleeId, callerSocketId, isAudio,
+//   accepted, answeredSocketId, createdAt, acceptedAt, timer, logged
+// }
+const activeCalls = new Map();
+// Fallback dedupe for call-log messages when no call record exists
+// (e.g. the server restarted mid-call). key -> timestamp
+const recentCallLogs = new Map();
+// channelName -> timestamp for calls that already finished, so a late
+// duplicate cancel/end (some clients send both) does not re-push or re-log.
+const finishedCalls = new Map();
+
+const callTypeOf = (isAudio) => (isAudio ? 'audio' : 'video');
+const getRoomKey = (a, b) => [String(a), String(b)].sort().join('_');
+
+const pruneStaleCalls = () => {
+    const now = Date.now();
+    for (const [channelName, call] of activeCalls.entries()) {
+        if (now - call.createdAt > STALE_CALL_MS) {
+            if (call.timer) clearTimeout(call.timer);
+            activeCalls.delete(channelName);
+        }
+    }
+    for (const [key, ts] of recentCallLogs.entries()) {
+        if (now - ts > 30000) recentCallLogs.delete(key);
+    }
+    for (const [key, ts] of finishedCalls.entries()) {
+        if (now - ts > 60000) finishedCalls.delete(key);
+    }
+};
+
+const clearCallTimer = (call) => {
+    if (call?.timer) {
+        clearTimeout(call.timer);
+        call.timer = null;
+    }
+};
+
+const removeCall = (channelName) => {
+    const call = activeCalls.get(channelName);
+    if (call) {
+        clearCallTimer(call);
+        finishedCalls.set(String(channelName), Date.now());
+    }
+    activeCalls.delete(channelName);
+    return call;
+};
+
+// Resolve the call a client event refers to. Clients normally send the
+// channelName; fall back to the most recent call between the pair.
+const wasFinished = (channelName) => !!channelName && finishedCalls.has(String(channelName));
+
+const findCall = (channelName, a, b) => {
+    if (channelName && activeCalls.has(String(channelName))) {
+        return activeCalls.get(String(channelName));
+    }
+    if (!a || !b) return null;
+    let latest = null;
+    for (const call of activeCalls.values()) {
+        const samePair =
+            (call.callerId === String(a) && call.calleeId === String(b)) ||
+            (call.callerId === String(b) && call.calleeId === String(a));
+        if (samePair && (!latest || call.createdAt > latest.createdAt)) latest = call;
+    }
+    return latest;
+};
 
 async function sendIncomingCallWebPush(to, {
     isAudio,
@@ -52,496 +125,352 @@ async function sendIncomingCallWebPush(to, {
     });
 }
 
-module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
+async function sendMissedCallPush(calleeId, callerId, isAudio, channelName) {
+    const label = isAudio ? 'audio' : 'video';
+    const article = isAudio ? 'an' : 'a';
+    let callerName = '';
+    try {
+        callerName = (await Profile.findById(callerId).select('fullName'))?.fullName || '';
+    } catch (e) { }
+    const body = callerName ? `${callerName} tried to reach you` : `You missed ${article} ${label} call`;
+    try {
+        await sendPushToProfile(calleeId, {
+            title: `Missed ${label} call`,
+            body,
+            // callerId/senderId let the app open the right chat on tap.
+            data: {
+                type: 'missed_call',
+                isVideo: isAudio ? 'false' : 'true',
+                callerId: String(callerId),
+                senderId: String(callerId),
+            }
+        });
+    } catch (e) { }
+    try {
+        await sendWebPushToProfile(calleeId, {
+            title: `Missed ${label} call`,
+            body,
+            type: 'missed_call',
+            tag: `missed-call-${channelName || Date.now()}`,
+            link: `/message/${callerId}`,
+            data: {
+                type: 'missed_call',
+                isVideo: isAudio ? 'false' : 'true',
+                callerId: String(callerId),
+                senderId: String(callerId),
+                url: `/message/${callerId}`,
+            },
+        });
+    } catch (e) { }
+}
 
+// Persist a call-log chat message and deliver it to both participants on
+// every device. io.to([...rooms]) delivers once per socket even when a
+// socket is in several of the rooms.
+async function logCallMessage(io, { callerId, calleeId, isAudio, callEvent, duration, call }) {
+    const callType = callTypeOf(isAudio);
+    const key = `${getRoomKey(callerId, calleeId)}:${callType}`;
+    if (call) {
+        if (call.logged) return;
+        call.logged = true;
+    } else {
+        const last = recentCallLogs.get(key) || 0;
+        if (Date.now() - last < 10000) return;
+    }
+    recentCallLogs.set(key, Date.now());
 
-    // Agora calling socket
-    const MISSED_CALL_TIMEOUT_MS = 300000;
-    const callTimeouts = new Map(); // key -> { timer, to, from, isAudio, transport, channelName }
-    const clearCallTimeout = (key) => {
-        const entry = callTimeouts.get(key);
-        if (entry?.timer) clearTimeout(entry.timer);
-        callTimeouts.delete(key);
-    };
-    // Track acceptance state and recently-created call messages to avoid duplicates
-    const callStateByRoom = new Map(); // roomKey -> { accepted?: boolean, recentEvents?: Map<string, number> }
-
-    const getRoomKey = (a, b) => [String(a), String(b)].sort().join('_');
-    const markAccepted = (roomKey) => {
-        const state = callStateByRoom.get(roomKey) || {};
-        state.accepted = true;
-        callStateByRoom.set(roomKey, state);
-    };
-    const wasAccepted = (roomKey) => !!(callStateByRoom.get(roomKey)?.accepted);
-    const recordEventOnce = (roomKey, callType, event, ttlMs = 10000) => {
-        const state = callStateByRoom.get(roomKey) || {};
-        const now = Date.now();
-        const key = `${callType}:${event}`;
-        if (!state.recentEvents) state.recentEvents = new Map();
-        const last = state.recentEvents.get(key) || 0;
-        if (now - last < ttlMs) return false; // recently created
-        state.recentEvents.set(key, now);
-        callStateByRoom.set(roomKey, state);
-        return true;
-    };
-
-    const broadcastCallMessage = async ({ updatedMessage, senderId, otherId, senderProfile }) => {
-        const room = getRoomKey(senderId, otherId);
-        const senderName = (senderProfile?.user?.firstName || '') + ' ' + (senderProfile?.user?.surname || '');
+    try {
+        const room = getRoomKey(callerId, calleeId);
+        const label = isAudio ? 'audio' : 'video';
+        const message = callEvent === 'missed'
+            ? `Missed ${label} call`
+            : `${isAudio ? 'Audio' : 'Video'} call ended`;
+        const callMsg = new Message({
+            room,
+            senderId: String(callerId),
+            receiverId: String(calleeId),
+            message,
+            messageType: 'call',
+            callType,
+            callEvent,
+            ...(Number.isFinite(duration) && duration > 0 ? { duration } : {}),
+        });
+        await callMsg.save();
+        const updatedMessage = await Message.findOne({ _id: callMsg._id }).populate('parent');
+        const senderProfile = await Profile.findById(callerId).populate('user');
+        const senderName = `${senderProfile?.user?.firstName || ''} ${senderProfile?.user?.surname || ''}`.trim();
         const senderPP = senderProfile?.profilePic || config?.defaultProfile;
-        const roomPayload = { updatedMessage, senderName, senderPP, chatPage: true };
-        const userPayload = { updatedMessage, senderName, senderPP, chatPage: false, connectProfile: senderProfile };
-        io.to(room).emit('newMessage', roomPayload);
-        io.to(String(otherId)).emit('newMessage', roomPayload);
-        io.to(String(senderId)).emit('newMessage', roomPayload);
-        io.to(String(otherId)).emit('newMessageToUser', userPayload);
-        io.to(String(senderId)).emit('newMessageToUser', userPayload);
-    };
+        io.to([room, String(callerId), String(calleeId)]).emit('newMessage', {
+            updatedMessage, senderName, senderPP, chatPage: true, isRealTime: true,
+        });
+        io.to([String(callerId), String(calleeId)]).emit('newMessageToUser', {
+            updatedMessage, senderName, senderPP, chatPage: false, connectProfile: senderProfile, isRealTime: true,
+        });
+    } catch (err) {
+        console.error('Failed to log call message:', err?.message || err);
+    }
+}
 
-    socket.on("video-call", async ({ to, channelName, isAudio = false }) => {
+module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
+    const me = String(profileId);
+
+    const startCall = async ({ to, channelName } = {}, isAudio) => {
+        const type = callTypeOf(isAudio);
         if (!to || !channelName) {
-            console.warn('video-call: Missing to or channelName', { to, channelName });
+            console.warn(`${type}-call: Missing to or channelName`, { to, channelName });
             return;
         }
-        let myProfileData = await Profile.findById(profileId)
-        io.to(String(to)).emit("incoming-video-call", { from: String(profileId), channelName, isAudio: false, callerName: myProfileData.fullName, callerProfilePic: myProfileData.profilePic });
+        const calleeId = String(to);
+        if (calleeId === me) return;
+        pruneStaleCalls();
+
+        // A re-sent start for the same channel replaces the old record.
+        removeCall(String(channelName));
+
+        let myProfileData = null;
+        try {
+            myProfileData = await Profile.findById(me).select('fullName profilePic');
+        } catch (e) { }
+        const callerName = myProfileData?.fullName || 'Someone';
+        const callerProfilePic = myProfileData?.profilePic || '';
+
+        const call = {
+            channelName: String(channelName),
+            callerId: me,
+            calleeId,
+            callerSocketId: socket.id,
+            isAudio: !!isAudio,
+            accepted: false,
+            answeredSocketId: null,
+            createdAt: Date.now(),
+            acceptedAt: null,
+            timer: null,
+            logged: false,
+        };
+        activeCalls.set(call.channelName, call);
+        // Clients reuse `${caller}-${callee}` as the channel for every call
+        // between a pair, so a new call must clear the previous call's marker.
+        finishedCalls.delete(call.channelName);
+
+        io.to(calleeId).emit(`incoming-${type}-call`, {
+            from: me,
+            channelName: call.channelName,
+            isAudio: !!isAudio,
+            callerName,
+            callerProfilePic,
+        });
+
+        // Unanswered → missed call. Tell both sides so neither keeps ringing.
+        call.timer = setTimeout(async () => {
+            const current = activeCalls.get(call.channelName);
+            if (current !== call || call.accepted) return;
+            removeCall(call.channelName);
+            io.to(me).emit('call-not-accepted', { to: calleeId, channelName: call.channelName, isAudio: !!isAudio });
+            io.to(calleeId).emit(`${type}-call-cancelled`, {
+                to: calleeId, connectId: me, channelName: call.channelName, reason: 'timeout',
+            });
+            await sendMissedCallPush(calleeId, me, !!isAudio, call.channelName);
+            await logCallMessage(io, { callerId: me, calleeId, isAudio: !!isAudio, callEvent: 'missed', call });
+        }, RING_TIMEOUT_MS);
+
         // Visible notification + data (Expo / FCM). Data-only is often silent on iOS.
         try {
-            const callerName = myProfileData.fullName || 'Someone';
-            await sendPushToProfile(to, {
-                title: 'Incoming video call',
+            await sendPushToProfile(calleeId, {
+                title: isAudio ? 'Incoming audio call' : 'Incoming video call',
                 body: `${callerName} is calling`,
                 channelId: 'incoming_calls_v3',
                 data: {
                     type: 'incoming_call',
-                    isAudio: 'false',
-                    callerId: String(profileId),
-                    callerName: myProfileData.fullName || '',
-                    callerProfilePic: myProfileData.profilePic || '',
-                    channelName: channelName || ''
+                    isAudio: isAudio ? 'true' : 'false',
+                    callerId: me,
+                    callerName: myProfileData?.fullName || '',
+                    callerProfilePic,
+                    channelName: call.channelName,
                 }
             });
-            // iOS Home Screen / PWA (no FCM) — wake via Web Push
-            await sendIncomingCallWebPush(to, {
-                isAudio: false,
-                callerId: profileId,
+        } catch (e) { }
+        // iOS Home Screen / PWA (no FCM) — wake via Web Push
+        try {
+            await sendIncomingCallWebPush(calleeId, {
+                isAudio: !!isAudio,
+                callerId: me,
                 callerName,
-                callerProfilePic: myProfileData.profilePic || '',
-                channelName,
+                callerProfilePic,
+                channelName: call.channelName,
             });
         } catch (e) { }
+    };
 
-        // Schedule missed-call push if not accepted within timeout
-        try {
-            const key = `agora:${channelName}`;
-            if (callTimeouts.has(key)) {
-                clearTimeout(callTimeouts.get(key).timer);
-                callTimeouts.delete(key);
-            }
-            const timer = setTimeout(async () => {
-                try {
-                    await sendPushToProfile(to, {
-                        title: 'Missed video call',
-                        body: 'You missed a video call',
-                        data: { type: 'missed_call', isVideo: 'true' }
-                    });
-                    await sendWebPushToProfile(to, {
-                        title: 'Missed video call',
-                        body: 'You missed a video call',
-                        type: 'missed_call',
-                        tag: `missed-call-${channelName || Date.now()}`,
-                        link: `/message/${profileId}`,
-                        data: { type: 'missed_call', isVideo: 'true', url: `/message/${profileId}` },
-                    });
-                } catch (err) { }
-                callTimeouts.delete(key);
-                // Notify caller so UI can close/mark as missed
-                io.to(String(profileId)).emit('call-not-accepted', { to: String(to), channelName, isAudio: false });
-            }, MISSED_CALL_TIMEOUT_MS);
-            callTimeouts.set(key, { timer, to, from: profileId, isAudio: false, transport: 'agora', channelName });
-        } catch (err) { }
-    });
+    socket.on('video-call', (data) => startCall(data, false));
+    socket.on('audio-call', (data) => startCall(data, true));
 
-    socket.on("video-call-cancel", async ({ to, channelName }) => {
-        if (!to || !channelName) {
-            console.warn('video-call-cancel: Missing to or channelName', { to, channelName });
-            return;
+    // Caller hangs up before the callee answered.
+    const cancelCall = async ({ to, channelName } = {}, isAudioHint) => {
+        if (!to) return;
+        const call = findCall(channelName, me, to);
+        const isAudio = call ? call.isAudio : isAudioHint;
+        const type = callTypeOf(isAudio);
+        if (call && call.accepted) {
+            // Already answered: treat as a normal hang-up.
+            return endCall({ to, channelName: call.channelName }, isAudio);
         }
-        clearCallTimeout(`agora:${channelName}`);
-        io.to(String(to)).emit('video-call-cancelled', { to, connectId: profileId, channelName });
-    });
-
-    socket.on("video-call-reject", async ({ to, channelName }) => {
-        if (!to || !channelName) {
-            console.warn('video-call-reject: Missing to or channelName', { to, channelName });
-            return;
+        if (call) removeCall(call.channelName);
+        io.to(String(to)).emit(`${type}-call-cancelled`, {
+            to, connectId: me, channelName: channelName || call?.channelName,
+        });
+        if (!call && wasFinished(channelName)) return;
+        if (call && call.callerId === me) {
+            await sendMissedCallPush(call.calleeId, me, isAudio, call.channelName);
+            await logCallMessage(io, { callerId: me, calleeId: call.calleeId, isAudio, callEvent: 'missed', call });
         }
-        clearCallTimeout(`agora:${channelName}`);
-        io.to(String(to)).emit('video-call-rejected', { to, connectId: profileId, channelName });
-    });
+    };
+    socket.on('video-call-cancel', (data) => cancelCall(data, false));
+    socket.on('audio-call-cancel', (data) => cancelCall(data, true));
 
-    socket.on("video-call-end", async ({ to, channelName }) => {
-        clearCallTimeout(`agora:${channelName}`);
+    // Callee declines (or auto-declines because they are busy).
+    const rejectCall = async ({ to, channelName } = {}, isAudioHint) => {
+        if (!to) return;
+        const call = findCall(channelName, me, to);
+        // A duplicate push/socket delivery can make one of the callee's
+        // devices send reject after another device answered. Never
+        // invalidate an accepted call.
+        if (call && call.accepted) return;
+        const isAudio = call ? call.isAudio : isAudioHint;
+        const type = callTypeOf(isAudio);
+        if (call) removeCall(call.channelName);
+        const payload = { to, connectId: me, channelName: channelName || call?.channelName };
+        io.to(String(to)).emit(`${type}-call-rejected`, payload);
+        // Stop ringing on the callee's other devices (web tab + phone).
+        socket.to(me).emit(`${type}-call-cancelled`, { ...payload, connectId: String(to), reason: 'rejected_elsewhere' });
+        if (call) {
+            await logCallMessage(io, { callerId: call.callerId, calleeId: call.calleeId, isAudio, callEvent: 'missed', call });
+        }
+    };
+    socket.on('video-call-reject', (data) => rejectCall(data, false));
+    socket.on('audio-call-reject', (data) => rejectCall(data, true));
 
-        let connectId = to;
+    // Either participant hangs up.
+    const endCall = async ({ to, channelName } = {}, isAudioHint) => {
+        if (!to) return;
+        const connectId = String(to);
+        const call = findCall(channelName, me, connectId);
+        const isAudio = call ? call.isAudio : isAudioHint;
+        const type = callTypeOf(isAudio);
+        const accepted = !!call?.accepted;
+        if (call) removeCall(call.channelName);
 
-        try {
+        io.to(connectId).emit(`${type}-call-ended`, {
+            from: me,
+            channelName: channelName || call?.channelName,
+        });
+        // Late duplicate for a call that was already cancelled/ended/timed out.
+        if (!call && wasFinished(channelName)) return;
 
-            // Emit to the connect's profile room (all tabs), not a single socket id
-            if (connectId) {
-                io.to(String(connectId)).emit('video-call-ended', {
-                    from: String(profileId),
-                    channelName,
+        const callerId = call ? call.callerId : me;
+        const calleeId = call ? call.calleeId : connectId;
+        if (!accepted) {
+            // Stop the callee ringing on every device and tell them they missed it.
+            if (callerId === me) {
+                io.to(calleeId).emit(`${type}-call-cancelled`, {
+                    to: calleeId, connectId: me, channelName: channelName || call?.channelName,
                 });
             }
-            try {
-                for (const [key, entry] of callTimeouts.entries()) {
-                    if (entry && entry.transport === 'agora' && entry.to === connectId && entry.from === profileId) {
-                        clearTimeout(entry.timer);
-                        callTimeouts.delete(key);
-                    }
-                }
-            } catch (e) { }
-            const roomKey = getRoomKey(profileId, connectId);
-            const accepted = wasAccepted(roomKey);
-            // Only send push for missed
-            if (!accepted) {
-                try {
-                    await sendPushToProfile(connectId, {
-                        title: 'Missed video call',
-                        body: 'You missed a video call',
-                        data: { type: 'missed_call', isVideo: 'true' }
-                    });
-                } catch (e) { }
-            }
-
-            // Create and emit a call message to both participants
-            try {
-                const room = roomKey;
-                const callEvent = accepted ? 'ended' : 'missed';
-                if (recordEventOnce(roomKey, 'video', callEvent)) {
-                    const callMsg = new Message({
-                        room,
-                        senderId: String(profileId),
-                        receiverId: String(connectId),
-                        message: callEvent === 'missed' ? 'Missed video call' : 'Video call ended',
-                        messageType: 'call',
-                        callType: 'video',
-                        callEvent
-                    });
-                    await callMsg.save();
-                    const updatedMessage = await Message.findOne({ _id: callMsg._id }).populate('parent');
-                    const profileData = await Profile.findById(profileId).populate('user');
-                    if (profileData) {
-                        await broadcastCallMessage({
-                            updatedMessage,
-                            senderId: String(profileId),
-                            otherId: String(connectId),
-                            senderProfile: profileData,
-                        });
-                    }
-                }
-            } catch (e) {
-            }
-        } catch (err) {
-            console.error('Error handling leaveVideoCall:', err, connectId);
+            await sendMissedCallPush(calleeId, callerId, isAudio, channelName || call?.channelName);
         }
-    });
-
-    socket.on("audio-call", async ({ to, channelName, isAudio = true }) => {
-        if (!to || !channelName) {
-            console.warn('audio-call: Missing to or channelName', { to, channelName });
-            return;
-        }
-        let myProfileData = await Profile.findById(profileId)
-        io.to(String(to)).emit("incoming-audio-call", { from: String(profileId), channelName, isAudio: true, callerName: myProfileData.fullName, callerProfilePic: myProfileData.profilePic });
-        try {
-            const callerName = myProfileData.fullName || 'Someone';
-            await sendPushToProfile(to, {
-                title: 'Incoming audio call',
-                body: `${callerName} is calling`,
-                channelId: 'incoming_calls_v3',
-                data: {
-                    type: 'incoming_call',
-                    isAudio: 'true',
-                    callerId: String(profileId),
-                    callerName: myProfileData.fullName || '',
-                    callerProfilePic: myProfileData.profilePic || '',
-                    channelName: channelName || ''
-                }
-            });
-            // iOS Home Screen / PWA (no FCM) — wake via Web Push
-            await sendIncomingCallWebPush(to, {
-                isAudio: true,
-                callerId: profileId,
-                callerName,
-                callerProfilePic: myProfileData.profilePic || '',
-                channelName,
-            });
-        } catch (e) { }
-
-        // Schedule missed-call push if not accepted within timeout
-        try {
-            const key = `agora:${channelName}`;
-            if (callTimeouts.has(key)) {
-                clearTimeout(callTimeouts.get(key).timer);
-                callTimeouts.delete(key);
-            }
-            const timer = setTimeout(async () => {
-                try {
-                    await sendPushToProfile(to, {
-                        title: 'Missed audio call',
-                        body: 'You missed an audio call',
-                        data: { type: 'missed_call', isVideo: 'false' }
-                    });
-                    await sendWebPushToProfile(to, {
-                        title: 'Missed audio call',
-                        body: 'You missed an audio call',
-                        type: 'missed_call',
-                        tag: `missed-call-${channelName || Date.now()}`,
-                        link: `/message/${profileId}`,
-                        data: { type: 'missed_call', isVideo: 'false', url: `/message/${profileId}` },
-                    });
-                } catch (err) { }
-                callTimeouts.delete(key);
-                io.to(profileId).emit('call-not-accepted', { to, channelName, isAudio: true });
-            }, MISSED_CALL_TIMEOUT_MS);
-            callTimeouts.set(key, { timer, to, from: profileId, isAudio: true, transport: 'agora', channelName });
-        } catch (err) { }
-    });
-
-    const relayCallStatus = async ({ to, status }) => {
-        if (!to) return;
-        io.to(String(to)).emit('updated-call-status', {
-            from: String(profileId),
-            status: status || '',
+        const duration = accepted && call?.acceptedAt
+            ? Math.round((Date.now() - call.acceptedAt) / 1000)
+            : undefined;
+        await logCallMessage(io, {
+            callerId, calleeId, isAudio, callEvent: accepted ? 'ended' : 'missed', duration, call,
         });
     };
-    // Clients emit `update-call-status`; keep legacy alias too
-    socket.on("update-call-status", relayCallStatus);
-    socket.on("call-status-update", relayCallStatus);
+    socket.on('video-call-end', (data) => endCall(data, false));
+    socket.on('audio-call-end', (data) => endCall(data, true));
 
-    socket.on("audio-call-cancel", async ({ to, channelName }) => {
-        if (!to || !channelName) {
-            console.warn('audio-call-cancel: Missing to or channelName', { to, channelName });
-            return;
-        }
-        clearCallTimeout(`agora:${channelName}`);
-        io.to(String(to)).emit('audio-call-cancelled', { to, connectId: profileId, channelName });
-    });
-
-    socket.on("audio-call-reject", async ({ to, channelName }) => {
-        if (!to || !channelName) {
-            console.warn('audio-call-reject: Missing to or channelName', { to, channelName });
-            return;
-        }
-        // A duplicate push/socket delivery can cause a callee to send reject
-        // after answering. Do not invalidate an already accepted call.
-        const roomKey = getRoomKey(profileId, to);
-        if (wasAccepted(roomKey)) {
-            return;
-        }
-        clearCallTimeout(`agora:${channelName}`);
-        io.to(String(to)).emit('audio-call-rejected', { to, connectId: profileId, channelName });
-    });
-
-    // End audio call
-    socket.on('audio-call-end', async ({to: connectId, channelName}) => {
+    socket.on('answer-call', async ({ to, channelName, isAudio: isAudioHint = false } = {}) => {
         try {
+            if (!to) return;
+            const callerId = String(to);
+            const call = findCall(channelName, callerId, me);
+            const isAudio = call ? call.isAudio : !!isAudioHint;
+            const type = callTypeOf(isAudio);
+            const channel = channelName || call?.channelName;
 
-            // Emit to the connect's profile room (all tabs)
-            if (connectId) {
-                io.to(String(connectId)).emit('audio-call-ended', {
-                    from: String(profileId),
-                    channelName,
-                });
-            }
-
-            // Clear any pending missed-call timers for this caller<->connect pair
-            try {
-                for (const [key, entry] of callTimeouts.entries()) {
-                    if (entry && entry.transport === 'agora' && entry.to === connectId && entry.from === profileId) {
-                        clearTimeout(entry.timer);
-                        callTimeouts.delete(key);
-                    }
-                }
-            } catch (e) { }
-            const roomKey = getRoomKey(profileId, connectId);
-            const accepted = wasAccepted(roomKey);
-            if (!accepted) {
-                try {
-                    await sendPushToProfile(connectId, {
-                        title: 'Missed audio call',
-                        body: 'You missed an audio call',
-                        data: { type: 'missed_call', isVideo: 'false' }
+            if (call) {
+                if (call.accepted && call.answeredSocketId && call.answeredSocketId !== socket.id) {
+                    // Another of my devices already answered — close this one.
+                    socket.emit(`${type}-call-cancelled`, {
+                        to: me, connectId: callerId, channelName: channel, reason: 'answered_elsewhere',
                     });
-                } catch (e) { }
+                    return;
+                }
+                call.accepted = true;
+                call.answeredSocketId = socket.id;
+                call.acceptedAt = call.acceptedAt || Date.now();
+                clearCallTimer(call);
             }
 
-            // Create and emit a call message to both participants
-            try {
-                const room = roomKey;
-                const callEvent = accepted ? 'ended' : 'missed';
-                if (recordEventOnce(roomKey, 'audio', callEvent)) {
-                    const callMsg = new Message({
-                        room,
-                        senderId: String(profileId),
-                        receiverId: String(connectId),
-                        message: callEvent === 'missed' ? 'Missed audio call' : 'Audio call ended',
-                        messageType: 'call',
-                        callType: 'audio',
-                        callEvent
-                    });
-                    await callMsg.save();
-                    const updatedMessage = await Message.findOne({ _id: callMsg._id }).populate('parent');
-                    const profileData = await Profile.findById(profileId).populate('user');
-                    if (profileData) {
-                        await broadcastCallMessage({
-                            updatedMessage,
-                            senderId: String(profileId),
-                            otherId: String(connectId),
-                            senderProfile: profileData,
-                        });
-                    }
-                }
-            } catch (e) {
-            }
-        } catch (err) {
-            console.error('Error handling leaveAudioCall:', err, connectId);
-        }
-    });
+            const [calleeProfileData, callerProfileData] = await Promise.all([
+                Profile.findById(me).select('fullName profilePic').catch(() => null),
+                Profile.findById(callerId).select('fullName profilePic').catch(() => null),
+            ]);
 
-
-    socket.on("answer-call", async ({ to, channelName, isAudio = false }) => {
-        try {
-            // Record acceptance before async work so a duplicate reject cannot
-            // invalidate a call while profile data/events are being prepared.
-            const roomKey = getRoomKey(profileId, to);
-            markAccepted(roomKey);
-
-            // Clear any pending missed-call timer for this channel
-            try {
-                const key = `agora:${channelName}`;
-                const entry = callTimeouts.get(key);
-                if (entry) {
-                    clearTimeout(entry.timer);
-                    callTimeouts.delete(key);
-                }
-            } catch (e) { }
-            
-            // callee = current socket's profileId (person who accepted the call)
-            const calleeProfileData = await Profile.findById(profileId);
-            // caller = the 'to' user (person who initiated the call)
-            const callerProfileData = await Profile.findById(to);
-
-            // Notify the caller that the callee accepted (show callee info on caller's phone)
-            io.to(String(to)).emit("call-accepted", {
-                channelName,
+            // Only the device that placed the call should join. Other idle
+            // devices of the caller (e.g. a web tab while calling from the
+            // phone) must not auto-join the channel.
+            const callerSocketConnected = call?.callerSocketId && io.sockets.sockets.has(call.callerSocketId);
+            const callerTarget = callerSocketConnected ? call.callerSocketId : callerId;
+            io.to(callerTarget).emit('call-accepted', {
+                channelName: channel,
                 isAudio,
                 callerName: calleeProfileData?.fullName,
                 callerProfilePic: calleeProfileData?.profilePic,
-                callerId: String(profileId)
+                callerId: me,
             });
 
-            // Also notify the callee (echo) so their app can open the call UI with caller info
-            socket.emit("call-accepted", {
-                channelName,
+            // Echo to the answering device so it can open the call UI with caller info
+            socket.emit('call-accepted', {
+                channelName: channel,
                 isAudio,
                 callerName: callerProfileData?.fullName,
                 callerProfilePic: callerProfileData?.profilePic,
-                callerId: String(to)
+                callerId,
             });
 
-            // Captions are opt-in and scoped to the active call channel. Never relay
-            // arbitrary text or audio; the authenticated socket identity is the sender.
-            socket.on("call-transcript", ({ to, channelName, text, isFinal = false } = {}) => {
-                const target = String(to || '');
-                const channel = String(channelName || '');
-                const transcript = String(text || '').trim().slice(0, 500);
-                if (!target || !channel || !transcript) return;
-                io.to(target).emit('call-transcript', {
-                    senderId: String(profileId),
-                    channelName: channel,
-                    text: transcript,
-                    isFinal: Boolean(isFinal),
-                });
+            // Stop ringing on my other devices.
+            socket.to(me).emit(`${type}-call-cancelled`, {
+                to: me, connectId: callerId, channelName: channel, reason: 'answered_elsewhere',
             });
-
-            // Mark this room as accepted to avoid sending 'missed' on leave
         } catch (err) {
-            console.error('Error handling agora-answer-call:', err, { to, channelName, isAudio });
+            console.error('Error handling answer-call:', err, { to, channelName });
         }
     });
-    //         console.log(`📞 call-user from ${data.from} -> ${data.userToCall}`);
-    //         const targetSocketId = onlineUsers.get(data.userToCall);
-    //         if (targetSocketId) {
-    //             io.to(targetSocketId).emit('receive-call', {
-    //                 signal: data.signalData, // MUST be the raw simple-peer signal object
-    //                 from: data.from,
-    //                 name: data.name,
-    //                 isVideo: data.isVideo
-    //             });
-    //         } else {
-    //             console.log('Target not online for call:', data.userToCall);
-    //         }
-    //         // Schedule missed-call push if not accepted within timeout
-    //         try {
-    //             const key = `peer:${data.from}:${data.userToCall}`;
-    //             if (callTimeouts.has(key)) {
-    //                 clearTimeout(callTimeouts.get(key).timer);
-    //                 callTimeouts.delete(key);
-    //             }
-    //             const timer = setTimeout(async () => {
-    //                 const title = data.isVideo ? 'Missed video call' : 'Missed audio call';
-    //                 const body = data.isVideo ? 'You missed a video call' : 'You missed an audio call';
-    //                 try {
-    //                     await sendPushToProfile(data.userToCall, {
-    //                         title,
-    //                         body,
-    //                         data: { type: 'missed_call', isVideo: data.isVideo ? 'true' : 'false' }
-    //                     });
-    //                 } catch (err) {}
-    //                 callTimeouts.delete(key);
-    //                 io.to(data.from).emit('call-not-accepted', { to: data.userToCall, isVideo: data.isVideo });
-    //             }, MISSED_CALL_TIMEOUT_MS);
-    //             callTimeouts.set(key, { timer, to: data.userToCall, from: data.from, isAudio: !data.isVideo, transport: 'peer' });
-    //         } catch (err) {}
-    //     } catch (err) {
-    //         console.error('Error handling call-user:', err, data);
-    //     }
-    // });
 
-    // // Callee answers - expect: { signal: <simple-peer-signal>, to: <callerProfileId>, from: <calleeProfileId> }
-    // socket.on('answer-call', (data) => {
+    const relayCallStatus = async ({ to, status, channelName } = {}) => {
+        if (!to) return;
+        io.to(String(to)).emit('updated-call-status', {
+            from: me,
+            status: status || '',
+            ...(channelName ? { channelName: String(channelName) } : {}),
+        });
+    };
+    // Clients emit `update-call-status`; keep legacy alias too
+    socket.on('update-call-status', relayCallStatus);
+    socket.on('call-status-update', relayCallStatus);
 
-    //     console.log('answer-call', data)
-    //     try {
-    //         console.log(`✅ answer-call from ${data.from} -> ${data.to}`);
-    //         // Clear any pending missed-call timer for this peer call
-    //         try {
-    //             const key = `peer:${data.to}:${data.from}`; // (caller:calle)
-    //             const entry = callTimeouts.get(key);
-    //             if (entry) {
-    //                 clearTimeout(entry.timer);
-    //                 callTimeouts.delete(key);
-    //             }
-    //         } catch (e) {}
-    //         const targetSocketId = onlineUsers.get(data.to);
-    //         if (targetSocketId) {
-    //             io.to(targetSocketId).emit('call-accepted', {
-    //                 signal: data.signal, // raw signal from callee
-    //                 from: data.from
-    //             });
-    //         } else {
-    //             console.log('Caller not online to receive answer:', data.to);
-    //         }
-    //     } catch (err) {
-    //         console.error('Error handling answer-call:', err, data);
-    //     }
-    // });
-
-
-
-
-
+    // Captions are opt-in and scoped to the active call channel. Never relay
+    // arbitrary text or audio; the authenticated socket identity is the sender.
+    // Registered once per socket (it used to be re-registered on every answer).
+    socket.on('call-transcript', ({ to, channelName, text, isFinal = false } = {}) => {
+        const target = String(to || '');
+        const channel = String(channelName || '');
+        const transcript = String(text || '').trim().slice(0, 500);
+        if (!target || !channel || !transcript) return;
+        io.to(target).emit('call-transcript', {
+            senderId: me,
+            channelName: channel,
+            text: transcript,
+            isFinal: Boolean(isFinal),
+        });
+    });
 };

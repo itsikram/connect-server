@@ -102,6 +102,13 @@ const clearInvitesForGame = (io, profileId, gameId) => {
   } catch (_e) {}
 };
 
+const clearAllInvitesForGame = (io, gameId) => {
+  if (!gameId) return;
+  for (const profileId of userInvites.keys()) {
+    clearInvitesForGame(io, profileId, gameId);
+  }
+};
+
 // Helper function to get next active player (skip empty/offline/inactive seats)
 function getNextActivePlayer(gameState, currentPlayerIndex) {
   const players = Array.isArray(gameState?.lastPlayers?.players)
@@ -133,15 +140,22 @@ function getNextActivePlayer(gameState, currentPlayerIndex) {
     }
   }
 
-  const clearAllInvitesForGame = (io, gameId) => {
-    if (!gameId) return;
-    for (const profileId of userInvites.keys()) {
-      clearInvitesForGame(io, profileId, gameId);
-    }
-  };
-
   return currentPlayerIndex;
 }
+
+// The host client drives bot seats, so it may roll/move on behalf of a bot.
+const isAllowedTurnActor = (lastPlayers, by, seatIndex) => {
+  const players = Array.isArray(lastPlayers?.players) ? lastPlayers.players : [];
+  const current = lastPlayers?.currentPlayer;
+  if (typeof current !== "number") return true;
+  if (typeof seatIndex === "number" && seatIndex !== current) return false;
+  const sender = String(by || "");
+  if (!sender) return false;
+  const seat = players[current];
+  if (seat?.profileId && String(seat.profileId) === sender) return true;
+  const hostId = String(players[0]?.profileId || "");
+  return Boolean(seat?.isBot && hostId && hostId === sender);
+};
 
 function ludoSocket(io, socket, profileId) {
   // Derive profileId from handshake if not provided
@@ -296,20 +310,14 @@ function ludoSocket(io, socket, profileId) {
       game.lastPlayers &&
       typeof game.lastPlayers.currentPlayer === "number"
     ) {
-      // Find the player index for this profileId
-      const playerIndex = game.lastPlayers.players?.findIndex(
-        (p) => p.profileId && String(p.profileId) === String(by),
-      );
-
-      // Only allow roll if this player is the current player
-      if (playerIndex !== game.lastPlayers.currentPlayer) {
+      // Only the current seat's owner (or the host acting for a bot seat) may roll
+      if (!isAllowedTurnActor(game.lastPlayers, by)) {
         console.log(
           "[LUDO][server] ❌ ludo:roll rejected - wrong player turn",
           {
             socketId: socket?.id,
             gameId,
             by,
-            playerIndex,
             currentPlayer: game.lastPlayers.currentPlayer,
           },
         );
@@ -356,23 +364,14 @@ function ludoSocket(io, socket, profileId) {
       game.lastPlayers &&
       typeof game.lastPlayers.currentPlayer === "number"
     ) {
-      // Find player index for this profileId
-      const senderPlayerIndex = game.lastPlayers.players?.findIndex(
-        (p) => p.profileId && String(p.profileId) === String(by),
-      );
-
-      // Only allow move if this player is current player and matches playerIndex in payload
-      if (
-        senderPlayerIndex !== game.lastPlayers.currentPlayer ||
-        senderPlayerIndex !== playerIndex
-      ) {
+      // Only the current seat's owner (or the host acting for a bot seat) may move
+      if (!isAllowedTurnActor(game.lastPlayers, by, Number(playerIndex))) {
         console.log(
           "[LUDO][server] ❌ ludo:move rejected - wrong player turn",
           {
             socketId: socket?.id,
             gameId,
             by,
-            senderPlayerIndex,
             payloadPlayerIndex: playerIndex,
             currentPlayer: game.lastPlayers.currentPlayer,
           },
@@ -508,6 +507,7 @@ function ludoSocket(io, socket, profileId) {
             };
           });
         }
+        bumpPlayersSeq(enhanced);
         game.lastPlayers = enhanced;
         io.to(`ludo_${gameId}`).emit("ludo:players", {
           ...enhanced,
@@ -905,11 +905,13 @@ function ludoSocket(io, socket, profileId) {
         Number(existing.lastPlayers.stateVersion || 0),
         0,
       );
-      const nextSeq = Math.max(
+      // Keep versions strictly increasing so clients never drop a fresh
+      // snapshot as a duplicate of the previous one.
+      const incomingSeq = Math.max(
         Number(enhancedPayload.playersSeq || 0),
         Number(enhancedPayload.stateVersion || 0),
-        prevSeq,
       );
+      const nextSeq = incomingSeq > prevSeq ? incomingSeq : prevSeq + 1;
       enhancedPayload.playersSeq = nextSeq;
       enhancedPayload.stateVersion = nextSeq;
     }
@@ -1035,6 +1037,7 @@ function ludoSocket(io, socket, profileId) {
       };
       g.lastPlayers.lastActionType = "player_replace_bot";
       g.lastPlayers.timestamp = Date.now();
+      bumpPlayersSeq(g.lastPlayers);
 
       io.to(`ludo_${gameId}`).emit("ludo:players", {
         ...g.lastPlayers,
@@ -1056,6 +1059,10 @@ function ludoSocket(io, socket, profileId) {
     try {
       const g = games.get(gameId);
       if (g && g.lastPlayers && Array.isArray(g.lastPlayers.players)) {
+        // Only the host may remove a seat.
+        const requesterId = String(effectiveProfileId || "");
+        const hostId = String(g.lastPlayers.players[0]?.profileId || "");
+        if (!requesterId || requesterId !== hostId || playerIndex <= 0) return;
         const player = g.lastPlayers.players[playerIndex];
         if (player && player.profileId) {
           // Remove from tracking
@@ -1069,6 +1076,7 @@ function ludoSocket(io, socket, profileId) {
             name: `Player ${playerIndex + 1}`,
             isActive: false,
           };
+          bumpPlayersSeq(g.lastPlayers);
           // Broadcast update
           io.to(`ludo_${gameId}`).emit("ludo:players", {
             ...g.lastPlayers,

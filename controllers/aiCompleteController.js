@@ -21,6 +21,15 @@ const OLLAMA_NUM_CTX = Number(process.env.OLLAMA_NUM_CTX) || 2048;
 // Keep this configurable, but never use the old 8-second cap for AI captions.
 const GEMINI_JSON_TIMEOUT_MS = Number(process.env.GEMINI_JSON_TIMEOUT_MS) || 30000;
 const GEMINI_STREAM_TIMEOUT_MS = Number(process.env.GEMINI_STREAM_TIMEOUT_MS) || 30000;
+// Used when the configured model has been retired by Google (HTTP 404).
+const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || "gemini-flash-latest";
+const isRetiredGeminiModel = (status, data) =>
+  status === 404 ||
+  /no longer available|is not found|not supported for generatecontent/i.test(
+    String(data?.error?.message || ""),
+  );
+const isThinkingConfigError = (status, data) =>
+  status === 400 && /thinking/i.test(String(data?.error?.message || ""));
 const parseProviderKeys = (value = "") =>
   [...new Set(String(value || "").split(/[,\r\n]+/).map(key => key.trim()).filter(Boolean))];
 const isRateLimitError = (status, data, error) => {
@@ -696,6 +705,7 @@ const completeGemini = async ({
   json,
   temperature,
   maxTokens,
+  useTools = false,
 }) => {
   const keys = parseGeminiKeys(apiKey);
   if (!keys.length) {
@@ -720,7 +730,7 @@ const completeGemini = async ({
   const requestBody = {
     systemInstruction: system ? { parts: [{ text: system }] } : undefined,
     contents,
-    tools: GEMINI_AGENT_TOOLS,
+    ...(useTools ? { tools: GEMINI_AGENT_TOOLS } : {}),
     generationConfig: {
       temperature,
       topK: json ? 4 : 12,
@@ -738,10 +748,11 @@ const completeGemini = async ({
   };
 
   let lastError = null;
+  let activeModel = model;
   for (let i = 0; i < keys.length; i += 1) {
     const response = await axios.post(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-        model,
+        activeModel,
       )}:generateContent?key=${encodeURIComponent(keys[i])}`,
       requestBody,
       {
@@ -754,6 +765,23 @@ const completeGemini = async ({
       const text = functionCallIntent(parts) || extractGeminiText(response.data);
       if (!text) throw new Error("Gemini returned an empty reply");
       return text;
+    }
+    if (
+      isThinkingConfigError(response.status, response.data) &&
+      requestBody.generationConfig.thinkingConfig
+    ) {
+      delete requestBody.generationConfig.thinkingConfig;
+      i -= 1;
+      continue;
+    }
+    if (
+      isRetiredGeminiModel(response.status, response.data) &&
+      activeModel !== GEMINI_FALLBACK_MODEL
+    ) {
+      console.warn(`[ai] Gemini model ${activeModel} unavailable; using ${GEMINI_FALLBACK_MODEL}`);
+      activeModel = GEMINI_FALLBACK_MODEL;
+      i -= 1;
+      continue;
     }
     lastError = new Error(
       response.data?.error?.message ||
@@ -811,6 +839,7 @@ exports.completeAiChat = async (req, res) => {
       ? Number(req.body.temperature)
       : 0.7;
     const maxTokens = Number(req.body?.maxTokens) || 1024;
+    const useTools = req.body?.useTools === true;
     userId = String(req.profile?._id || req.profile?.user?._id || "");
     logAiRequest({
       callId,
@@ -875,6 +904,7 @@ exports.completeAiChat = async (req, res) => {
             json,
             temperature,
             maxTokens,
+            useTools,
           })
         : await completeOpenAi({
             apiKey,
@@ -886,7 +916,7 @@ exports.completeAiChat = async (req, res) => {
             maxTokens,
             endpoint: provider === "grok" ? GROK_URL : provider === "groq" ? GROQ_URL : provider === "ollama" ? OLLAMA_URL : OPENAI_URL,
             providerLabel: provider === "grok" ? "Grok" : provider === "groq" ? "Groq" : provider === "ollama" ? "Ollama" : "ChatGPT",
-            useTools: provider === "groq",
+            useTools: provider === "groq" && useTools,
           });
 
     logAiCall({ callId, provider, model, userId, startedAt, text });
@@ -1167,6 +1197,7 @@ const streamGeminiProvider = async ({
   maxTokens,
   onDelta,
   signal,
+  useTools = false,
 }) => {
   const keys = parseGeminiKeys(apiKey);
   if (!keys.length) {
@@ -1208,7 +1239,7 @@ const streamGeminiProvider = async ({
   const requestBody = {
     systemInstruction: system ? { parts: [{ text: system }] } : undefined,
     contents,
-    tools: GEMINI_AGENT_TOOLS,
+    ...(useTools ? { tools: GEMINI_AGENT_TOOLS } : {}),
     generationConfig: {
       temperature,
       topK: json ? 4 : 12,
@@ -1223,9 +1254,10 @@ const streamGeminiProvider = async ({
   };
 
   let lastError = null;
+  let activeModel = model;
   for (let i = 0; i < keys.length; i += 1) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-      model,
+      activeModel,
     )}:streamGenerateContent?alt=sse&key=${encodeURIComponent(keys[i])}`;
     const response = await axios.post(url, requestBody, {
       timeout: json ? GEMINI_JSON_TIMEOUT_MS : GEMINI_STREAM_TIMEOUT_MS,
@@ -1248,6 +1280,23 @@ const streamGeminiProvider = async ({
         parsed = JSON.parse(raw);
       } catch {
         parsed = null;
+      }
+      if (
+        isThinkingConfigError(response.status, parsed) &&
+        requestBody.generationConfig.thinkingConfig
+      ) {
+        delete requestBody.generationConfig.thinkingConfig;
+        i -= 1;
+        continue;
+      }
+      if (
+        isRetiredGeminiModel(response.status, parsed) &&
+        activeModel !== GEMINI_FALLBACK_MODEL
+      ) {
+        console.warn(`[ai] Gemini model ${activeModel} unavailable; using ${GEMINI_FALLBACK_MODEL}`);
+        activeModel = GEMINI_FALLBACK_MODEL;
+        i -= 1;
+        continue;
       }
       lastError = new Error(
         parsed?.error?.message || `Gemini failed with HTTP ${response.status}`,
@@ -1304,6 +1353,7 @@ exports.streamAiChat = async (req, res) => {
       ? Number(req.body.temperature)
       : 0.7;
     const maxTokens = Number(req.body?.maxTokens) || 1024;
+    const useTools = req.body?.useTools === true;
     const userId = String(req.profile?._id || req.profile?.user?._id || "");
     logAiRequest({
       callId,
@@ -1375,6 +1425,7 @@ exports.streamAiChat = async (req, res) => {
             maxTokens,
             onDelta,
             signal: abort.signal,
+            useTools,
           })
         : await streamOpenAi({
             apiKey,
@@ -1388,7 +1439,7 @@ exports.streamAiChat = async (req, res) => {
             signal: abort.signal,
             endpoint: provider === "grok" ? GROK_URL : provider === "groq" ? GROQ_URL : provider === "ollama" ? OLLAMA_URL : OPENAI_URL,
             providerLabel: provider === "grok" ? "Grok" : provider === "groq" ? "Groq" : provider === "ollama" ? "Ollama" : "ChatGPT",
-           useTools: provider === "groq",
+           useTools: provider === "groq" && useTools,
           });
 
     logAiCall({ callId, provider, model, userId, startedAt, text });

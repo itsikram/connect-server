@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const Profile = require('../models/Profile');
 const { getIncomingCallAlertForProfile } = require('./ringtone');
+const { messagePreview } = require('./messagePreview');
 
 function ensureFirebaseAdminInitialized() {
   if (admin.apps && admin.apps.length > 0) return;
@@ -723,10 +724,9 @@ async function sendChatMessageDataPush(receiverId, payload) {
   if (!updatedMessage || !connectProfile) {
     return { successCount: 0, failureCount: 0 };
   }
-  const messageBody =
-    updatedMessage.messageType === 'audio' && updatedMessage.attachment
-      ? 'Voice message'
-      : updatedMessage.message;
+  // Attachment-only messages (photo / video / voice) used to arrive with an
+  // empty body, which Android shows as a blank notification.
+  const messageBody = messagePreview(updatedMessage);
   const title = String(senderName || 'New Message');
   const body = String(messageBody || '');
   const data = sanitizeFcmDataKeys({

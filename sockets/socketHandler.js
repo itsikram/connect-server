@@ -55,66 +55,19 @@ module.exports = function socketHandler(io) {
             profileSockets.get(profileId).add(socket.id);
             onlineUsers.set(profileId, socket.id);
 
-            // Socket.IO can accept a client before the initial MongoDB
-            // connection completes. Mongoose buffering is disabled, so do
-            // not issue database queries until the connection is ready.
-            if (mongoose.connection.readyState !== 1) {
-                console.warn('[realtime_socket_db_unavailable]', {
-                    socketId: socket.id,
-                    profileId: String(profileId),
-                    readyState: mongoose.connection.readyState,
-                });
-                return;
-            }
-
-            let profileConnects;
-            try {
-                profileConnects = (await Profile.findById(profileId)) || null;
-            } catch (err) {
-                console.error('Error loading profile on socket connection:', err);
-                return;
-            }
-
-            // Update user's lastLogin and isActive status on connection
-            try {
-                await User.findOneAndUpdate(
-                    { profile: profileId },
-                    { lastLogin: Date.now() },
-                    { new: true }
-                );
-                await Profile.findOneAndUpdate(
-                    { _id: profileId },
-                    { isActive: true, lastActive: new Date() },
-                    { new: true }
-                );
-            } catch (err) {
-                console.error('Error updating user activity on connection:', err);
-            }
-
             // Join browser-specific room if browserId is provided
             if (browserId && browserId !== 'undefined') {
                 socket.join(`browser_${browserId}`);
             }
 
-            // Register event handlers before any database work. Relays emit
-            // immediately after the Socket.IO connect acknowledgement.
-            messageSocket(io, socket, profileId);
-
-            // Emit connect_online to all connects (regardless of browserId)
+            // Register every event handler synchronously, BEFORE any awaited
+            // database work. Clients emit (sendMessage, audio-call, joinRoom,
+            // answer-call...) immediately after the connect acknowledgement;
+            // handlers registered after an await silently dropped those
+            // events, and none were registered at all while MongoDB was
+            // still connecting.
             try {
-                if (profileConnects && profileConnects.connects && profileConnects.connects.length > 0) {
-                    profileConnects.connects.forEach(connect => {
-                        io.to(String(connect)).emit('connect_online', { profileId });
-                    });
-                }
-            } catch (err) {
-                console.error('Error emitting connect_online:', err);
-            }
-
-
-
-            // Message & notification socket modules
-            try {
+                messageSocket(io, socket, profileId);
                 notificationSocket(io, socket, profileId);
                 callingSocket(io, socket, profileId, onlineUsers);
                 ludoSocket(io, socket, profileId);
@@ -122,6 +75,57 @@ module.exports = function socketHandler(io) {
             } catch (err) {
                 console.error('Error initializing message/notification sockets:', err);
             }
+
+            // Presence bookkeeping runs in the background so it never delays
+            // (or, on early return, skips) the handler registration below.
+            (async () => {
+                // Socket.IO can accept a client before the initial MongoDB
+                // connection completes. Mongoose buffering is disabled, so do
+                // not issue database queries until the connection is ready.
+                if (mongoose.connection.readyState !== 1) {
+                    console.warn('[realtime_socket_db_unavailable]', {
+                        socketId: socket.id,
+                        profileId: String(profileId),
+                        readyState: mongoose.connection.readyState,
+                    });
+                    return;
+                }
+
+                let profileConnects;
+                try {
+                    profileConnects = (await Profile.findById(profileId)) || null;
+                } catch (err) {
+                    console.error('Error loading profile on socket connection:', err);
+                    return;
+                }
+
+                // Update user's lastLogin and isActive status on connection
+                try {
+                    await User.findOneAndUpdate(
+                        { profile: profileId },
+                        { lastLogin: Date.now() },
+                        { new: true }
+                    );
+                    await Profile.findOneAndUpdate(
+                        { _id: profileId },
+                        { isActive: true, lastActive: new Date() },
+                        { new: true }
+                    );
+                } catch (err) {
+                    console.error('Error updating user activity on connection:', err);
+                }
+
+                // Emit connect_online to all connects (regardless of browserId)
+                try {
+                    if (profileConnects && profileConnects.connects && profileConnects.connects.length > 0) {
+                        profileConnects.connects.forEach(connect => {
+                            io.to(String(connect)).emit('connect_online', { profileId });
+                        });
+                    }
+                } catch (err) {
+                    console.error('Error emitting connect_online:', err);
+                }
+            })();
 
         }
 
@@ -256,7 +260,7 @@ module.exports = function socketHandler(io) {
                 reason: 'client_or_transport_disconnect',
             });
 
-            if (profileId !== 'undefined') {
+            if (profileId && profileId !== 'undefined') {
                 try {
                     // Remove this socket from profile's socket set
                     let hasOtherSockets = false;
@@ -275,7 +279,10 @@ module.exports = function socketHandler(io) {
                     
                     // If user still has other active sockets, skip offline logic
                     if (hasOtherSockets) {
-                        onlineUsers.delete(profileId);
+                        // Still online on another device (e.g. web + phone):
+                        // point at a remaining socket instead of dropping them.
+                        const [remainingSocketId] = profileSockets.get(profileId);
+                        onlineUsers.set(profileId, remainingSocketId);
                         return;
                     }
                     

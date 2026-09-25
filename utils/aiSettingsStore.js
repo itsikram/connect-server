@@ -3,7 +3,17 @@ const path = require("path");
 const AiSettings = require("../models/AiSettings");
 
 const CACHE_TTL_MS = 15000;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
+// Models Google has retired for new API keys; saved settings using them
+// are moved to the current default.
+const RETIRED_GEMINI_MODELS = new Set([
+  "gemini-1.5-flash",
+  "gemini-1.5-pro",
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-lite",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+]);
 let cache = { at: 0, doc: null };
 
 const PROVIDERS = ["gemini", "openai", "cursor", "grok", "groq", "ollama"];
@@ -90,7 +100,10 @@ const envFallbackFor = (provider) => {
 const normalizeDoc = (doc = {}) => {
   const base = defaultDoc();
   const configuredModels = { ...base.models, ...(doc.models || {}) };
-  if (!configuredModels.gemini || configuredModels.gemini === "gemini-2.0-flash") {
+  if (
+    !configuredModels.gemini ||
+    RETIRED_GEMINI_MODELS.has(configuredModels.gemini)
+  ) {
     configuredModels.gemini = GEMINI_MODEL;
   }
   if (!doc.models?.ollama || doc.models.ollama === "llama3.2") {

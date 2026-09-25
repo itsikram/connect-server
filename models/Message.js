@@ -48,6 +48,11 @@ messageSchema.index({ senderId: 1, receiverId: 1, timestamp: -1 });
 messageSchema.index({ receiverId: 1, timestamp: -1 });
 messageSchema.index({ senderId: 1, timestamp: -1 });
 messageSchema.index({ receiverId: 1, isSeen: 1, timestamp: -1 });
+// Idempotent sends: sendMessage looks up an existing copy by (senderId, tempId)
+messageSchema.index(
+    { senderId: 1, tempId: 1 },
+    { partialFilterExpression: { tempId: { $type: 'string' } } }
+);
 messageSchema.index({
     isSeen: 1,
     messageType: 1,

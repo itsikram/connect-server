@@ -6,15 +6,11 @@ const updateLastActive = require("../utils/updateLastActive");
 const axios = require("axios");
 const { listHasId } = require("../utils/ids");
 
-const {
-  sendChatMessageDataPush,
-  sendDataPushToProfile,
-} = require("../utils/pushNotifications");
+const { sendDataPushToProfile } = require("../utils/pushNotifications");
+const { notifyNewChatMessage } = require("../utils/chatNotifications");
+const { senderDisplayName } = require("../utils/messagePreview");
 const config = require("../config/config.json");
 
-// Track recently processed messages to prevent duplicate notifications
-const recentMessageNotifications = new Map(); // messageId -> timestamp
-const NOTIFICATION_DEDUP_WINDOW = 5000; // 5 seconds
 
 module.exports = function messageSocket(io, socket, profileId) {
   // Room management for real-time messaging
@@ -172,9 +168,22 @@ module.exports = function messageSocket(io, socket, profileId) {
   );
 
   socket.on("deleteMessage", async (messageId) => {
-    let deletedMessages = await Message.findOneAndDelete({ _id: messageId });
-    if (deletedMessages) {
-      io.to(deletedMessages.room).emit("deleteMessage", messageId);
+    try {
+      if (!isValidObjectId(messageId)) return;
+      // Only the sender may delete their own message.
+      const deleted = await Message.findOneAndDelete({
+        _id: messageId,
+        senderId: String(profileId),
+      });
+      if (deleted) {
+        io.to([
+          deleted.room,
+          String(deleted.senderId),
+          String(deleted.receiverId),
+        ].filter(Boolean)).emit("deleteMessage", String(messageId));
+      }
+    } catch (error) {
+      console.error("deleteMessage failed:", error?.message || error);
     }
   });
 
@@ -325,7 +334,16 @@ module.exports = function messageSocket(io, socket, profileId) {
       callEvent,
       tempId,
     } = payload;
-    const senderId = payloadSenderId || profileId;
+    // The authenticated socket identity is the sender; never trust the payload
+    // over it (the payload value is only a fallback for legacy clients).
+    const senderId = String(profileId || payloadSenderId || "");
+    // Web and Expo both derive the room as the sorted pair of profile ids.
+    // Recompute it server-side so a client with a stale/malformed room can
+    // never send a message the other side doesn't receive.
+    const chatRoom =
+      senderId && receiverId
+        ? [senderId, String(receiverId)].sort().join("_")
+        : room;
 
     const reply = (data) => {
       if (typeof ack === "function") {
@@ -342,8 +360,6 @@ module.exports = function messageSocket(io, socket, profileId) {
       if (obj && tempId && !obj.tempId) obj.tempId = tempId;
       return obj;
     };
-
-      console.log("sendMessage 0");
 
       if (isAi) {
         try {
@@ -370,7 +386,7 @@ module.exports = function messageSocket(io, socket, profileId) {
             senderPP: config?.logo,
             tempId,
           };
-          io.to(room).emit("newMessage", aiPayload);
+          io.to(chatRoom).emit("newMessage", aiPayload);
           reply({ ok: true, ...aiPayload });
           return;
         } catch (error) {
@@ -396,7 +412,7 @@ module.exports = function messageSocket(io, socket, profileId) {
           );
           if (senderBlockedReceiver || receiverBlockedSender) {
             const blockedPayload = {
-              room,
+              room: chatRoom,
               senderId,
               receiverId,
               tempId,
@@ -404,7 +420,6 @@ module.exports = function messageSocket(io, socket, profileId) {
                 ? "You blocked this user"
                 : "You are blocked by this user",
             };
-            socket.emit("message_blocked", blockedPayload);
             io.to(String(senderId)).emit("message_blocked", blockedPayload);
             reply({ ok: false, blocked: true, ...blockedPayload });
             return;
@@ -416,38 +431,43 @@ module.exports = function messageSocket(io, socket, profileId) {
         return;
       }
 
-      console.log("sendMessage 1");
-
-      let newMessage;
-      if (parent == false) {
-        newMessage = new Message({
-          room,
-          senderId,
-          receiverId,
-          message,
-          attachment,
-          messageType,
-          duration,
-          callType,
-          callEvent,
-          tempId,
-        });
-      } else {
-        newMessage = new Message({
-          room,
-          senderId,
-          receiverId,
-          message,
-          attachment,
-          parent,
-          messageType,
-          duration,
-          callType,
-          callEvent,
-          tempId,
-        });
+      if (!senderId || !receiverId) {
+        reply({ ok: false, error: "senderId and receiverId are required", tempId });
+        return;
       }
+
       try {
+      // Idempotency: a retry / reconnect flush of the same optimistic message
+      // (same tempId) must not create a second copy.
+      if (tempId) {
+        const existing = await Message.findOne({ senderId, tempId }).populate("parent");
+        if (existing) {
+          const existingMessage = serializeMessage(existing);
+          reply({ ok: true, updatedMessage: existingMessage, tempId, duplicate: true });
+          io.to(String(senderId)).emit("messageSent", {
+            updatedMessage: existingMessage,
+            chatPage: true,
+            isRealTime: true,
+            tempId,
+          });
+          return;
+        }
+      }
+
+      const newMessage = new Message({
+        room: chatRoom,
+        senderId,
+        receiverId: String(receiverId),
+        message,
+        attachment: attachment || undefined,
+        // Clients send `parent: false` when not replying.
+        ...(parent && isValidObjectId(parent) ? { parent } : {}),
+        messageType,
+        duration,
+        callType,
+        callEvent,
+        tempId,
+      });
       await newMessage.save();
 
       // Update last active time for sending message
@@ -461,8 +481,7 @@ module.exports = function messageSocket(io, socket, profileId) {
         reply({ ok: false, error: "Sender profile not found" });
         return;
       }
-      let senderName =
-        profileData.user?.firstName + " " + profileData.user?.surname;
+      const senderName = senderDisplayName(profileData);
       let senderPP = profileData.profilePic || config?.defaultProfile;
 
       updatedMessage = serializeMessage(updatedMessage);
@@ -478,15 +497,16 @@ module.exports = function messageSocket(io, socket, profileId) {
         tempId,
       };
 
-      io.to(room).emit("newMessage", messagePayload);
-      // Sender confirmation even if they are not currently in the chat room
-      socket.emit("messageSent", messagePayload);
+      io.to(chatRoom).emit("newMessage", messagePayload);
+      // Sender confirmation on every device of the sender (web tab + phone),
+      // even if they are not currently in the chat room.
+      io.to(String(senderId)).emit("messageSent", messagePayload);
       reply({ ok: true, updatedMessage, tempId });
 
-      let connectProfile = await Profile.findById(senderId).populate("user");
+      const connectProfile = profileData;
       // Emit newMessageToUser only for real-time messages (isRealTime: true)
       // This ensures the receiver gets notification only when a NEW message arrives
-      io.to(receiverId).emit("newMessageToUser", {
+      io.to(String(receiverId)).emit("newMessageToUser", {
         updatedMessage,
         senderName,
         senderPP,
@@ -495,116 +515,18 @@ module.exports = function messageSocket(io, socket, profileId) {
         isRealTime: true, // Flag indicates this is a real-time notification, not from initial load
       });
 
-      let receiverProfile = await Profile.findById(receiverId).populate("user");
+      // Push (mobile) + bell / Web Push (web). Runs after the ack so sending
+      // never waits on notification delivery.
+      await notifyNewChatMessage(io, {
+        updatedMessage,
+        senderId,
+        receiverId,
+        senderName,
+        senderPP,
+        senderProfile: profileData,
+        room: chatRoom,
+      });
 
-      let { isActive, lastLogin } = await checkIsActive(receiverId);
-
-      // Only send notifications for real-time messages, not for old/cached messages
-      // This prevents notification spam when opening the app
-      console.log("sendMessage 2");
-      // Outbound notifications (FCM + web + email fallback) — not for self-messages
-      // Only send notifications if receiver is not the sender
-      if (String(receiverId) !== String(senderId)) {
-        try {
-          console.log("sendMessage 3");
-          const messageId = String(updatedMessage._id);
-          const now = Date.now();
-          const lastNotificationTime =
-            recentMessageNotifications.get(messageId);
-
-          if (
-            lastNotificationTime &&
-            now - lastNotificationTime < NOTIFICATION_DEDUP_WINDOW
-          ) {
-            console.log(
-              `Skipping duplicate notification for message ${messageId} (sent ${now - lastNotificationTime}ms ago)`,
-            );
-          } else {
-            recentMessageNotifications.set(messageId, now);
-
-            for (const [
-              msgId,
-              timestamp,
-            ] of recentMessageNotifications.entries()) {
-              if (now - timestamp > NOTIFICATION_DEDUP_WINDOW) {
-                recentMessageNotifications.delete(msgId);
-              }
-            }
-
-            // 1) Mobile FCM first (independent of saveNotification / web)
-            let fcmResult = { successCount: 0, failureCount: 0 };
-            if (connectProfile) {
-              try {
-                fcmResult = await sendChatMessageDataPush(receiverId, {
-                  senderId,
-                  updatedMessage,
-                  senderName,
-                  senderPP,
-                  connectProfile,
-                  room,
-                });
-                console.log("[FCM chat] sendMessage push result", {
-                  receiverId: String(receiverId),
-                  senderId: String(senderId),
-                  messageId: String(updatedMessage?._id),
-                  successCount: fcmResult?.successCount,
-                  failureCount: fcmResult?.failureCount,
-                });
-              } catch (e) {
-                console.error(
-                  "[FCM chat] sendMessage push failed:",
-                  e?.message || e,
-                );
-              }
-            } else {
-              console.warn("[FCM chat] skipped — connectProfile missing");
-            }
-
-            // 2) Web: persist + socket to browsers
-            const {
-              saveNotification,
-            } = require("../controllers/notificationController");
-            const activeBrowserIds =
-              receiverProfile?.browserIds
-                ?.filter((browser) => browser.isActive)
-                ?.map((browser) => browser.browserId) || [];
-
-            const notificationData = {
-              receiverId: receiverId,
-              text: `${senderName}: ${updatedMessage.message}`,
-              link: `/message/${senderId}`,
-              icon: senderPP,
-              type: "message",
-              browserIds: activeBrowserIds,
-              data: {
-                senderId: senderId,
-                messageId: updatedMessage._id,
-                room: room,
-                senderName: senderName,
-                senderProfilePic: senderPP,
-              },
-            };
-
-            try {
-              await saveNotification(io, notificationData);
-            } catch (saveErr) {
-              console.error(
-                "saveNotification failed:",
-                saveErr?.message || saveErr,
-              );
-            }
-          }
-          console.log("sendMessage 5");
-        } catch (error) {
-          console.log("sendMessage 6");
-          console.error("Error sending web notification for message:", error);
-        }
-      }
-      console.log("sendMessage 7");
-
-      if (!isActive && String(receiverId) !== String(senderId)) {
-        // Try push notification first; fallback to email if none sent
-      }
       } catch (error) {
         console.error("sendMessage failed:", error?.message || error);
         reply({ ok: false, error: error?.message || "Failed to send message", tempId });
@@ -800,20 +722,19 @@ module.exports = function messageSocket(io, socket, profileId) {
       if (isTyping) {
         socket.to(room).emit("typing", {
           receiverId,
-          senderId: senderId || profileId,
+          senderId: profileId || senderId,
           isTyping: true,
           type,
         });
         // Update last active time for typing activity (only when actively typing)
-        // Use senderId from event or fallback to profileId from socket context
-        const activeProfileId = senderId || profileId;
+        const activeProfileId = profileId || senderId;
         if (activeProfileId) {
           await updateLastActive(activeProfileId);
         }
       } else {
         socket.to(room).emit("typing", {
           receiverId,
-          senderId: senderId || profileId,
+          senderId: profileId || senderId,
           isTyping: false,
         });
       }
@@ -826,20 +747,22 @@ module.exports = function messageSocket(io, socket, profileId) {
   });
 
   socket.on("seenMessage", async (message) => {
-    // let msgId = message._id;
-    if (message?._id) {
-      let msg = await Message.findOneAndUpdate(
-        { _id: message._id },
+    try {
+      const messageId = message?._id;
+      if (!messageId || !isValidObjectId(messageId)) return;
+      // Only the receiver can mark a message as seen.
+      const msg = await Message.findOneAndUpdate(
+        { _id: messageId, receiverId: String(profileId) },
         { isSeen: true },
         { new: true },
       );
-      if (msg) {
-        io.to(message.room).emit("seenMessage", msg);
-        // Update last active time for viewing messages (use profileId from socket context)
-        if (profileId) {
-          await updateLastActive(profileId);
-        }
-      }
+      if (!msg) return;
+      // Deliver to both participants on every device, once per socket.
+      io.to([msg.room, String(msg.senderId), String(msg.receiverId)].filter(Boolean))
+        .emit("seenMessage", msg);
+      await updateLastActive(profileId);
+    } catch (error) {
+      console.error("seenMessage failed:", error?.message || error);
     }
   });
 

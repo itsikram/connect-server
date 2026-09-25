@@ -401170,3 +401170,157 @@
   "profileId": "68ba47a03c9a326dacbc2f80",
   "removed": true
 }
+[2026-09-25T11:05:07.076Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "g1",
+  "players": 2
+}
+[2026-09-25T11:05:07.079Z] [LUDO-STATE] game:g1 {
+  "gameId": "g1",
+  "snapshot": {
+    "gameId": "g1",
+    "players": [
+      {
+        "profileId": "p0",
+        "isActive": false,
+        "isOffline": false
+      },
+      {
+        "profileId": "p1",
+        "isActive": true,
+        "isOffline": false
+      }
+    ]
+  }
+}
+[2026-09-25T11:08:16.917Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "g",
+  "players": 3,
+  "currentPlayer": 1
+}
+[2026-09-25T11:08:16.919Z] [LUDO-STATE] game:g {
+  "gameId": "g",
+  "snapshot": {
+    "gameId": "g",
+    "playersSeq": 100,
+    "currentPlayer": 1,
+    "players": [
+      {
+        "profileId": "H",
+        "isActive": true,
+        "isOffline": false
+      },
+      {
+        "isBot": true,
+        "isActive": true,
+        "isOffline": ""
+      },
+      {
+        "profileId": "G",
+        "isActive": true,
+        "isOffline": false
+      }
+    ]
+  }
+}
+[2026-09-25T11:08:16.920Z] [LUDO-EVENT] roll-validated {
+  "socketId": "s1",
+  "gameId": "g",
+  "by": "H",
+  "value": 3
+}
+[2026-09-25T11:08:16.921Z] [LUDO-STATE] game:g {
+  "gameId": "g",
+  "snapshot": {
+    "gameId": "g",
+    "playersSeq": 100,
+    "currentPlayer": 1,
+    "players": [
+      {
+        "profileId": "H",
+        "isActive": true,
+        "isOffline": false
+      },
+      {
+        "isBot": true,
+        "isActive": true,
+        "isOffline": ""
+      },
+      {
+        "profileId": "G",
+        "isActive": true,
+        "isOffline": false
+      }
+    ],
+    "diceValue": 3
+  }
+}
+[2026-09-25T11:08:16.933Z] [LUDO-EVENT] move-validated {
+  "socketId": "s1",
+  "gameId": "g",
+  "by": "H",
+  "playerIndex": 1,
+  "toSteps": 4
+}
+[2026-09-25T11:08:16.934Z] [LUDO-STATE] game:g {
+  "gameId": "g",
+  "snapshot": {
+    "gameId": "g",
+    "playersSeq": 100,
+    "currentPlayer": 1,
+    "players": [
+      {
+        "profileId": "H",
+        "isActive": true,
+        "isOffline": false
+      },
+      {
+        "isBot": true,
+        "isActive": true,
+        "isOffline": ""
+      },
+      {
+        "profileId": "G",
+        "isActive": true,
+        "isOffline": false
+      }
+    ],
+    "diceValue": 3
+  }
+}
+[2026-09-25T11:08:16.934Z] [LUDO-EVENT] players-snapshot {
+  "gameId": "g",
+  "players": 3,
+  "currentPlayer": 2
+}
+[2026-09-25T11:08:16.935Z] [LUDO-STATE] game:g {
+  "gameId": "g",
+  "snapshot": {
+    "gameId": "g",
+    "playersSeq": 101,
+    "currentPlayer": 2,
+    "gameStarted": true,
+    "players": [
+      {
+        "profileId": "H",
+        "isActive": true,
+        "isOffline": false
+      },
+      {
+        "isBot": true,
+        "isActive": true,
+        "isOffline": ""
+      },
+      {
+        "profileId": "G",
+        "isActive": true,
+        "isOffline": false
+      }
+    ],
+    "stateVersion": 101
+  }
+}
+[2026-09-25T11:08:16.937Z] [LUDO-EVENT] leave {
+  "gameId": "g",
+  "profileId": "G",
+  "removed": false
+}

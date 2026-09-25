@@ -51,12 +51,30 @@ exports.saveGameState = async (req, res, next) => {
       });
     }
 
+    // Bot/local seats carry ids like "bot-1" or "local" that are not
+    // ObjectIds; strip them so the snapshot still validates and saves.
+    const toObjectIdOrUndefined = (value) =>
+      value && mongoose.Types.ObjectId.isValid(String(value)) &&
+      String(value).length === 24
+        ? value
+        : undefined;
+    const sanitizedPlayers = players.map((player) => ({
+      ...player,
+      profileId: toObjectIdOrUndefined(player?.profileId),
+    }));
+    const sanitizedWinners = Array.isArray(winners)
+      ? winners.map((winner) => ({
+          ...winner,
+          profileId: toObjectIdOrUndefined(winner?.profileId),
+        }))
+      : winners;
+
     const game = await LudoGame.findOneAndUpdate(
       { gameId },
       {
         gameId,
         host: hostId,
-        players,
+        players: sanitizedPlayers,
         currentPlayer:
           currentPlayer !== undefined
             ? currentPlayer
@@ -71,7 +89,7 @@ exports.saveGameState = async (req, res, next) => {
           gameEnded !== undefined
             ? gameEnded
             : existingGame?.gameEnded || false,
-        winners: winners || existingGame?.winners || [],
+        winners: sanitizedWinners || existingGame?.winners || [],
         selectedPlayerCount:
           selectedPlayerCount || existingGame?.selectedPlayerCount || 4,
         lastUpdated: new Date(),
