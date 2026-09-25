@@ -7,6 +7,7 @@ const {
   transcribeWithGemini,
   isGeminiRefineReady,
   shouldRefine,
+  hasAudibleSpeech,
 } = require("./geminiTranscriber");
 
 const JWT_SECRET = process.env.JWT_SECRET_KEY;
@@ -17,6 +18,19 @@ const FINALIZE_GRACE_MS = Number(process.env.SPEECH_FINALIZE_GRACE_MS || 280);
 const UTTERANCE_END_MS = Number(process.env.SPEECH_UTTERANCE_END_MS || 1000);
 // Keep at most this much audio per utterance for the Gemini second pass.
 const MAX_UTTERANCE_PCM_BYTES = 16000 * 2 * 40;
+// Server-side voice activity detection for the Gemini pass. Deepgram often
+// returns no words at all for Bangla, so it never reports an utterance end;
+// this detects the pause itself so every spoken sentence reaches Gemini.
+const VAD_END_SILENCE_MS = Number(process.env.SPEECH_VAD_END_SILENCE_MS || 850);
+const VAD_MIN_SPEECH_MS = Number(process.env.SPEECH_VAD_MIN_SPEECH_MS || 160);
+const VAD_MIN_RMS = Number(process.env.SPEECH_VAD_MIN_RMS || 420);
+const VAD_MAX_UTTERANCE_MS = 25000;
+// Audio kept before detected speech so the first syllable is not cut off.
+const VAD_PREROLL_BYTES = 16000 * 2 * 0.5;
+const VAD_FRAME_SAMPLES = 320; // 20 ms at 16 kHz
+// A Deepgram draft arriving this soon after a VAD final, over audio with no
+// speech, is the tail of the sentence already sent to Gemini.
+const STALE_DRAFT_MS = 4000;
 const BANGLA_ENDPOINTING_MS = Number(
   process.env.SPEECH_BANGLA_ENDPOINTING_MS || 450,
 );
@@ -477,7 +491,9 @@ class DeepgramBridge {
     const effectiveLanguage = this.resolveLanguage(language);
     const model = this.resolveModel(effectiveLanguage);
     const pcmStream = isLinear16Audio(mimeType, encoding);
-    const nativeContainer = !pcmStream && canStreamNativeContainer(mimeType);
+    // forcePcm: the session transcodes containers to 16 kHz PCM with ffmpeg.
+    const nativeContainer =
+      !pcmStream && !audioOptions?.forcePcm && canStreamNativeContainer(mimeType);
     const isBangla = effectiveLanguage.startsWith("bn");
     const options = {
       model,
@@ -546,7 +562,23 @@ const createSpeechSession = (ws, transcriber) => {
     utterancePcmBytes: 0,
     pcmSampleRate: 16000,
     refineChain: Promise.resolve(),
+    // No Deepgram: Gemini transcribes each utterance found by the VAD.
+    geminiOnly: false,
+    // Set once the VAD has heard speech, i.e. it works with this microphone.
+    vadActive: false,
+    vad: null,
+    lastVadFinalAt: 0,
   };
+
+  const newVadState = () => ({
+    speaking: false,
+    speechMs: 0,
+    silenceMs: 0,
+    utteranceMs: 0,
+    // Starts at a quiet-room level (×2.8 ≈ VAD_MIN_RMS) and adapts from there.
+    noiseFloor: VAD_MIN_RMS / 2.8,
+  });
+  state.vad = newVadState();
 
   const send = (payload) => {
     if (ws.readyState === 1) {
@@ -575,6 +607,10 @@ const createSpeechSession = (ws, transcriber) => {
     state.pendingPcmBytes = 0;
     state.utterancePcm = [];
     state.utterancePcmBytes = 0;
+    state.geminiOnly = false;
+    state.vadActive = false;
+    state.vad = newVadState();
+    state.lastVadFinalAt = 0;
     state.usePcmStream = isLinear16Audio(state.mimeType, state.encoding);
     state.useNativeContainer =
       !state.usePcmStream && canStreamNativeContainer(state.mimeType);
@@ -645,6 +681,64 @@ const createSpeechSession = (ws, transcriber) => {
     ) {
       state.utterancePcmBytes -= state.utterancePcm.shift().length;
     }
+    trackVoiceActivity(chunk);
+  };
+
+  /** Drops old silence while nobody is speaking, keeping a short pre-roll. */
+  const trimSilentPcm = () => {
+    while (
+      state.utterancePcm.length > 1 &&
+      state.utterancePcmBytes - state.utterancePcm[0].length >= VAD_PREROLL_BYTES
+    ) {
+      state.utterancePcmBytes -= state.utterancePcm.shift().length;
+    }
+  };
+
+  const trackVoiceActivity = (chunk) => {
+    if (!state.isRecording || state.isStopping) return;
+    const vad = state.vad;
+    const rate = state.pcmSampleRate || 16000;
+    const frameSamples = Math.max(160, Math.round((VAD_FRAME_SAMPLES * rate) / 16000));
+    const frameBytes = frameSamples * 2;
+    for (let offset = 0; offset + frameBytes <= chunk.length; offset += frameBytes) {
+      let sum = 0;
+      for (let i = offset; i < offset + frameBytes; i += 2) {
+        const sample = chunk.readInt16LE(i);
+        sum += sample * sample;
+      }
+      const rms = Math.sqrt(sum / frameSamples);
+      const frameMs = (frameSamples / rate) * 1000;
+      const threshold = Math.max(VAD_MIN_RMS, vad.noiseFloor * 2.8);
+      // Background noise level: falls quickly in quiet gaps, rises slowly so
+      // steady noise (fan, traffic) stops counting as speech after a while.
+      vad.noiseFloor =
+        rms < vad.noiseFloor
+          ? vad.noiseFloor * 0.9 + rms * 0.1
+          : vad.noiseFloor * 0.998 + rms * 0.002;
+      if (rms >= threshold) {
+        vad.speechMs += frameMs;
+        vad.silenceMs = 0;
+        if (!vad.speaking && vad.speechMs >= VAD_MIN_SPEECH_MS) {
+          vad.speaking = true;
+          state.vadActive = true;
+          send({ type: "status", message: "speech-start" });
+        }
+      } else {
+        vad.silenceMs += frameMs;
+        // Short blips (a cough, a click) that never became speech decay.
+        if (!vad.speaking && vad.silenceMs > 300) vad.speechMs = 0;
+      }
+      if (vad.speaking) vad.utteranceMs += frameMs;
+    }
+
+    if (
+      vad.speaking &&
+      (vad.silenceMs >= VAD_END_SILENCE_MS || vad.utteranceMs >= VAD_MAX_UTTERANCE_MS)
+    ) {
+      emitUtteranceFinal({ fromVad: true });
+    } else if (!vad.speaking && !state.lastPartial && !state.confirmedTranscript) {
+      trimSilentPcm();
+    }
   };
 
   const takeUtterancePcm = () => {
@@ -661,10 +755,21 @@ const createSpeechSession = (ws, transcriber) => {
    * Sends one final transcript. With Gemini available the utterance audio is
    * re-transcribed first; finals are chained so they arrive in speech order.
    */
-  const sendRefinedFinal = (draftText, pcm) => {
+  const sendRefinedFinal = (draftText, pcm, { done = false } = {}) => {
+    // done marks the last final of a stopped session, so clients waiting
+    // for it after "stop" can close the socket.
+    const extra = done ? { done: true } : {};
     const run = async () => {
       let text = draftText;
-      if (state.refineEnabled && shouldRefine(pcm, state.pcmSampleRate)) {
+      if (
+        text &&
+        state.refineEnabled &&
+        Date.now() - state.lastVadFinalAt < STALE_DRAFT_MS &&
+        !(pcm && hasAudibleSpeech(pcm))
+      ) {
+        // Late Deepgram words for a sentence Gemini already transcribed.
+        text = "";
+      } else if (state.refineEnabled && shouldRefine(pcm, state.pcmSampleRate)) {
         send({ type: "status", message: "refining" });
         const refined = await transcribeWithGemini(pcm, {
           sampleRate: state.pcmSampleRate,
@@ -674,27 +779,32 @@ const createSpeechSession = (ws, transcriber) => {
         if (typeof refined === "string") text = normalizeText(refined);
       }
       if (!text) {
-        send({ type: "final", text: "", isFinal: true, empty: true });
+        send({ type: "final", text: "", isFinal: true, empty: true, ...extra });
         return;
       }
       console.log(
         `[speech] session=${state.sessionLabel} sending final text="${text}"`,
       );
-      send({ type: "final", text, confidence: 1, isFinal: true });
+      send({ type: "final", text, confidence: 1, isFinal: true, ...extra });
     };
     state.refineChain = state.refineChain.then(run, run);
     return state.refineChain;
   };
 
-  const emitUtteranceFinal = () => {
+  const emitUtteranceFinal = ({ fromVad = false } = {}) => {
     const text = normalizeText(
       state.lastPartial || state.confirmedTranscript || "",
     );
-    if (!text) return;
-    if (state.lastEmittedFinal && state.lastEmittedFinal === text) return;
+    const heardSpeech = state.refineEnabled && state.vad.speaking;
+    if (!text && !heardSpeech) return;
+    if (!heardSpeech && state.lastEmittedFinal && state.lastEmittedFinal === text) {
+      return;
+    }
     state.lastEmittedFinal = text;
     state.confirmedTranscript = "";
     state.lastPartial = "";
+    state.vad = { ...newVadState(), noiseFloor: state.vad.noiseFloor };
+    if (fromVad) state.lastVadFinalAt = Date.now();
     sendRefinedFinal(text, takeUtterancePcm());
   };
 
@@ -713,16 +823,15 @@ const createSpeechSession = (ws, transcriber) => {
     closeDeepgramConnection();
     killFfmpegProcess();
 
-    if (finalText && state.lastEmittedFinal === finalText) return;
     // Nothing new was said since the last utterance final.
-    if (!finalText && !pcm) {
-      send({ type: "final", text: "", confidence: 1, isFinal: true });
+    if ((finalText && state.lastEmittedFinal === finalText) || (!finalText && !pcm)) {
+      sendRefinedFinal("", null, { done: true });
       return;
     }
     state.lastEmittedFinal = finalText;
     state.confirmedTranscript = finalText;
     state.lastPartial = finalText;
-    sendRefinedFinal(finalText, pcm);
+    sendRefinedFinal(finalText, pcm, { done: true });
   };
 
   const flushPendingPcmChunks = () => {
@@ -749,6 +858,7 @@ const createSpeechSession = (ws, transcriber) => {
   const sendPcmToDeepgram = (chunk) => {
     if (!chunk || !chunk.length) return;
     recordUtterancePcm(chunk);
+    if (state.geminiOnly) return;
 
     if (state.deepgramConnection && state.deepgramOpen) {
       try {
@@ -800,6 +910,16 @@ const createSpeechSession = (ws, transcriber) => {
 
     if (isFinal) {
       state.confirmedTranscript = combined;
+    }
+
+    // Late Deepgram words for a sentence the VAD already sent to Gemini.
+    const staleTail =
+      state.vadActive &&
+      !state.vad.speaking &&
+      Date.now() - state.lastVadFinalAt < 1500;
+    if (staleTail) {
+      state.lastPartial = combined;
+      return "";
     }
 
     if (combined && combined !== state.lastPartial) {
@@ -889,6 +1009,13 @@ const createSpeechSession = (ws, transcriber) => {
       );
       if (state.isStopping) {
         scheduleFinalizeFlush(80);
+      } else if (state.isRecording && state.vadActive) {
+        // The VAD owns sentence boundaries; words left now are a late tail
+        // of a sentence already sent to Gemini.
+        if (!state.vad.speaking) {
+          state.lastPartial = "";
+          state.confirmedTranscript = "";
+        }
       } else if (state.isRecording) {
         emitUtteranceFinal();
       }
@@ -915,6 +1042,7 @@ const createSpeechSession = (ws, transcriber) => {
 
     connection.on(DG_EVENTS.Close, () => {
       console.log(`[speech] session=${state.sessionLabel} Deepgram close`);
+      if (state.geminiOnly) return;
       state.deepgramOpen = false;
       if (state.isStopping) {
         finalizeSession();
@@ -929,6 +1057,25 @@ const createSpeechSession = (ws, transcriber) => {
 
       if (state.isStopping) {
         finalizeSession();
+        return;
+      }
+
+      if (state.refineEnabled && state.isRecording && !state.useNativeContainer) {
+        // Keep listening; Gemini alone transcribes the rest of the session.
+        console.warn(
+          `[speech] session=${state.sessionLabel} continuing with Gemini only`,
+        );
+        state.geminiOnly = true;
+        state.pendingPcmChunks = [];
+        state.pendingPcmBytes = 0;
+        const connection = state.deepgramConnection;
+        state.deepgramConnection = null;
+        state.deepgramOpen = false;
+        try {
+          connection?.requestClose?.();
+        } catch {
+          // noop
+        }
         return;
       }
 
@@ -1017,11 +1164,36 @@ const createSpeechSession = (ws, transcriber) => {
     state.sampleRate = Number(payload.sampleRate || 16000) || 16000;
     state.chunkDurationMs = Number(payload.chunkDurationMs || 80);
     state.usePcmStream = isLinear16Audio(state.mimeType, state.encoding);
+    // The Gemini pass needs PCM, so containers go through ffmpeg when it is on.
     state.useNativeContainer =
-      !state.usePcmStream && canStreamNativeContainer(state.mimeType);
+      !state.usePcmStream &&
+      !state.refineEnabled &&
+      canStreamNativeContainer(state.mimeType);
     // ffmpeg always emits 16 kHz; raw PCM clients declare their own rate.
     state.pcmSampleRate = state.usePcmStream ? state.sampleRate : 16000;
     state.isRecording = true;
+
+    const startGeminiOnly = () => {
+      // Without Deepgram, Gemini alone transcribes each spoken sentence that
+      // the VAD finds.
+      state.geminiOnly = true;
+      state.useNativeContainer = false;
+      if (!state.usePcmStream && !state.ffmpegProcess) startFfmpegTranscoder();
+      console.log(
+        `[speech] session=${state.sessionLabel} start (Gemini only) language=${state.refineLanguage} mimeType=${state.mimeType}`,
+      );
+      send({
+        type: "ready",
+        message: "Speech stream started",
+        refine: true,
+        mode: "gemini",
+      });
+    };
+
+    if (state.transcriber.bootError && state.refineEnabled) {
+      startGeminiOnly();
+      return;
+    }
 
     if (state.transcriber.bootError) {
       console.error(
@@ -1045,6 +1217,7 @@ const createSpeechSession = (ws, transcriber) => {
           mimeType: state.mimeType,
           encoding: state.encoding,
           sampleRate: state.sampleRate,
+          forcePcm: !state.useNativeContainer,
         },
       );
       attachDeepgramEvents(state.deepgramConnection);
@@ -1059,12 +1232,18 @@ const createSpeechSession = (ws, transcriber) => {
         type: "ready",
         message: "Speech stream started",
         refine: state.refineEnabled,
+        mode: "deepgram",
       });
     } catch (error) {
       console.error(
         `[speech] session=${state.sessionLabel} failed to start speech session:`,
         error.message,
       );
+      closeDeepgramConnection();
+      if (state.refineEnabled) {
+        startGeminiOnly();
+        return;
+      }
       send({
         type: "error",
         message: error.message || "Unable to start speech recognition",

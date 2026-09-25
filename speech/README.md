@@ -43,6 +43,36 @@ DEEPGRAM_BANGLA_MODEL=nova-3
 SPEECH_FINALIZE_GRACE_MS=1200
 ```
 
+## Gemini accuracy pass (Bangla + English)
+
+When a Gemini key is configured (Connect Admin → Settings → AI, or `GEMINI_API_KEY`),
+every spoken sentence is re-transcribed by Gemini, which is far more accurate than
+Deepgram for Bangla, English and mixed speech:
+
+- The server detects the pause after each sentence itself (energy-based VAD), so a
+  sentence reaches Gemini even when Deepgram returned no words for it.
+- Deepgram partials are only a live preview; the Gemini text is sent as `final`.
+- Without `DEEPGRAM_API_KEY` (or if Deepgram fails mid-session) the server runs in
+  Gemini-only mode: no live partials, but finals still arrive after each pause.
+- `language: "auto"` lets Gemini detect Bangla vs English per sentence.
+
+Optional tuning:
+
+```bash
+SPEECH_GEMINI_MODEL=gemini-flash-latest   # model tried first
+SPEECH_GEMINI_TIMEOUT_MS=6500             # past this the Deepgram draft is used
+SPEECH_VAD_END_SILENCE_MS=850             # pause that ends a sentence
+SPEECH_VAD_MIN_SPEECH_MS=160              # sound needed before it counts as speech
+SPEECH_VAD_MIN_RMS=420                    # loudness floor for speech (16-bit RMS)
+SPEECH_GEMINI_REFINE=false                # disable the Gemini pass
+```
+
+`ready` carries `refine` and `mode` (`deepgram` or `gemini`). A `final` with
+`empty: true` means no speech was heard (clients must not fall back to the live
+preview), and `done: true` marks the last final after a `stop`.
+
+Run the session simulation with `node --test speech/speechWsServer.test.js`.
+
 ## Why `nova-3`
 
 Deepgram supports Bengali (`bn`) on `nova-3`.

@@ -27,10 +27,16 @@ const MIN_SECONDS = 0.35;
 const NO_SPEECH = "NO_SPEECH";
 
 const KEY_CACHE_MS = 60 * 1000;
+// Retry soon when no key was found (e.g. the database was still connecting).
+const EMPTY_KEY_CACHE_MS = 5 * 1000;
 let cachedKeys = { at: 0, keys: [] };
+// Models that rejected thinkingConfig; skip it for them instead of paying an
+// extra failed round trip on every utterance.
+const noThinkingConfigModels = new Set();
 
 const loadGeminiKeys = async () => {
-  if (Date.now() - cachedKeys.at < KEY_CACHE_MS) return cachedKeys.keys;
+  const ttl = cachedKeys.keys.length ? KEY_CACHE_MS : EMPTY_KEY_CACHE_MS;
+  if (Date.now() - cachedKeys.at < ttl) return cachedKeys.keys;
   let raw = "";
   try {
     // Admin-configured key first; don't let a slow database block speech.
@@ -101,20 +107,20 @@ const hasAudibleSpeech = (pcm) => {
 const languageLine = (language = "") => {
   const value = String(language).toLowerCase();
   if (value.startsWith("bn")) {
-    return "The speaker is most likely speaking Bangla (Bengali), possibly mixed with English words.";
+    return "The speaker is most likely speaking Bangla (Bengali, often a Bangladeshi regional accent), possibly mixed with English words.";
   }
   if (value.startsWith("en")) {
-    return "The speaker is most likely speaking English, possibly mixed with Bangla words.";
+    return "The speaker is most likely speaking English (possibly with a Bangladeshi accent), possibly mixed with Bangla words.";
   }
-  return "The speaker may speak Bangla (Bengali), English, or a mix of both.";
+  return "The speaker may speak Bangla (Bengali), English, or a mix of both. Detect the language from the audio itself.";
 };
 
 const buildPrompt = (language, draft) =>
   [
-    "Transcribe this short voice command spoken to the Connect social app.",
+    "Transcribe this short voice command spoken to the Connect social app. The speaker may be an elderly or non-literate person speaking casually.",
     languageLine(language),
-    "Write Bangla words in Bengali script. Keep English words, people's names and app terms (video call, YouTube, Ludo, post) as they were spoken.",
-    "Output ONLY the exact words spoken — no translation, no quotes, no labels, no explanation.",
+    "Write Bangla words in Bengali script and English sentences in English (Latin) script. Inside a Bangla sentence keep English words, people's names and app terms (video call, message, YouTube, Ludo, post, profile, settings) as they were spoken.",
+    "Never translate between Bangla and English. Output ONLY the exact words spoken — no quotes, no labels, no explanation.",
     `If there is no clear human speech, output ${NO_SPEECH}.`,
     draft
       ? `A faster recognizer heard (may contain mistakes, use only as a hint for names): "${draft}"`
@@ -160,7 +166,7 @@ const transcribeWithGemini = async (
   const keys = await loadGeminiKeys();
   if (!keys.length) return null;
 
-  const body = {
+  const buildBody = (withThinking) => ({
     contents: [
       {
         role: "user",
@@ -180,19 +186,28 @@ const transcribeWithGemini = async (
       // Headroom for Gemini 3 models, which may think despite budget 0.
       maxOutputTokens: 768,
       // Transcription needs no reasoning; skipping it cuts latency a lot.
-      thinkingConfig: { thinkingBudget: 0 },
+      ...(withThinking ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
     },
+  });
+  const request = async (model, key) => {
+    const withThinking = !noThinkingConfigModels.has(model);
+    let response = await requestGemini(model, key, buildBody(withThinking));
+    if (
+      withThinking &&
+      response.status === 400 &&
+      /thinking/i.test(String(response.data?.error?.message || ""))
+    ) {
+      noThinkingConfigModels.add(model);
+      response = await requestGemini(model, key, buildBody(false));
+    }
+    return response;
   };
 
   const startedAt = Date.now();
   for (const key of keys) {
     try {
       let model = forcedModel || MODEL_CHAIN[activeModelIndex];
-      let response = await requestGemini(model, key, body);
-      if (response.status === 400 && body.generationConfig.thinkingConfig) {
-        delete body.generationConfig.thinkingConfig;
-        response = await requestGemini(model, key, body);
-      }
+      let response = await request(model, key);
       while (
         !forcedModel &&
         isRetiredModel(response.status, response.data) &&
@@ -201,7 +216,7 @@ const transcribeWithGemini = async (
         activeModelIndex += 1;
         model = MODEL_CHAIN[activeModelIndex];
         console.warn(`[speech] Gemini model retired; switching to ${model}`);
-        response = await requestGemini(model, key, body);
+        response = await request(model, key);
       }
       if (response.status >= 400) {
         const message = response.data?.error?.message || `HTTP ${response.status}`;
@@ -230,6 +245,7 @@ const transcribeWithGemini = async (
 
 module.exports = {
   transcribeWithGemini,
+  hasAudibleSpeech,
   isGeminiRefineAvailable,
   isGeminiRefineReady,
   shouldRefine,
