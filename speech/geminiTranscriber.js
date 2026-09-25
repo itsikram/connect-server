@@ -20,7 +20,9 @@ const MODEL_CHAIN = [
   "gemini-flash-latest",
 ].filter((value, index, list) => value && list.indexOf(value) === index);
 let activeModelIndex = 0;
-const TIMEOUT_MS = Number(process.env.SPEECH_GEMINI_TIMEOUT_MS) || 8000;
+// Past this, the Deepgram text is used instead so the user is not kept waiting.
+const TIMEOUT_MS = Number(process.env.SPEECH_GEMINI_TIMEOUT_MS) || 6500;
+const KEY_LOOKUP_TIMEOUT_MS = 1500;
 const MIN_SECONDS = 0.35;
 const NO_SPEECH = "NO_SPEECH";
 
@@ -31,7 +33,12 @@ const loadGeminiKeys = async () => {
   if (Date.now() - cachedKeys.at < KEY_CACHE_MS) return cachedKeys.keys;
   let raw = "";
   try {
-    raw = (await getProviderKey("gemini")) || "";
+    // Admin-configured key first; don't let a slow database block speech.
+    raw =
+      (await Promise.race([
+        getProviderKey("gemini"),
+        new Promise((resolve) => setTimeout(() => resolve(""), KEY_LOOKUP_TIMEOUT_MS)),
+      ])) || "";
   } catch (_) {
     raw = "";
   }
@@ -73,6 +80,12 @@ const pcmToWav = (pcm, sampleRate = 16000) => {
   header.writeUInt32LE(pcm.length, 40);
   return Buffer.concat([header, pcm]);
 };
+
+/** True when a clip is long and loud enough to be worth transcribing. */
+const shouldRefine = (pcm, sampleRate = 16000) =>
+  REFINE_ENABLED &&
+  Boolean(pcm && pcm.length >= sampleRate * 2 * MIN_SECONDS) &&
+  hasAudibleSpeech(pcm);
 
 /** Peak amplitude check so silent clips never reach the API. */
 const hasAudibleSpeech = (pcm) => {
@@ -164,7 +177,8 @@ const transcribeWithGemini = async (
     ],
     generationConfig: {
       temperature: 0,
-      maxOutputTokens: 256,
+      // Headroom for Gemini 3 models, which may think despite budget 0.
+      maxOutputTokens: 768,
       // Transcription needs no reasoning; skipping it cuts latency a lot.
       thinkingConfig: { thinkingBudget: 0 },
     },
@@ -218,5 +232,6 @@ module.exports = {
   transcribeWithGemini,
   isGeminiRefineAvailable,
   isGeminiRefineReady,
+  shouldRefine,
   pcmToWav,
 };

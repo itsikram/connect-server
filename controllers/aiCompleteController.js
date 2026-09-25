@@ -28,6 +28,13 @@ const isRetiredGeminiModel = (status, data) =>
   /no longer available|is not found|not supported for generatecontent/i.test(
     String(data?.error?.message || ""),
   );
+// Gemini 3 / "-latest" models may think even with thinkingBudget 0, and
+// thought tokens count against maxOutputTokens; add headroom so replies and
+// JSON plans are not truncated.
+const GEMINI_THINKING_ALLOWANCE = 512;
+const geminiOutputCap = (json, maxTokens, model = "") =>
+  (json ? Math.min(maxTokens, 700) : Math.min(maxTokens, 220)) +
+  (/gemini-3|-latest$/i.test(String(model)) ? GEMINI_THINKING_ALLOWANCE : 0);
 const isThinkingConfigError = (status, data) =>
   status === 400 && /thinking/i.test(String(data?.error?.message || ""));
 const parseProviderKeys = (value = "") =>
@@ -738,7 +745,7 @@ const completeGemini = async ({
       // Auto-post JSON contains a caption, hashtags, and an image prompt.
       // Keep enough room for the complete object; 160 tokens can truncate it
       // mid-string, which then appears to the caller as invalid JSON.
-      maxOutputTokens: json ? Math.min(maxTokens, 700) : Math.min(maxTokens, 220),
+      maxOutputTokens: geminiOutputCap(json, maxTokens, model),
       candidateCount: 1,
       ...(json ? { responseMimeType: "application/json" } : {}),
       ...(/gemini-(2\.5|3)/i.test(String(model))
@@ -1244,7 +1251,7 @@ const streamGeminiProvider = async ({
       temperature,
       topK: json ? 4 : 12,
       topP: json ? 0.6 : 0.8,
-      maxOutputTokens: json ? Math.min(maxTokens, 700) : Math.min(maxTokens, 220),
+      maxOutputTokens: geminiOutputCap(json, maxTokens, model),
       candidateCount: 1,
       ...(json ? { responseMimeType: "application/json" } : {}),
       ...(/gemini-(2\.5|3)/i.test(String(model))

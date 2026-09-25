@@ -6,6 +6,7 @@ const { WebSocketServer } = require("ws");
 const {
   transcribeWithGemini,
   isGeminiRefineReady,
+  shouldRefine,
 } = require("./geminiTranscriber");
 
 const JWT_SECRET = process.env.JWT_SECRET_KEY;
@@ -13,7 +14,7 @@ const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
 const DEFAULT_DEEPGRAM_MODEL = process.env.DEEPGRAM_MODEL || "nova-3";
 const DEFAULT_BANGLA_MODEL = process.env.DEEPGRAM_BANGLA_MODEL || "nova-3";
 const FINALIZE_GRACE_MS = Number(process.env.SPEECH_FINALIZE_GRACE_MS || 280);
-const UTTERANCE_END_MS = Number(process.env.SPEECH_UTTERANCE_END_MS || 1100);
+const UTTERANCE_END_MS = Number(process.env.SPEECH_UTTERANCE_END_MS || 1000);
 // Keep at most this much audio per utterance for the Gemini second pass.
 const MAX_UTTERANCE_PCM_BYTES = 16000 * 2 * 40;
 const BANGLA_ENDPOINTING_MS = Number(
@@ -481,7 +482,6 @@ class DeepgramBridge {
     const options = {
       model,
       language: effectiveLanguage,
-      ...(effectiveLanguage === "multi" ? { detect_language: true } : {}),
       channels: 1,
       interim_results: true,
       punctuate: true,
@@ -664,7 +664,7 @@ const createSpeechSession = (ws, transcriber) => {
   const sendRefinedFinal = (draftText, pcm) => {
     const run = async () => {
       let text = draftText;
-      if (state.refineEnabled && pcm) {
+      if (state.refineEnabled && shouldRefine(pcm, state.pcmSampleRate)) {
         send({ type: "status", message: "refining" });
         const refined = await transcribeWithGemini(pcm, {
           sampleRate: state.pcmSampleRate,
