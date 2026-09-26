@@ -829,6 +829,13 @@ mongoose
     );
   });
 
+// A rejected promise in a socket or timer handler (for example a query
+// issued while MongoDB is still connecting) must not take the whole API
+// process down with every connected socket. Log it instead.
+process.on("unhandledRejection", (reason) => {
+  console.error("[unhandledRejection]", reason);
+});
+
 httpServer.listen(PORT, "0.0.0.0", () => {
   const { isCursorConfigured } = require("./utils/cursorAgentClient");
   console.log(`Server is running on port ${PORT}`);

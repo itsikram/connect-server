@@ -21,10 +21,16 @@ module.exports = function socketHandler(io) {
     const offlineTimeouts = new Map();
 
     io.on('connection', async (socket) => {
-        const profileId =
+        const rawProfileId =
             socket.handshake.query?.profile ||
             socket.handshake.auth?.profile ||
             socket.handshake.auth?.profileId;
+        // Logged-out clients send the literal strings "null"/"undefined";
+        // treat them as anonymous so no ObjectId queries run for them.
+        const profileId =
+            rawProfileId && rawProfileId !== 'null' && rawProfileId !== 'undefined'
+                ? rawProfileId
+                : null;
         const browserId = socket.handshake.query?.browserId;
 
         console.info('[realtime_socket_connected]', {

@@ -28,11 +28,18 @@ function sanitizeNotificationLink(link, data = {}) {
 
 exports.notificationSocket = async (io, socket) => {
   socket.on("fetchNotifications", async (profileId) => {
-    let notificaitons = await Notification.find({ receiverId: profileId })
-      .limit(25)
-      .sort({ timestamp: -1 });
-    // console.log(notificaitons)
-    io.to(profileId).emit("oldNotifications", notificaitons.reverse());
+    // Clients can emit this while MongoDB is still connecting; with
+    // bufferCommands disabled the query throws, and an unhandled rejection
+    // here used to crash the whole API process.
+    if (!profileId || Notification.db.readyState !== 1) return;
+    try {
+      let notificaitons = await Notification.find({ receiverId: profileId })
+        .limit(25)
+        .sort({ timestamp: -1 });
+      io.to(profileId).emit("oldNotifications", notificaitons.reverse());
+    } catch (err) {
+      console.error("[fetchNotifications] failed:", err.message);
+    }
   });
 
   return () => {
