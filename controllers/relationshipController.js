@@ -388,7 +388,8 @@ exports.getProfileConnect = async (req, res, next) => {
         ],
         populate: {
           path: "user",
-          select: ["firstName", "surname", "profile"],
+          // gender lets the AI Agent tell "call my mom" from "call my dad".
+          select: ["firstName", "surname", "profile", "gender"],
         },
       });
 

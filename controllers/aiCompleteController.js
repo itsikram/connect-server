@@ -846,7 +846,9 @@ exports.completeAiChat = async (req, res) => {
       ? Number(req.body.temperature)
       : 0.7;
     const maxTokens = Number(req.body?.maxTokens) || 1024;
-    const useTools = req.body?.useTools === true;
+    // Server tool list stays on by default (older mobile builds rely on it);
+    // clients that plan from their own action catalog send useTools:false.
+    const useTools = req.body?.useTools !== false;
     userId = String(req.profile?._id || req.profile?.user?._id || "");
     logAiRequest({
       callId,
@@ -1360,7 +1362,9 @@ exports.streamAiChat = async (req, res) => {
       ? Number(req.body.temperature)
       : 0.7;
     const maxTokens = Number(req.body?.maxTokens) || 1024;
-    const useTools = req.body?.useTools === true;
+    // Server tool list stays on by default (older mobile builds rely on it);
+    // clients that plan from their own action catalog send useTools:false.
+    const useTools = req.body?.useTools !== false;
     const userId = String(req.profile?._id || req.profile?.user?._id || "");
     logAiRequest({
       callId,
