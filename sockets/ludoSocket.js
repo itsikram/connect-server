@@ -310,8 +310,14 @@ function ludoSocket(io, socket, profileId) {
       game.lastPlayers &&
       typeof game.lastPlayers.currentPlayer === "number"
     ) {
-      // Only the current seat's owner (or the host acting for a bot seat) may roll
-      if (!isAllowedTurnActor(game.lastPlayers, by)) {
+      // Only the current seat's owner (or the host acting for a bot seat) may
+      // roll, and a roll claiming another seat's turn is dropped: the host
+      // trusts that field, so a client out of step must not advance the game.
+      const claimedSeat =
+        typeof payload?.currentPlayer === "number"
+          ? payload.currentPlayer
+          : undefined;
+      if (!isAllowedTurnActor(game.lastPlayers, by, claimedSeat)) {
         console.log(
           "[LUDO][server] ❌ ludo:roll rejected - wrong player turn",
           {
@@ -1090,6 +1096,12 @@ function ludoSocket(io, socket, profileId) {
         }
       }
     } catch (_e) {}
+  });
+
+  // Round-trip probe so clients can show "reconnecting" on a slow connection,
+  // not only after socket.io's own (much slower) heartbeat gives up.
+  socket.on("ludo:ping", (_payload, ack) => {
+    if (typeof ack === "function") ack({ serverTs: Date.now() });
   });
 
   // Client dismisses an invite without accepting

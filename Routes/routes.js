@@ -31,6 +31,7 @@ const videoPlaylistRoutes = require("./videoPlaylistRoutes");
 const contentRoutes = require("./contentRoutes");
 const reportRoutes = require("./reportRoutes");
 const fitnessRoutes = require("./fitnessRoutes");
+const recoveryRoutes = require("./recoveryRoutes");
 const feedRoutes = require("./feedRoutes");
 const configRoutes = require("./configRoutes");
 const paymentsRoutes = require("./paymentsRoutes");
@@ -173,6 +174,10 @@ const routes = [
   {
     path: "/api/fitness",
     handler: fitnessRoutes,
+  },
+  {
+    path: "/api/recovery",
+    handler: recoveryRoutes,
   },
   {
     path: "/api/feed",

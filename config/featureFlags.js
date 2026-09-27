@@ -5,11 +5,15 @@ const FEATURE_FLAG_NAMES = [
   "tippingEnabled",
   "affiliateLinksEnabled",
   "manualPaymentEnabled",
+  "recoveryEnabled",
 ];
+
+// Free, core features are on unless an admin turns them off.
+const ENABLED_BY_DEFAULT = ["recoveryEnabled"];
 
 const DEFAULT_FEATURE_FLAGS = Object.freeze(
   FEATURE_FLAG_NAMES.reduce((flags, name) => {
-    flags[name] = false;
+    flags[name] = ENABLED_BY_DEFAULT.includes(name);
     return flags;
   }, {}),
 );

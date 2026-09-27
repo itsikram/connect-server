@@ -32,11 +32,16 @@ const isRetiredGeminiModel = (status, data) =>
 // thought tokens count against maxOutputTokens; add headroom so replies and
 // JSON plans are not truncated.
 const GEMINI_THINKING_ALLOWANCE = 512;
-const geminiOutputCap = (json, maxTokens, model = "") =>
-  (json ? Math.min(maxTokens, 700) : Math.min(maxTokens, 220)) +
+// `outputCap` lets trusted callers (e.g. Recovery plans) raise the default clamp.
+const geminiOutputCap = (json, maxTokens, model = "", outputCap) =>
+  (outputCap ? outputCap : json ? Math.min(maxTokens, 700) : Math.min(maxTokens, 220)) +
   (/gemini-3|-latest$/i.test(String(model)) ? GEMINI_THINKING_ALLOWANCE : 0);
 const isThinkingConfigError = (status, data) =>
   status === 400 && /thinking/i.test(String(data?.error?.message || ""));
+const isSchemaConfigError = (status, data) =>
+  status === 400 && /schema/i.test(String(data?.error?.message || ""));
+const isSafetyConfigError = (status, data) =>
+  status === 400 && /safety|harm_category|threshold/i.test(String(data?.error?.message || ""));
 const parseProviderKeys = (value = "") =>
   [...new Set(String(value || "").split(/[,\r\n]+/).map(key => key.trim()).filter(Boolean))];
 const isRateLimitError = (status, data, error) => {
@@ -713,6 +718,13 @@ const completeGemini = async ({
   temperature,
   maxTokens,
   useTools = false,
+  // Optional, for trusted backend callers: a larger output clamp, a JSON response
+  // schema, custom safety thresholds, and `withMeta` to receive
+  // { text, finishReason, blockReason, model } instead of an "empty reply" error.
+  outputCap,
+  responseSchema,
+  safetySettings,
+  withMeta = false,
 }) => {
   const keys = parseGeminiKeys(apiKey);
   if (!keys.length) {
@@ -738,6 +750,7 @@ const completeGemini = async ({
     systemInstruction: system ? { parts: [{ text: system }] } : undefined,
     contents,
     ...(useTools ? { tools: GEMINI_AGENT_TOOLS } : {}),
+    ...(Array.isArray(safetySettings) && safetySettings.length ? { safetySettings } : {}),
     generationConfig: {
       temperature,
       topK: json ? 4 : 12,
@@ -745,9 +758,10 @@ const completeGemini = async ({
       // Auto-post JSON contains a caption, hashtags, and an image prompt.
       // Keep enough room for the complete object; 160 tokens can truncate it
       // mid-string, which then appears to the caller as invalid JSON.
-      maxOutputTokens: geminiOutputCap(json, maxTokens, model),
+      maxOutputTokens: geminiOutputCap(json, maxTokens, model, outputCap),
       candidateCount: 1,
       ...(json ? { responseMimeType: "application/json" } : {}),
+      ...(json && responseSchema ? { responseSchema } : {}),
       ...(/gemini-(2\.5|3)/i.test(String(model))
         ? { thinkingConfig: { thinkingBudget: 0 } }
         : {}),
@@ -768,8 +782,17 @@ const completeGemini = async ({
       },
     );
     if (response.status < 400) {
-      const parts = response.data?.candidates?.[0]?.content?.parts || [];
+      const candidate = response.data?.candidates?.[0];
+      const parts = candidate?.content?.parts || [];
       const text = functionCallIntent(parts) || extractGeminiText(response.data);
+      if (withMeta) {
+        return {
+          text,
+          finishReason: candidate?.finishReason || null,
+          blockReason: response.data?.promptFeedback?.blockReason || null,
+          model: activeModel,
+        };
+      }
       if (!text) throw new Error("Gemini returned an empty reply");
       return text;
     }
@@ -778,6 +801,21 @@ const completeGemini = async ({
       requestBody.generationConfig.thinkingConfig
     ) {
       delete requestBody.generationConfig.thinkingConfig;
+      i -= 1;
+      continue;
+    }
+    // Some models reject a response schema or custom safety thresholds; retry
+    // without them rather than failing the request.
+    if (
+      isSchemaConfigError(response.status, response.data) &&
+      requestBody.generationConfig.responseSchema
+    ) {
+      delete requestBody.generationConfig.responseSchema;
+      i -= 1;
+      continue;
+    }
+    if (isSafetyConfigError(response.status, response.data) && requestBody.safetySettings) {
+      delete requestBody.safetySettings;
       i -= 1;
       continue;
     }

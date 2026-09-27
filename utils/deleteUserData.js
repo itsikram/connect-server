@@ -7,6 +7,11 @@ const CmntReply = require('../models/CmntReply')
 const Setting = require('../models/Setting')
 const FaceEndCoding = require('../models/FaceEncoding')
 const Profile = require('../models/Profile')
+const RecoveryProfile = require('../models/RecoveryProfile')
+const RecoveryCheckIn = require('../models/RecoveryCheckIn')
+const RecoveryCraving = require('../models/RecoveryCraving')
+const RecoveryLapse = require('../models/RecoveryLapse')
+const RecoveryChatMessage = require('../models/RecoveryChatMessage')
 const { deleteCloudinaryResources } = require('./cloudinaryCleanup')
 
 const deleteUserData = async (profileId) => {
@@ -30,6 +35,11 @@ const deleteUserData = async (profileId) => {
         CmntReply.deleteMany({ author: profileId }),
         Setting.deleteMany({ profile: profileId }),
         FaceEndCoding.deleteMany({ profile: profileId }),
+        RecoveryProfile.deleteMany({ user: profileId }),
+        RecoveryCheckIn.deleteMany({ user: profileId }),
+        RecoveryCraving.deleteMany({ user: profileId }),
+        RecoveryLapse.deleteMany({ user: profileId }),
+        RecoveryChatMessage.deleteMany({ user: profileId }),
     ])
 
     await deleteCloudinaryResources([
