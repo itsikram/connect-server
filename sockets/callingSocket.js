@@ -6,10 +6,12 @@ const { getIncomingCallAlertForProfile } = require('../utils/ringtone')
 const config = require('../config/config.json');
 
 // How long an unanswered call rings before it becomes a missed call.
-const RING_TIMEOUT_MS = 60000;
+const RING_TIMEOUT_MS = Number(process.env.CALL_RING_TIMEOUT_MS) || 60000;
 // Accepted calls whose end event never arrived (app killed, network lost) are
 // dropped after this long so the registry cannot grow without bound.
 const STALE_CALL_MS = 6 * 60 * 60 * 1000;
+// How long a ringing call survives its caller's socket disconnecting.
+const CALLER_DISCONNECT_GRACE_MS = Number(process.env.CALLER_DISCONNECT_GRACE_MS) || 10000;
 
 // Call state MUST be shared by every socket. The caller and callee are on
 // different sockets (often different platforms: web / Expo), so per-socket
@@ -67,6 +69,24 @@ const removeCall = (channelName) => {
 // Resolve the call a client event refers to. Clients normally send the
 // channelName; fall back to the most recent call between the pair.
 const wasFinished = (channelName) => !!channelName && finishedCalls.has(String(channelName));
+
+const roomHasSockets = (io, room) => (io.sockets.adapter.rooms.get(String(room))?.size || 0) > 0;
+
+// Another live call that `profileId` is part of (other than `exceptChannel`).
+// A ringing call always counts. An accepted call only counts while the other
+// participant is still connected, so a call whose end event never arrived
+// (app killed mid-call) cannot leave someone "busy" for hours.
+const findBusyCall = (io, profileId, exceptChannel) => {
+    const id = String(profileId);
+    for (const call of activeCalls.values()) {
+        if (call.channelName === String(exceptChannel)) continue;
+        if (call.callerId !== id && call.calleeId !== id) continue;
+        if (!call.accepted) return call;
+        const peer = call.callerId === id ? call.calleeId : call.callerId;
+        if (roomHasSockets(io, peer)) return call;
+    }
+    return null;
+};
 
 const findCall = (channelName, a, b) => {
     if (channelName && activeCalls.has(String(channelName))) {
@@ -227,6 +247,19 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
         // A re-sent start for the same channel replaces the old record.
         removeCall(String(channelName));
 
+        // The person being called is already on another call: tell the caller
+        // straight away ("On another call") instead of ringing for a minute,
+        // and leave the callee a missed-call entry, like WhatsApp does.
+        if (findBusyCall(io, calleeId, channelName)) {
+            finishedCalls.set(String(channelName), Date.now());
+            socket.emit(`${type}-call-rejected`, {
+                to: calleeId, connectId: calleeId, channelName: String(channelName), reason: 'busy',
+            });
+            await sendMissedCallPush(calleeId, me, !!isAudio, String(channelName));
+            await logCallMessage(io, { callerId: me, calleeId, isAudio: !!isAudio, callEvent: 'missed' });
+            return;
+        }
+
         let myProfileData = null;
         try {
             myProfileData = await Profile.findById(me).select('fullName profilePic');
@@ -251,6 +284,14 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
         // Clients reuse `${caller}-${callee}` as the channel for every call
         // between a pair, so a new call must clear the previous call's marker.
         finishedCalls.delete(call.channelName);
+
+        // No connected device → the callee can only be reached by push.
+        // Callee devices that do receive the call reply "Ringing...".
+        if (!roomHasSockets(io, calleeId)) {
+            socket.emit('updated-call-status', {
+                from: calleeId, status: 'Calling...', channelName: call.channelName,
+            });
+        }
 
         io.to(calleeId).emit(`incoming-${type}-call`, {
             from: me,
@@ -328,7 +369,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
     socket.on('audio-call-cancel', (data) => cancelCall(data, true));
 
     // Callee declines (or auto-declines because they are busy).
-    const rejectCall = async ({ to, channelName } = {}, isAudioHint) => {
+    const rejectCall = async ({ to, channelName, reason } = {}, isAudioHint) => {
         if (!to) return;
         const call = findCall(channelName, me, to);
         // A duplicate push/socket delivery can make one of the callee's
@@ -339,7 +380,10 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
         const type = callTypeOf(isAudio);
         if (call) removeCall(call.channelName);
         const payload = { to, connectId: me, channelName: channelName || call?.channelName };
-        io.to(String(to)).emit(`${type}-call-rejected`, payload);
+        io.to(String(to)).emit(`${type}-call-rejected`, {
+            ...payload,
+            reason: reason === 'busy' ? 'busy' : 'declined',
+        });
         // Stop ringing on the callee's other devices (web tab + phone).
         socket.to(me).emit(`${type}-call-cancelled`, { ...payload, connectId: String(to), reason: 'rejected_elsewhere' });
         if (call) {
@@ -457,6 +501,30 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
     // Clients emit `update-call-status`; keep legacy alias too
     socket.on('update-call-status', relayCallStatus);
     socket.on('call-status-update', relayCallStatus);
+
+    // The caller's device went away (tab closed, app killed, network lost)
+    // while the call was still ringing. Give it a moment to reconnect, then
+    // stop the callee ringing on every device and leave a missed call.
+    socket.on('disconnect', () => {
+        for (const call of activeCalls.values()) {
+            if (call.accepted || call.callerSocketId !== socket.id) continue;
+            const channelName = call.channelName;
+            setTimeout(async () => {
+                const current = activeCalls.get(channelName);
+                if (current !== call || call.accepted) return;
+                if (roomHasSockets(io, call.callerId)) return;
+                removeCall(channelName);
+                const type = callTypeOf(call.isAudio);
+                io.to(call.calleeId).emit(`${type}-call-cancelled`, {
+                    to: call.calleeId, connectId: call.callerId, channelName, reason: 'caller_disconnected',
+                });
+                await sendMissedCallPush(call.calleeId, call.callerId, call.isAudio, channelName);
+                await logCallMessage(io, {
+                    callerId: call.callerId, calleeId: call.calleeId, isAudio: call.isAudio, callEvent: 'missed', call,
+                });
+            }, CALLER_DISCONNECT_GRACE_MS);
+        }
+    });
 
     // Captions are opt-in and scoped to the active call channel. Never relay
     // arbitrary text or audio; the authenticated socket identity is the sender.

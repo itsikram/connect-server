@@ -21,13 +21,13 @@ router.post('/token', async (req, res) => {
       return res.status(500).json({ error: 'Missing AGORA_APP_ID or AGORA_APP_CERTIFICATE in environment' });
     }
 
-    const { channelName, uid, role = 'publisher', expireInSec = 3600 } = req.body || {};
+    const { channelName, uid, role = 'publisher', expireInSec = 24 * 3600 } = req.body || {};
 
     if (!channelName) return res.status(400).json({ error: 'channelName is required' });
 
     const rtcRole = role === 'subscriber' ? RtcRole.SUBSCRIBER : RtcRole.PUBLISHER;
     const currentTs = Math.floor(Date.now() / 1000);
-    const privilegeExpireTs = currentTs + Number(expireInSec || 3600);
+    const privilegeExpireTs = currentTs + Number(expireInSec || 24 * 3600);
 
     let token;
     if (typeof uid === 'string' && uid.trim().length > 0) {

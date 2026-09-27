@@ -9,6 +9,7 @@
     "dev": "nodemon index.js",
     "test:ai-feed": "node --test services/*.test.js",
     "test:recovery": "node --test utils/recoveryCalculations.test.js utils/recoveryCrisis.test.js utils/recoveryCrypto.test.js services/recoveryAi.test.js controllers/recoveryController.test.js",
+    "test:calls": "node --test sockets/callingSocket.test.js",
     "start:lb": "node load-balancer/start-cluster.js",
     "start:lb:2": "node load-balancer/start-cluster.js 2",
     "start:lb:4": "node load-balancer/start-cluster.js 4",
@@ -20,7 +21,8 @@
   "license": "ISC",
   "devDependencies": {
     "concurrently": "^9.1.2",
-    "nodemon": "^3.1.9"
+    "nodemon": "^3.1.9",
+    "socket.io-client": "^4.8.4"
   },
   "dependencies": {
     "@deepgram/sdk": "^4.8.0",
