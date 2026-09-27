@@ -29,7 +29,13 @@ RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh \
 COPY package*.json ./
 COPY scripts/install-yt-dlp.js scripts/postinstall.js ./scripts/
 
-RUN npm ci --only=production
+# youtube-dl-exec's own postinstall queries the GitHub API and fails the build
+# when rate-limited. Skip it and point the package at the standalone binary
+# that scripts/install-yt-dlp.js downloads into /app/bin.
+ENV YOUTUBE_DL_SKIP_DOWNLOAD=true \
+    YOUTUBE_DL_DIR=/app/bin
+
+RUN npm ci --omit=dev
 
 COPY . .
 
