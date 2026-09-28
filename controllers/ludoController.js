@@ -13,6 +13,8 @@ exports.saveGameState = async (req, res, next) => {
       gameEnded,
       winners,
       selectedPlayerCount,
+      stateVersion,
+      playersSeq,
     } = req.body;
 
     // Validate required fields
@@ -69,9 +71,19 @@ exports.saveGameState = async (req, res, next) => {
         }))
       : winners;
 
+    // Pause state (paused/pausedAt/pausedBy) is written only by the socket
+    // server's ludo:pause / ludo:resume, never from a host snapshot: the host
+    // may save a move before it has heard about a pause.
+    const incomingVersion = Math.max(
+      Number(stateVersion || 0),
+      Number(playersSeq || 0),
+      0,
+    );
+
     const game = await LudoGame.findOneAndUpdate(
       { gameId },
       {
+        stateVersion: Math.max(incomingVersion, existingGame?.stateVersion || 0),
         gameId,
         host: hostId,
         players: sanitizedPlayers,

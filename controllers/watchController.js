@@ -162,6 +162,46 @@ exports.getRelatedWatchs = async (req, res, next) => {
     }
 }
 
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+// Searches every Watch on the server by caption or author name, so clients are
+// not limited to the most recent page returned by /related.
+exports.searchWatches = async (req, res, next) => {
+    try {
+        const query = String(req.query.q || '').trim().slice(0, 100)
+        if (!query) return res.status(200).json([])
+        const pageSize = Math.min(parseInt(req.query.limit, 10) || 10, 30)
+        const pattern = new RegExp(escapeRegex(query), 'i')
+
+        const matchingProfiles = await Profile.find({
+            $or: [{ fullName: pattern }, { displayName: pattern }],
+        }).select('_id').limit(50).lean()
+
+        const or = [{ caption: pattern }]
+        if (matchingProfiles.length) {
+            or.push({ author: { $in: matchingProfiles.map((p) => p._id) } })
+        }
+
+        const watches = await Watch.find({
+            videoUrl: { $exists: true, $ne: '' },
+            $or: or,
+        })
+            .select('caption thumbnail videoUrl youtubeId author type createdAt')
+            .populate({
+                path: 'author',
+                select: 'profilePic user fullName displayName',
+                populate: { path: 'user', select: 'firstName surname' },
+            })
+            .sort({ createdAt: -1 })
+            .limit(pageSize)
+            .lean()
+
+        return res.status(200).json(watches)
+    } catch (error) {
+        next(error)
+    }
+}
+
 exports.getMyWatchs = async (req, res, next) => {
 
     try {

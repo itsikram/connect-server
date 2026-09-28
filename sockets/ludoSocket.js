@@ -2,6 +2,101 @@
 
 const { debugLogger } = require("../utils/debugLogger");
 
+// Saved matches live in MongoDB (the host persists every action). The socket
+// server only keeps live games in memory, so after a restart, or once every
+// player has gone, a paused/saved game is rebuilt from its stored snapshot.
+// Loaded lazily: the socket relay also runs without a database (tests, and
+// environments where mongoose can't load), and then simply skips saved games.
+let mongooseLib;
+const getMongoose = () => {
+  if (mongooseLib === undefined) {
+    try {
+      mongooseLib = require("mongoose");
+    } catch (_e) {
+      mongooseLib = null;
+    }
+  }
+  return mongooseLib;
+};
+const isObjectId = (value) =>
+  Boolean(getMongoose()?.Types?.ObjectId?.isValid(String(value || "")));
+
+let LudoGameModel = null;
+const getLudoGameModel = () => {
+  if (getMongoose()?.connection?.readyState !== 1) return null;
+  if (!LudoGameModel) {
+    try {
+      LudoGameModel = require("../models/LudoGame");
+    } catch (_e) {
+      return null;
+    }
+  }
+  return LudoGameModel;
+};
+
+const SAVED_GAME_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+const idString = (value) => {
+  if (value == null) return "";
+  if (typeof value === "object" && value._id) return String(value._id);
+  return String(value);
+};
+
+const docToSnapshot = (doc) => {
+  const version = Math.max(Number(doc.stateVersion || 0), 0) + 1;
+  return {
+    gameId: doc.gameId,
+    players: (doc.players || []).map((p, index) => ({
+      id: p.id,
+      name: p.name,
+      color: p.color,
+      avatar: p.avatar,
+      cover: p.cover,
+      profileId: p.profileId ? idString(p.profileId) : p.isBot ? `bot-${index}` : undefined,
+      isBot: Boolean(p.isBot),
+      isActive: p.isActive !== false,
+      pieces: (p.pieces || []).map((pc) => ({
+        id: pc.id,
+        color: pc.color,
+        steps: pc.steps || 0,
+        isHome: pc.isHome !== false && !(pc.steps > 0),
+        isInPlay: Boolean(pc.isInPlay),
+      })),
+    })),
+    currentPlayer: doc.currentPlayer || 0,
+    // A restored game restarts the interrupted turn from a fresh roll.
+    diceValue: 0,
+    gameStarted: Boolean(doc.gameStarted),
+    gameEnded: Boolean(doc.gameEnded),
+    winners: doc.winners || [],
+    selectedPlayerCount: doc.selectedPlayerCount || 4,
+    paused: Boolean(doc.paused),
+    pausedAt: doc.pausedAt ? new Date(doc.pausedAt).getTime() : undefined,
+    pausedBy: doc.paused && doc.pausedBy
+      ? { profileId: idString(doc.pausedBy.profileId), name: doc.pausedBy.name }
+      : undefined,
+    playersSeq: version,
+    stateVersion: version,
+    restoredFromSave: true,
+  };
+};
+
+const persistPauseState = (gameId, pause) => {
+  const Model = getLudoGameModel();
+  if (!Model) return;
+  const update = pause
+    ? {
+        paused: true,
+        pausedAt: new Date(pause.at),
+        pausedBy: {
+          profileId: isObjectId(pause.profileId) ? pause.profileId : undefined,
+          name: pause.name,
+        },
+      }
+    : { paused: false, pausedAt: null, pausedBy: null };
+  Model.updateOne({ gameId }, { $set: update }).catch(() => {});
+};
+
 const games = new Map(); // gameId -> { createdAt: number, lastPlayers: object, onlinePlayers: Set<profileId>, offlinePlayers: Map<profileId, timestamp> }
 const userInvites = new Map(); // profileId -> [{ gameId, by, name, avatar, slotIndex, playerCount, ts }]
 const playerSockets = new Map(); // profileId -> Set<socketId> (track all sockets for a profile)
@@ -234,6 +329,84 @@ function ludoSocket(io, socket, profileId) {
     }
   }
 
+  // Rebuild a saved game from MongoDB when it isn't live in memory. Resolves
+  // true when the game has a snapshot afterwards.
+  const applySavedGameDoc = (gameId, doc) => {
+    if (!doc || doc.gameEnded || !doc.gameStarted) return false;
+    const pid = String(effectiveProfileId || "");
+    const seats = (doc.players || []).map((p) => idString(p.profileId));
+    if (pid && !seats.includes(pid)) return false;
+
+    // Another request may have rebuilt it while we were waiting on the DB.
+    const current = games.get(gameId);
+    if (current?.lastPlayers) return true;
+
+    const snapshot = docToSnapshot(doc);
+    const offlinePlayers = new Map();
+    seats.forEach((seatPid) => {
+      if (isHumanProfileId(seatPid)) offlinePlayers.set(seatPid, Date.now());
+    });
+    const entry = current || {
+      createdAt: new Date(doc.createdAt || Date.now()).getTime(),
+      onlinePlayers: new Set(),
+      offlinePlayers,
+      pendingAccepts: [],
+    };
+    if (!current) {
+      entry.offlinePlayers = offlinePlayers;
+    } else {
+      offlinePlayers.forEach((ts, seatPid) => {
+        if (!entry.onlinePlayers.has(seatPid)) entry.offlinePlayers.set(seatPid, ts);
+      });
+    }
+    entry.lastPlayers = snapshot;
+    entry.paused = snapshot.paused
+      ? {
+          profileId: snapshot.pausedBy?.profileId,
+          name: snapshot.pausedBy?.name,
+          at: snapshot.pausedAt || Date.now(),
+        }
+      : null;
+    games.set(gameId, entry);
+    try {
+      debugLogger.ludoEvent("game-restored-from-db", { gameId, paused: snapshot.paused });
+    } catch (_e) {}
+    return true;
+  };
+
+  const hydrateGameFromDB = (gameId) => {
+    const live = games.get(gameId);
+    if (live?.lastPlayers) return Promise.resolve(true);
+    const Model = getLudoGameModel();
+    if (!Model) return Promise.resolve(false);
+    return Promise.resolve()
+      .then(() => Model.findOne({ gameId }).lean())
+      .then((doc) => applySavedGameDoc(gameId, doc))
+      .catch(() => false);
+  };
+
+  // Runs fn once the game is in memory (rebuilding it from the database if
+  // needed). Live games run fn synchronously, so event order is unchanged.
+  const withGame = (gameId, fn) => {
+    if (games.get(gameId)?.lastPlayers) {
+      fn();
+      return;
+    }
+    hydrateGameFromDB(gameId).then(fn, fn);
+  };
+
+  const rejectWhilePaused = (gameId) => {
+    const game = games.get(gameId);
+    if (!game?.paused) return false;
+    socket.emit("ludo:paused", {
+      gameId,
+      pausedBy: { profileId: game.paused.profileId, name: game.paused.name },
+      pausedAt: game.paused.at,
+      serverTs: Date.now(),
+    });
+    return true;
+  };
+
   const joinRoom = (gameId) => {
     const room = `ludo_${gameId}`;
     socket.join(room);
@@ -250,58 +423,73 @@ function ludoSocket(io, socket, profileId) {
     if (effectiveProfileId) {
       const game = games.get(gameId);
       if (game) {
-        game.onlinePlayers.add(String(effectiveProfileId));
-        game.offlinePlayers.delete(String(effectiveProfileId));
+        const pid = String(effectiveProfileId);
+        const wasAway = game.offlinePlayers.has(pid);
+        game.onlinePlayers.add(pid);
+        game.offlinePlayers.delete(pid);
+        // Back from "save & exit" (or a rebuilt saved game): let the others
+        // stop skipping this player's turns.
+        if (wasAway) {
+          io.to(room).emit("ludo:player:online", {
+            profileId: pid,
+            gameId,
+            timestamp: Date.now(),
+          });
+        }
       }
     }
     return room;
   };
 
-  socket.on("ludo:join", ({ gameId }) => {
+  socket.on("ludo:join", ({ gameId } = {}) => {
     if (!gameId) return;
-    try {
-      const preRoom = `ludo_${gameId}`;
-      const preSize = io?.sockets?.adapter?.rooms?.get?.(preRoom)?.size || 0;
-      debugLogger.ludoEvent("join", {
-        socketId: socket?.id,
-        gameId,
-        effectiveProfileId,
-        beforeRoomSize: preSize,
-      });
-    } catch (_e) {}
-    const room = joinRoom(gameId);
-    if (effectiveProfileId) {
-      clearInvitesForGame(io, effectiveProfileId, gameId);
-    }
-    try {
-      const size = io?.sockets?.adapter?.rooms?.get?.(room)?.size || 0;
-      io.to(room).emit("ludo:joined", {
-        gameId,
-        profileId: effectiveProfileId,
-        roomSize: size,
-      });
-      debugLogger.ludoEvent("joined-emitted", {
-        room,
-        roomSize: size,
-        forProfile: effectiveProfileId,
-      });
-    } catch (e) {
-      debugLogger.error("[LUDO][server] ludo:joined emit error", {
-        message: e?.message,
-      });
-    }
-    // Send latest players snapshot (if any) only to the newly joined socket
-    try {
-      const g = games.get(gameId);
-      if (g && g.lastPlayers) {
-        socket.emit("ludo:players", { ...g.lastPlayers, serverTs: Date.now() });
+    withGame(gameId, () => {
+      try {
+        const preRoom = `ludo_${gameId}`;
+        const preSize = io?.sockets?.adapter?.rooms?.get?.(preRoom)?.size || 0;
+        debugLogger.ludoEvent("join", {
+          socketId: socket?.id,
+          gameId,
+          effectiveProfileId,
+          beforeRoomSize: preSize,
+        });
+      } catch (_e) {}
+      const room = joinRoom(gameId);
+      if (effectiveProfileId) {
+        clearInvitesForGame(io, effectiveProfileId, gameId);
       }
-    } catch (_e) {}
+      try {
+        const size = io?.sockets?.adapter?.rooms?.get?.(room)?.size || 0;
+        io.to(room).emit("ludo:joined", {
+          gameId,
+          profileId: effectiveProfileId,
+          roomSize: size,
+        });
+        debugLogger.ludoEvent("joined-emitted", {
+          room,
+          roomSize: size,
+          forProfile: effectiveProfileId,
+        });
+      } catch (e) {
+        debugLogger.error("[LUDO][server] ludo:joined emit error", {
+          message: e?.message,
+        });
+      }
+      // Send latest players snapshot (if any) only to the newly joined socket
+      try {
+        const g = games.get(gameId);
+        if (g && g.lastPlayers) {
+          socket.emit("ludo:players", { ...g.lastPlayers, serverTs: Date.now() });
+        }
+      } catch (_e) {}
+  
+    });
   });
 
   socket.on("ludo:roll", (payload) => {
     const { gameId, by } = payload || {};
     if (!gameId) return;
+    if (rejectWhilePaused(gameId)) return;
 
     // Validate that the player is rolling on their turn
     const game = games.get(gameId);
@@ -362,6 +550,7 @@ function ludoSocket(io, socket, profileId) {
   socket.on("ludo:move", (payload) => {
     const { gameId, by, playerIndex } = payload || {};
     if (!gameId) return;
+    if (rejectWhilePaused(gameId)) return;
 
     // Validate that player is moving on their turn
     const game = games.get(gameId);
@@ -921,6 +1110,20 @@ function ludoSocket(io, socket, profileId) {
       enhancedPayload.playersSeq = nextSeq;
       enhancedPayload.stateVersion = nextSeq;
     }
+    // Only ludo:resume clears a pause; a snapshot sent before the host saw
+    // the pause must not silently unpause the match.
+    if (existing?.paused) {
+      enhancedPayload.paused = true;
+      enhancedPayload.pausedAt = existing.paused.at;
+      enhancedPayload.pausedBy = {
+        profileId: existing.paused.profileId,
+        name: existing.paused.name,
+      };
+    } else {
+      enhancedPayload.paused = false;
+      delete enhancedPayload.pausedAt;
+      delete enhancedPayload.pausedBy;
+    }
     games.set(gameId, { ...existing, lastPlayers: enhancedPayload });
     try {
       debugLogger.ludoEvent("players-snapshot", {
@@ -945,6 +1148,7 @@ function ludoSocket(io, socket, profileId) {
     if (!pid) return;
 
     const userGames = [];
+    const listedIds = new Set();
     games.forEach((game, gameId) => {
       // Check if user is in this game (online or offline)
       if (game.onlinePlayers.has(pid) || game.offlinePlayers.has(pid)) {
@@ -956,18 +1160,65 @@ function ludoSocket(io, socket, profileId) {
           lastPlayers: game.lastPlayers,
           isOnline: game.onlinePlayers.has(pid),
           playerCount: game.onlinePlayers.size + game.offlinePlayers.size,
+          paused: Boolean(game.paused),
         });
+        listedIds.add(String(gameId));
       }
     });
 
-    try {
-      debugLogger.ludoEvent("games-get", {
-        pid,
-        gamesCount: userGames.length,
-      });
-    } catch (_e) {}
+    // Saved matches that are not live right now (server restarted, or every
+    // player left the board) are still resumable.
+    const addSavedGames = (saved = []) => {
+      saved.forEach((doc) => {
+          if (listedIds.has(String(doc.gameId))) return;
+          const snapshot = docToSnapshot(doc);
+          userGames.push({
+            gameId: doc.gameId,
+            createdAt: new Date(doc.createdAt || Date.now()).getTime(),
+            onlinePlayers: [],
+            offlinePlayers: [],
+            lastPlayers: snapshot,
+            isOnline: false,
+            playerCount: snapshot.players.filter(
+              (p, index) => isOccupiedSeat(p, index),
+            ).length,
+            paused: Boolean(doc.paused),
+            saved: true,
+            lastUpdated: doc.lastUpdated,
+          });
+        });
+    };
 
-    socket.emit("ludo:games", { games: userGames });
+    const sendGames = () => {
+      try {
+        debugLogger.ludoEvent("games-get", {
+          pid,
+          gamesCount: userGames.length,
+        });
+      } catch (_e) {}
+      socket.emit("ludo:games", { games: userGames });
+    };
+
+    const Model = getLudoGameModel();
+    if (!Model || !isObjectId(pid)) {
+      sendGames();
+      return;
+    }
+    Promise.resolve()
+      .then(() =>
+        Model.find({
+          "players.profileId": pid,
+          gameEnded: false,
+          gameStarted: true,
+          lastUpdated: { $gte: new Date(Date.now() - SAVED_GAME_MAX_AGE_MS) },
+        })
+          .sort({ lastUpdated: -1 })
+          .limit(20)
+          .lean(),
+      )
+      .then(addSavedGames)
+      .catch(() => {})
+      .then(sendGames);
   });
 
   // Client requests full pending invites list
@@ -983,29 +1234,32 @@ function ludoSocket(io, socket, profileId) {
   socket.on("ludo:players:get", (payload = {}) => {
     const { gameId } = payload || {};
     if (!gameId) return;
-    try {
-      const g = games.get(gameId);
-      if (g && g.lastPlayers) {
-        // Enhance with current online/offline status
-        const enhanced = { ...g.lastPlayers };
-        if (Array.isArray(enhanced.players)) {
-          enhanced.players = enhanced.players.map((p) => {
-            const pid = String(p.profileId || "");
-            const isOnline = pid && g.onlinePlayers.has(pid);
-            const isOffline = pid && g.offlinePlayers.has(pid);
-            return {
-              ...p,
-              isActive: isOnline || !pid,
-              isOffline: isOffline,
-              offlineSince: isOffline ? g.offlinePlayers.get(pid) : undefined,
-            };
-          });
+    withGame(gameId, () => {
+      try {
+        const g = games.get(gameId);
+        if (g && g.lastPlayers) {
+          // Enhance with current online/offline status
+          const enhanced = { ...g.lastPlayers };
+          if (Array.isArray(enhanced.players)) {
+            enhanced.players = enhanced.players.map((p) => {
+              const pid = String(p.profileId || "");
+              const isOnline = pid && g.onlinePlayers.has(pid);
+              const isOffline = pid && g.offlinePlayers.has(pid);
+              return {
+                ...p,
+                isActive: isOnline || !pid,
+                isOffline: isOffline,
+                offlineSince: isOffline ? g.offlinePlayers.get(pid) : undefined,
+              };
+            });
+          }
+          debugLogger.ludoEvent("players-get-response", { gameId });
+          debugLogger.ludoState(gameId, enhanced);
+          socket.emit("ludo:players", { ...enhanced, serverTs: Date.now() });
         }
-        debugLogger.ludoEvent("players-get-response", { gameId });
-        debugLogger.ludoState(gameId, enhanced);
-        socket.emit("ludo:players", { ...enhanced, serverTs: Date.now() });
-      }
-    } catch (_e) {}
+      } catch (_e) {}
+  
+    });
   });
 
   // Only the host may replace a non-host seat with a computer player.
@@ -1100,6 +1354,120 @@ function ludoSocket(io, socket, profileId) {
 
   // Round-trip probe so clients can show "reconnecting" on a slow connection,
   // not only after socket.io's own (much slower) heartbeat gives up.
+  // Any human player may pause; the match (and every seat) is kept, saved,
+  // and play is blocked until the host resumes it.
+  socket.on("ludo:pause", (payload = {}) => {
+    const { gameId } = payload || {};
+    const pid = String(effectiveProfileId || "");
+    if (!gameId || !pid) return;
+    withGame(gameId, () => {
+      const game = games.get(gameId);
+      const players = game?.lastPlayers?.players || [];
+      const seat = players.find((p) => String(p?.profileId || "") === pid);
+      if (!game || !seat || game.lastPlayers.gameEnded) return;
+
+      if (!game.paused) {
+        game.paused = {
+          profileId: pid,
+          name: String(payload.name || seat.name || "A player"),
+          at: Date.now(),
+        };
+        game.lastPlayers = bumpPlayersSeq({
+          ...game.lastPlayers,
+          paused: true,
+          pausedAt: game.paused.at,
+          pausedBy: { profileId: pid, name: game.paused.name },
+        });
+        persistPauseState(gameId, game.paused);
+        try {
+          debugLogger.ludoEvent("game-paused", { gameId, by: pid });
+        } catch (_e) {}
+      }
+
+      const event = {
+        gameId,
+        pausedBy: { profileId: game.paused.profileId, name: game.paused.name },
+        pausedAt: game.paused.at,
+        serverTs: Date.now(),
+      };
+      io.to(`ludo_${gameId}`).emit("ludo:paused", event);
+      socket.emit("ludo:paused", event);
+      io.to(`ludo_${gameId}`).emit("ludo:players", {
+        ...game.lastPlayers,
+        serverTs: Date.now(),
+      });
+  
+    });
+  });
+
+  // Only the host resumes, because the host's client runs the turn logic
+  // (and any computer seats) that the match needs to continue.
+  socket.on("ludo:resume", (payload = {}) => {
+    const { gameId } = payload || {};
+    const pid = String(effectiveProfileId || "");
+    if (!gameId || !pid) return;
+    withGame(gameId, () => {
+      const game = games.get(gameId);
+      if (!game?.lastPlayers) return;
+      const hostId = String(game.lastPlayers.players?.[0]?.profileId || "");
+      if (!hostId || hostId !== pid) {
+        socket.emit("ludo:resume:denied", {
+          gameId,
+          reason: "host_only",
+          serverTs: Date.now(),
+        });
+        return;
+      }
+
+      if (game.paused) {
+        game.paused = null;
+        const next = { ...game.lastPlayers, paused: false };
+        delete next.pausedAt;
+        delete next.pausedBy;
+        game.lastPlayers = bumpPlayersSeq(next);
+        persistPauseState(gameId, null);
+        try {
+          debugLogger.ludoEvent("game-resumed", { gameId, by: pid });
+        } catch (_e) {}
+      }
+
+      io.to(`ludo_${gameId}`).emit("ludo:resumed", {
+        gameId,
+        by: pid,
+        serverTs: Date.now(),
+      });
+      socket.emit("ludo:resumed", { gameId, by: pid, serverTs: Date.now() });
+      io.to(`ludo_${gameId}`).emit("ludo:players", {
+        ...game.lastPlayers,
+        serverTs: Date.now(),
+      });
+  
+    });
+  });
+
+  // A player closed the board but kept their seat (saved for later). Treat
+  // them like a disconnected player so turns don't wait for them, and stop
+  // sending them this room's events. ludo:join brings them back online.
+  socket.on("ludo:board:closed", (payload = {}) => {
+    const { gameId } = payload || {};
+    const pid = String(effectiveProfileId || "");
+    if (!gameId || !pid) return;
+    try {
+      socket.leave(`ludo_${gameId}`);
+    } catch (_e) {}
+    const game = games.get(gameId);
+    if (!game) return;
+    if (game.onlinePlayers.has(pid)) {
+      game.onlinePlayers.delete(pid);
+      game.offlinePlayers.set(pid, Date.now());
+      io.to(`ludo_${gameId}`).emit("ludo:player:offline", {
+        profileId: pid,
+        gameId,
+        timestamp: Date.now(),
+      });
+    }
+  });
+
   socket.on("ludo:ping", (_payload, ack) => {
     if (typeof ack === "function") ack({ serverTs: Date.now() });
   });

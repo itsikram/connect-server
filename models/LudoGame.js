@@ -104,6 +104,25 @@ const ludoGameSchema = new Schema(
       min: 2,
       max: 4,
     },
+    // A paused match keeps every seat and can be resumed later by the host.
+    paused: {
+      type: Boolean,
+      default: false,
+    },
+    pausedAt: Date,
+    pausedBy: {
+      profileId: {
+        type: Schema.Types.ObjectId,
+        ref: Profile,
+      },
+      name: String,
+    },
+    // Snapshot version, so a game restored from the database continues with
+    // versions newer than anything clients have already applied.
+    stateVersion: {
+      type: Number,
+      default: 0,
+    },
     lastUpdated: {
       type: Date,
       default: Date.now,
