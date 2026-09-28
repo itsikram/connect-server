@@ -5,6 +5,10 @@ const RecoveryLapseModel = require("../models/RecoveryLapse");
 const RecoveryChatMessageModel = require("../models/RecoveryChatMessage");
 const defaultAi = require("../services/recoveryAi");
 const {
+  BACKGROUND,
+  BACKGROUND_MULTI,
+  BACKGROUND_SAFETY,
+  BACKGROUND_SINGLE,
   BADGES,
   CRISIS_MESSAGES,
   HALT,
@@ -18,6 +22,8 @@ const {
   SCREENERS,
   SUBSTANCES,
   SUBSTANCE_KEYS,
+  SYMPTOMS,
+  SYMPTOM_KEYS,
   TIMELINES,
   TOOL_KEYS,
   TRIGGERS,
@@ -33,6 +39,7 @@ const {
   DEFAULT_TIMEZONE,
   addDaysToKey,
   applyLapse,
+  backgroundSafetyKeys,
   checkinStreak,
   dayKey,
   earnedBadgeKeys,
@@ -102,6 +109,14 @@ const crisisPayload = (risk, lang) =>
       }
     : null;
 
+const SYMPTOM_PRIORITY = ["suicide", "medical", "psychosis"];
+/** Red-flag symptoms from a check-in as a crisis risk (suicide first, then medical, then psychosis). */
+const symptomRisk = (symptoms = []) => {
+  const types = symptoms.map((key) => SYMPTOMS.find((item) => item.key === key)?.redFlag).filter(Boolean);
+  const type = SYMPTOM_PRIORITY.find((candidate) => types.includes(candidate));
+  return type ? { level: "crisis", type } : { level: "none", type: "none" };
+};
+
 const badgeView = (badges, lang) =>
   badges
     .map((badge) => (typeof badge === "string" ? { key: badge } : badge))
@@ -134,6 +149,7 @@ const toClientProfile = (doc) => {
     reasonKeys: doc.reasonKeys || [],
     reasons: decryptText(doc.reasonsEnc),
     letter: decryptText(doc.letterEnc),
+    background: decryptJson(doc.backgroundEnc, null),
     triggers: doc.triggers || [],
     riskHours: doc.riskHours || [],
     supportContacts: decryptJson(doc.supportContactsEnc, []),
@@ -161,6 +177,7 @@ const toClientCheckin = (doc) => {
     sleepHours: doc.sleepHours ?? null,
     halt: doc.halt || [],
     triggers: doc.triggers || [],
+    symptoms: doc.symptoms || [],
     note: decryptText(doc.noteEnc),
     reflection: reflection?.reflection || "",
     microGoal: reflection?.microGoal || "",
@@ -239,6 +256,29 @@ const decorateSubstance = (substance, stats, lang) => {
 // ---------------------------------------------------------------------------
 const bool = (value, fallback) => (typeof value === "boolean" ? value : fallback);
 
+/** Keeps only known background answers; returns null when nothing was shared. */
+const normalizeBackground = (raw) => {
+  if (!raw || typeof raw !== "object") return null;
+  const allowed = (field) => BACKGROUND[field].map((item) => item.key);
+  const background = {};
+  BACKGROUND_SINGLE.forEach((field) => {
+    if (allowed(field).includes(raw[field])) background[field] = raw[field];
+  });
+  BACKGROUND_MULTI.forEach((field) => {
+    let keys = pickKeys(raw[field], allowed(field), allowed(field).length);
+    // "None" cannot be combined with real answers.
+    if (keys.length > 1) keys = keys.filter((key) => key !== "none");
+    if (keys.length) background[field] = keys;
+  });
+  const attempts = toInt(raw.quitAttempts, 0, 100, undefined);
+  if (attempts !== undefined) background.quitAttempts = attempts;
+  const whatHelped = clip(raw.whatHelped, 300);
+  if (whatHelped) background.whatHelped = whatHelped;
+  const notes = clip(raw.notes, 600);
+  if (notes) background.notes = notes;
+  return Object.keys(background).length ? background : null;
+};
+
 /** Validates onboarding/profile input. Returns the $set update and any errors. */
 const normalizeProfileInput = (body = {}, existing = null, now = new Date()) => {
   const errors = [];
@@ -311,6 +351,10 @@ const normalizeProfileInput = (body = {}, existing = null, now = new Date()) => 
   if (body.reasons !== undefined) update.reasonsEnc = encryptText(clip(body.reasons, 1000));
   if (body.letter !== undefined) update.letterEnc = encryptText(clip(body.letter, 2000));
   if (body.triggers !== undefined) update.triggers = pickKeys(body.triggers, TRIGGER_KEYS, TRIGGER_KEYS.length);
+  if (body.background !== undefined) {
+    const background = normalizeBackground(body.background);
+    update.backgroundEnc = background ? encryptJson(background) : "";
+  }
   if (body.supportContacts !== undefined) {
     const contacts = (Array.isArray(body.supportContacts) ? body.supportContacts : [])
       .slice(0, 5)
@@ -360,6 +404,14 @@ const sanitizeClientPlan = (plan, existing, safetyNote) => {
       .filter((item) => item.goal)
       .slice(0, 8),
     rewardIdea: clip(plan.rewardIdea, 240),
+    replacements: list(plan.replacements)
+      .map((item) => ({ need: clip(item?.need, 120), activity: clip(item?.activity, 240) }))
+      .filter((item) => item.activity)
+      .slice(0, 8),
+    warningSigns: list(plan.warningSigns)
+      .map((item) => clip(typeof item === "string" ? item : item?.text, 160))
+      .filter(Boolean)
+      .slice(0, 8),
     rewardGoal: plan.rewardGoal && typeof plan.rewardGoal === "object" ? { title: clip(plan.rewardGoal.title, 80), amount: toNumber(plan.rewardGoal.amount, 0, 100000000, 0) } : existing?.rewardGoal || null,
     source: existing?.source || "curated",
   };
@@ -404,7 +456,7 @@ const buildDashboard = ({ profile, lapses = [], checkins = [], cravings = [], to
       daily,
       recent: recentStats({ checkins: recentCheckins, cravings: recentCravings }),
       toolOrder: rankTools(cravings),
-      proHelp: professionalHelpReasons({ substances: profile.substances || [], lastCrisisAt: profile.lastCrisisAt, lapsesLast30, now: nowDate }),
+      proHelp: professionalHelpReasons({ substances: profile.substances || [], lastCrisisAt: profile.lastCrisisAt, lapsesLast30, background: decryptJson(profile.backgroundEnc, null), now: nowDate }),
       stage: stageOfChange({ importance: profile.readiness?.importance ?? 8, substances: profile.substances || [], now: nowDate }),
       badgeCandidates: earnedBadgeKeys({ longestStreakDays, cravingsResisted: totals.cravingsResisted || 0, checkinCount: totals.checkinCount || 0 }),
     },
@@ -427,6 +479,11 @@ const contentPayload = (lang) => {
         triggers: TRIGGERS.map(({ key, label }) => ({ key, label })),
         reasons: REASONS,
         halt: HALT,
+        background: Object.fromEntries(
+          Object.entries(BACKGROUND).map(([field, options]) => [field, options.map(({ key, label, redFlag }) => ({ key, label, ...(redFlag ? { redFlag: true } : {}) }))]),
+        ),
+        backgroundSafety: BACKGROUND_SAFETY,
+        symptoms: SYMPTOMS.map(({ key, label, redFlag }) => ({ key, label, ...(redFlag ? { redFlag } : {}) })),
         milestones: MILESTONES,
         badges: BADGES,
         timelines: TIMELINES,
@@ -488,7 +545,12 @@ const createRecoveryController = ({ models = {}, ai = defaultAi, offlineAi = def
   const aiContextFor = (profile, activity, now, { withSummary = false } = {}) => {
     const { statsByKey, view } = buildDashboard({ profile, ...activity, now });
     return defaultAi.buildContext({
-      profile: { ...profile, reasonsText: decryptText(profile.reasonsEnc), supportContacts: decryptJson(profile.supportContactsEnc, []) },
+      profile: {
+        ...profile,
+        reasonsText: decryptText(profile.reasonsEnc),
+        supportContacts: decryptJson(profile.supportContactsEnc, []),
+        background: decryptJson(profile.backgroundEnc, null),
+      },
       statsByKey,
       recent: view.recent,
       lastLapse: activity.lapses[0] || null,
@@ -645,7 +707,7 @@ const createRecoveryController = ({ models = {}, ai = defaultAi, offlineAi = def
       const now = clock();
       const lang = resolveLang(req, profile);
       const activity = await loadActivity(userId, profile, now);
-      const plan = await aiFor(profile, userId).generatePlan({ context: aiContextFor(profile, activity, now), lang });
+      const plan = await aiFor(profile, userId).generatePlan({ context: aiContextFor(profile, activity, now), lang, background: decryptJson(profile.backgroundEnc, null) });
       const previous = decryptJson(profile.planEnc, null);
       const saved = { ...plan, rewardGoal: previous?.rewardGoal || null };
       const firstPlan = !profile.planGeneratedAt;
@@ -666,7 +728,8 @@ const createRecoveryController = ({ models = {}, ai = defaultAi, offlineAi = def
       if (!profile) return notSetUp(res);
       const lang = resolveLang(req, profile);
       const classes = [...new Set(profile.substances.map((substance) => safetyClassOf(substance.key)))];
-      const plan = sanitizeClientPlan(req.body?.plan, decryptJson(profile.planEnc, null), defaultAi.safetyNoteFor(classes, lang));
+      const safetyKeys = backgroundSafetyKeys(decryptJson(profile.backgroundEnc, null), profile.substances);
+      const plan = sanitizeClientPlan(req.body?.plan, decryptJson(profile.planEnc, null), defaultAi.safetyNoteFor(classes, lang, safetyKeys));
       if (!plan) return badRequest(res, "Plan is not valid");
       await RecoveryProfile.updateOne({ user: userId }, { $set: { planEnc: encryptJson(plan), planSource: plan.source } });
       return res.json({ success: true, plan });
@@ -715,9 +778,10 @@ const createRecoveryController = ({ models = {}, ai = defaultAi, offlineAi = def
         sleepHours: toNumber(body.sleepHours, 0, 24, undefined),
         halt: pickKeys(body.halt, HALT_KEYS, HALT_KEYS.length),
         triggers: pickKeys(body.triggers, TRIGGER_KEYS, 8),
+        symptoms: pickKeys(body.symptoms, SYMPTOM_KEYS, SYMPTOM_KEYS.length),
       });
       const note = clip(body.note, 1000);
-      const detected = detectCrisis(note);
+      const detected = maxRisk(detectCrisis(note), symptomRisk(fields.symptoms));
       const [existing, activity] = await Promise.all([RecoveryCheckIn.findOne({ user: userId, day }).lean(), loadActivity(userId, profile, now)]);
       const reflection = await aiFor(profile, userId).checkinReflection({ checkin: { ...fields, note }, context: aiContextFor(profile, activity, now), lang });
       const risk = maxRisk(detected, { level: reflection.risk, type: reflection.risk === "none" ? "none" : "distress" });
@@ -1062,6 +1126,8 @@ module.exports = {
   ...createRecoveryController(),
   createRecoveryController,
   normalizeProfileInput,
+  normalizeBackground,
+  symptomRisk,
   sanitizeClientPlan,
   buildDashboard,
   toClientProfile,

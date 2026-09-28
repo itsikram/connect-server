@@ -240,14 +240,39 @@ const stageOfChange = ({ importance = 0, substances = [], now = new Date() }) =>
   return importance >= 4 ? "contemplation" : "precontemplation";
 };
 
-/** Reasons to show the "talk to a professional" card (empty = hide). */
-const professionalHelpReasons = ({ substances = [], lastCrisisAt, lapsesLast30 = 0, now = new Date() }) => {
+const hasBackground = (background, field, key) => Array.isArray(background?.[field]) && background[field].includes(key);
+const hadSevereWithdrawal = (background) => ["seizure", "hallucinations", "shaking"].some((key) => hasBackground(background, "pastWithdrawal", key));
+const injects = (background, substances) => hasBackground(background, "routes", "inject") || substances.some((substance) => substance.key === "injection");
+
+/** Reasons to show the "talk to a professional" card (empty = hide), most urgent first. */
+const professionalHelpReasons = ({ substances = [], lastCrisisAt, lapsesLast30 = 0, background = null, now = new Date() }) => {
   const reasons = [];
+  if (hasBackground(background, "physicalHealth", "pregnant")) reasons.push("pregnancy");
+  if (hadSevereWithdrawal(background)) reasons.push("withdrawal_history");
+  if (injects(background, substances)) reasons.push("injecting");
   if (substances.some((substance) => substance.screener?.severity === "high")) reasons.push("severity");
   if (substances.some((substance) => ["opioid", "medical_taper"].includes(safetyClassOf(substance.key)))) reasons.push("medical");
   if (lastCrisisAt && new Date(now).getTime() - new Date(lastCrisisAt).getTime() < 7 * DAY_MS) reasons.push("crisis");
+  if (["self_harm", "depression", "trauma"].some((key) => hasBackground(background, "mentalHealth", key))) reasons.push("mental_health");
+  if (background?.ageGroup === "under18") reasons.push("youth");
   if (lapsesLast30 >= 3) reasons.push("lapses");
   return reasons;
+};
+
+/** Keys of the curated BACKGROUND_SAFETY notes that apply to this person, most urgent first. */
+const backgroundSafetyKeys = (background, substances = []) => {
+  if (!background) return [];
+  const classes = substances.map((substance) => safetyClassOf(substance.key));
+  const keys = [];
+  if (hasBackground(background, "physicalHealth", "pregnant")) keys.push("pregnant");
+  if (hasBackground(background, "mentalHealth", "self_harm") || hasBackground(background, "pastWithdrawal", "suicidal")) keys.push("self_harm");
+  if (hadSevereWithdrawal(background)) keys.push("seizure_history");
+  if (injects(background, substances)) keys.push("inject");
+  if (substances.some((substance) => substance.key === "tramadol")) keys.push("tramadol_seizure");
+  if (hasBackground(background, "physicalHealth", "heart") && classes.includes("stimulant")) keys.push("heart");
+  if ((hasBackground(background, "living", "alone") || background.usePattern === "alone") && classes.includes("opioid")) keys.push("alone_opioid");
+  if (background.ageGroup === "under18") keys.push("under18");
+  return keys;
 };
 
 /** Consecutive days with a check-in, ending today (or yesterday if today is not done yet). */
@@ -311,6 +336,7 @@ module.exports = {
   riskHours,
   stageOfChange,
   professionalHelpReasons,
+  backgroundSafetyKeys,
   checkinStreak,
   earnedBadgeKeys,
   recentStats,

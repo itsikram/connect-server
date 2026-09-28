@@ -117,7 +117,7 @@ const SAFETY_CLASSES = {
   medical_taper: {
     approaches: ["doctor"],
     defaultApproach: "doctor",
-    title: L("Needs a doctor (alcohol / sleeping pills)", "ডাক্তার প্রয়োজন (মদ / ঘুমের ওষুধ)"),
+    title: L("Needs a doctor (alcohol / sedatives / pregabalin)", "ডাক্তার প্রয়োজন (মদ / ঘুমের ওষুধ / প্রিগাবালিন)"),
     quitAdvice: L(
       "Do not stop suddenly on your own. If you use every day, stopping abruptly can cause seizures. See a doctor first for a safe, slow reduction — the app will support you along the way.",
       "নিজে থেকে হঠাৎ বন্ধ করবেন না। প্রতিদিন নিলে হঠাৎ বন্ধ করায় খিঁচুনি হতে পারে। আগে ডাক্তার দেখান, নিরাপদে ধীরে কমানোর পরিকল্পনা করুন—পুরো পথে এই অ্যাপ পাশে থাকবে।",
@@ -154,6 +154,27 @@ const SAFETY_CLASSES = {
     lapseSafety: L(
       "If you feel faint, dizzy or your chest hurts, stop and get help right away — call 999.",
       "মাথা ঘোরা, অজ্ঞান ভাব বা বুকে ব্যথা হলে থামুন এবং সাথে সাথে সাহায্য নিন—৯৯৯-এ ফোন করুন।",
+    ),
+  },
+  hallucinogen: {
+    approaches: ["now", "date", "doctor"],
+    defaultApproach: "now",
+    title: L("Hallucinogen / ketamine", "হ্যালুসিনোজেন / কেটামিন"),
+    quitAdvice: L(
+      "Stopping is physically safe for most people. Plan for low mood, poor sleep and cravings in the first weeks, and avoid the people and parties linked to use.",
+      "বেশিরভাগ মানুষের জন্য ছাড়া শারীরিকভাবে নিরাপদ। প্রথম কয়েক সপ্তাহে মন খারাপ, ঘুমের সমস্যা আর ইচ্ছের জন্য প্রস্তুত থাকুন, আর নেশার সাথে জড়িত মানুষ ও পার্টি এড়িয়ে চলুন।",
+    ),
+    withdrawal: L(
+      "Low mood, anxiety, tiredness and poor sleep are common for 1–3 weeks. Some people have flashbacks or visual changes that fade with time.",
+      "১–৩ সপ্তাহ মন খারাপ, উদ্বেগ, ক্লান্তি আর ঘুমের সমস্যা স্বাভাবিক। কারো কারো আগের অভিজ্ঞতা হঠাৎ ফিরে আসে বা চোখে অন্যরকম দেখে—সময়ের সাথে কমে যায়।",
+    ),
+    safety: L(
+      "Stopping is not dangerous in itself. Ketamine can damage the bladder: pain or blood when passing urine needs a doctor. Panic, seeing things or not feeling real need medical help.",
+      "ছাড়াটা নিজে বিপজ্জনক নয়। কেটামিন মূত্রথলির ক্ষতি করতে পারে: প্রস্রাবে ব্যথা বা রক্ত গেলে ডাক্তার দেখান। প্যানিক, কিছু দেখা বা নিজেকে অবাস্তব মনে হলে চিকিৎসা নিন।",
+    ),
+    lapseSafety: L(
+      "Don't use alone and don't mix with alcohol or other drugs. If someone is unresponsive, very confused or panicking badly, call 999.",
+      "একা নেবেন না, মদ বা অন্য মাদকের সাথে মেশাবেন না। কেউ সাড়া না দিলে, খুব বিভ্রান্ত হলে বা ভীষণ আতঙ্কিত হলে ৯৯৯-এ ফোন করুন।",
     ),
   },
   other: {
@@ -194,6 +215,15 @@ const SUBSTANCES = [
   { key: "alcohol", safetyClass: "medical_taper", screener: "AUDIT-C", sdsCutoff: 3, icon: "glass-mug-variant", name: L("Alcohol", "মদ / অ্যালকোহল"), unit: L("drinks", "গ্লাস"), unitOne: L("drink", "গ্লাস"), defaultAmount: 3 },
   { key: "sleeping_pills", safetyClass: "medical_taper", screener: "SDS", sdsCutoff: 4, icon: "pill-multiple", name: L("Sleeping pills", "ঘুমের ওষুধ"), unit: L("pills", "বড়ি"), unitOne: L("pill", "বড়ি"), defaultAmount: 1 },
   { key: "inhalant", safetyClass: "inhalant", screener: "SDS", sdsCutoff: 3, icon: "spray", name: L("Dandy / glue", "ড্যান্ডি / গাম"), unit: L("uses", "বার"), unitOne: L("use", "বার"), defaultAmount: 3 },
+  { key: "tramadol", safetyClass: "opioid", screener: "SDS", sdsCutoff: 5, icon: "pill", name: L("Tramadol / painkillers", "ট্রামাডল / ব্যথার ওষুধ"), unit: L("tablets", "ট্যাবলেট"), unitOne: L("tablet", "ট্যাবলেট"), defaultAmount: 2 },
+  { key: "injection", safetyClass: "opioid", screener: "SDS", sdsCutoff: 5, icon: "needle", name: L("Injecting drugs (buprenorphine / pethidine)", "ইনজেকশনের মাদক (বুপ্রেনরফিন / পেথিডিন)"), unit: L("injections", "ইনজেকশন"), unitOne: L("injection", "ইনজেকশন"), defaultAmount: 2 },
+  { key: "cocaine", safetyClass: "stimulant", screener: "SDS", sdsCutoff: 3, icon: "grain", name: L("Cocaine", "কোকেন"), unit: L("uses", "বার"), unitOne: L("use", "বার"), defaultAmount: 1 },
+  { key: "mdma", safetyClass: "stimulant", screener: "SDS", sdsCutoff: 3, icon: "pill", name: L("Ecstasy / MDMA / party pills", "এক্সট্যাসি / এমডিএমএ / পার্টি পিল"), unit: L("pills", "বড়ি"), unitOne: L("pill", "বড়ি"), defaultAmount: 1 },
+  { key: "vape", safetyClass: "nicotine", screener: "SDS", sdsCutoff: 3, icon: "smoke", name: L("Vape / e-cigarette", "ভেপ / ই-সিগারেট"), unit: L("sessions", "বার"), unitOne: L("session", "বার"), defaultAmount: 10 },
+  { key: "pregabalin", safetyClass: "medical_taper", screener: "SDS", sdsCutoff: 4, icon: "pill-multiple", name: L("Pregabalin / gabapentin", "প্রিগাবালিন / গাবাপেন্টিন"), unit: L("capsules", "ক্যাপসুল"), unitOne: L("capsule", "ক্যাপসুল"), defaultAmount: 2 },
+  { key: "ketamine", safetyClass: "hallucinogen", screener: "SDS", sdsCutoff: 3, icon: "flask-empty-outline", name: L("Ketamine", "কেটামিন"), unit: L("uses", "বার"), unitOne: L("use", "বার"), defaultAmount: 1 },
+  { key: "lsd", safetyClass: "hallucinogen", screener: "SDS", sdsCutoff: 3, icon: "mushroom-outline", name: L("LSD / magic mushrooms", "এলএসডি / ম্যাজিক মাশরুম"), unit: L("uses", "বার"), unitOne: L("use", "বার"), defaultAmount: 1 },
+  { key: "synthetic_cannabis", safetyClass: "other", screener: "SDS", sdsCutoff: 3, icon: "cannabis-off", name: L("Kush / K2 / synthetic weed", "কুশ / কে২ / সিনথেটিক গাঁজা"), unit: L("uses", "বার"), unitOne: L("use", "বার"), defaultAmount: 2 },
   { key: "other", safetyClass: "other", screener: "SDS", sdsCutoff: 4, icon: "help-circle-outline", name: L("Other", "অন্য কিছু"), unit: L("uses", "বার"), unitOne: L("use", "বার"), defaultAmount: 1 },
 ];
 
@@ -395,6 +425,239 @@ const HALT = [
 ];
 const HALT_KEYS = HALT.map((item) => item.key);
 
+// ---------------------------------------------------------------------------
+// Personal background ("About you"). Every question is optional. The answers
+// are stored encrypted and only used to personalise the plan, coach and safety
+// advice. `none` options clear the others in the app.
+// ---------------------------------------------------------------------------
+const opt = (key, en, bn, extra = {}) => ({ key, label: L(en, bn), ...extra });
+
+const BACKGROUND = {
+  ageGroup: [
+    opt("under18", "Under 18", "১৮-এর কম"),
+    opt("18_24", "18–24", "১৮–২৪"),
+    opt("25_34", "25–34", "২৫–৩৪"),
+    opt("35_49", "35–49", "৩৫–৪৯"),
+    opt("50plus", "50 or older", "৫০ বা বেশি"),
+  ],
+  gender: [
+    opt("male", "Man", "পুরুষ"),
+    opt("female", "Woman", "নারী"),
+    opt("other", "Other / prefer not to say", "অন্য / বলতে চাই না"),
+  ],
+  living: [
+    opt("alone", "Alone", "একা"),
+    opt("family", "With family", "পরিবারের সাথে"),
+    opt("partner", "With my partner", "জীবনসঙ্গীর সাথে"),
+    opt("shared", "Mess / hostel / shared", "মেস / হোস্টেল / শেয়ার বাসা"),
+    opt("users_nearby", "Someone I live with also uses", "যার সাথে থাকি সে-ও নেশা করে"),
+  ],
+  familyKnows: [
+    opt("yes", "Yes, they know", "হ্যাঁ, জানে"),
+    opt("some", "Some people know", "কেউ কেউ জানে"),
+    opt("no", "No one knows", "কেউ জানে না"),
+  ],
+  occupation: [
+    opt("student", "Student", "শিক্ষার্থী"),
+    opt("working", "Job (day time)", "চাকরি (দিনে)"),
+    opt("night_shift", "Night shift / long hours", "রাতের শিফট / লম্বা সময় কাজ"),
+    opt("business", "Own business", "নিজের ব্যবসা"),
+    opt("driver", "Driver / transport", "চালক / পরিবহন"),
+    opt("homemaker", "Homemaker", "গৃহিণী / গৃহকর্তা"),
+    opt("unemployed", "Looking for work", "কাজ খুঁজছি"),
+  ],
+  access: [
+    opt("very_easy", "Very easy — it comes to me", "খুব সহজ—হাতের কাছেই পাই"),
+    opt("somewhat", "I have to go and get it", "গিয়ে আনতে হয়"),
+    opt("hard", "Hard to get", "পাওয়া কঠিন"),
+  ],
+  routes: [
+    opt("smoke", "Smoke / foil / chase", "ধোঁয়া / ফয়েল"),
+    opt("oral", "Swallow / drink", "খাই / পান করি"),
+    opt("sniff", "Sniff / snort", "নাকে টানি"),
+    opt("chew", "Chew", "চিবাই"),
+    opt("inject", "Inject", "ইনজেকশন"),
+    opt("vape", "Vape", "ভেপ"),
+  ],
+  usePattern: [
+    opt("alone", "Mostly alone", "বেশিরভাগ একা"),
+    opt("friends", "Mostly with friends", "বেশিরভাগ বন্ধুদের সাথে"),
+    opt("both", "Both", "দুইভাবেই"),
+  ],
+  // What use does for the person, and a healthier way to meet the same need.
+  functions: [
+    opt("relax", "Calms stress", "চাপ কমায়", { replacement: L("Box breathing, a walk or a shower when stress builds; talk it out with someone.", "চাপ বাড়লে বক্স-ব্রিদিং, হাঁটা বা গোসল; কারো সাথে কথা বলা।") }),
+    opt("sleep", "Helps me sleep", "ঘুমাতে সাহায্য করে", { replacement: L("A fixed bedtime, no screens for 30 minutes, and slow 4-7-8 breathing in bed.", "নির্দিষ্ট সময়ে ঘুমানো, ৩০ মিনিট স্ক্রিন বন্ধ, বিছানায় ধীরে ৪-৭-৮ শ্বাস।") }),
+    opt("energy", "Energy for work or study", "কাজ বা পড়ার শক্তি", { replacement: L("Regular meals, water, short breaks every hour and 7 hours of sleep.", "সময়মতো খাবার, পানি, প্রতি ঘণ্টায় ছোট বিরতি আর ৭ ঘণ্টা ঘুম।") }),
+    opt("fun", "Fun / fitting in with friends", "মজা / বন্ধুদের সাথে মিশতে", { replacement: L("Plan sober hangouts: sport, games, food or a movie with friends who don't use.", "নেশা ছাড়া আড্ডা: খেলা, গেম, খাওয়া বা সিনেমা—নেশা করে না এমন বন্ধুদের সাথে।") }),
+    opt("pain", "Eases body pain", "শরীরের ব্যথা কমায়", { replacement: L("See a doctor for a safe pain plan; gentle stretching and heat packs can help.", "নিরাপদ ব্যথার চিকিৎসার জন্য ডাক্তার দেখান; হালকা স্ট্রেচিং আর গরম সেঁক সাহায্য করে।") }),
+    opt("escape", "Escape bad feelings or memories", "খারাপ অনুভূতি বা স্মৃতি থেকে পালাতে", { replacement: L("Write the feeling down, use 5-4-3-2-1 grounding, and talk to a counsellor.", "অনুভূতিটা লিখে ফেলুন, ৫-৪-৩-২-১ গ্রাউন্ডিং করুন, আর কাউন্সেলরের সাথে কথা বলুন।") }),
+    opt("boredom", "Kills boredom", "একঘেয়েমি কাটায়", { replacement: L("Keep a list of 5 quick activities and fill empty evenings with a class, sport or hobby.", "৫টা ছোট কাজের তালিকা রাখুন, খালি সন্ধ্যায় ক্লাস, খেলা বা শখের কাজ করুন।") }),
+    opt("confidence", "Makes me feel confident", "আত্মবিশ্বাস দেয়", { replacement: L("Practise one small social step at a time and note each success.", "একবারে একটা ছোট সামাজিক পদক্ষেপ অনুশীলন করুন, প্রতিটি সফলতা লিখে রাখুন।") }),
+    opt("withdrawal", "Stops withdrawal feeling bad", "না নিলে খারাপ লাগে, তাই", { replacement: L("Ask a doctor about medicines that ease withdrawal — this makes quitting much safer.", "উইথড্রয়াল সহজ করার ওষুধ নিয়ে ডাক্তারকে জিজ্ঞেস করুন—এতে ছাড়া অনেক নিরাপদ হয়।") }),
+    opt("habit", "Just habit / routine", "শুধু অভ্যাস", { replacement: L("Swap the ritual: same time and place, new action — tea, mouri, a short walk.", "অভ্যাসটা বদলান: একই সময় ও জায়গা, নতুন কাজ—চা, মৌরি, একটু হাঁটা।") }),
+  ],
+  longestQuit: [
+    opt("never", "Never tried", "কখনো চেষ্টা করিনি"),
+    opt("days", "A few days", "কয়েক দিন"),
+    opt("weeks", "A few weeks", "কয়েক সপ্তাহ"),
+    opt("months", "A few months", "কয়েক মাস"),
+    opt("year", "A year or more", "এক বছর বা বেশি"),
+  ],
+  relapseReasons: [
+    opt("withdrawal", "Withdrawal was too hard", "উইথড্রয়াল খুব কষ্টের ছিল"),
+    opt("cravings", "Cravings", "তীব্র ইচ্ছে"),
+    opt("friends", "Friends / offers", "বন্ধু / অফার"),
+    opt("stress", "Stress or problems", "চাপ বা সমস্যা"),
+    opt("boredom", "Boredom", "একঘেয়েমি"),
+    opt("sleep", "Couldn't sleep", "ঘুম আসত না"),
+    opt("pain", "Pain", "ব্যথা"),
+    opt("celebration", "A celebration", "কোনো উৎসব"),
+    opt("thought_ok", "Thought 'just once is okay'", "ভেবেছিলাম 'একবার খেলে কিছু হবে না'"),
+  ],
+  pastWithdrawal: [
+    opt("seizure", "Seizure / fits", "খিঁচুনি", { redFlag: true }),
+    opt("hallucinations", "Seeing or hearing things, severe confusion", "কিছু দেখা/শোনা, খুব বিভ্রান্তি", { redFlag: true }),
+    opt("shaking", "Severe shaking or sweating", "প্রচণ্ড কাঁপুনি বা ঘাম", { redFlag: true }),
+    opt("suicidal", "Very low mood or thoughts of suicide", "খুব মন খারাপ বা আত্মহত্যার চিন্তা", { redFlag: true }),
+    opt("vomiting", "Vomiting, diarrhoea, body aches", "বমি, পাতলা পায়খানা, শরীর ব্যথা"),
+    opt("anxiety", "Anxiety, irritability, poor sleep", "উদ্বেগ, খিটখিটে ভাব, ঘুমের সমস্যা"),
+    opt("none", "None / never stopped", "কিছু না / কখনো ছাড়িনি"),
+  ],
+  mentalHealth: [
+    opt("anxiety", "Anxiety / panic", "উদ্বেগ / প্যানিক"),
+    opt("depression", "Depression / low mood", "বিষণ্ণতা / মন খারাপ"),
+    opt("sleep", "Sleep problems", "ঘুমের সমস্যা"),
+    opt("anger", "Anger problems", "রাগের সমস্যা"),
+    opt("adhd", "ADHD / trouble focusing", "এডিএইচডি / মনোযোগের সমস্যা"),
+    opt("trauma", "Trauma / bad past experiences", "ট্রমা / খারাপ অতীত অভিজ্ঞতা"),
+    opt("self_harm", "Past self-harm or suicidal thoughts", "আগে নিজের ক্ষতি বা আত্মহত্যার চিন্তা"),
+    opt("none", "None", "কিছু না"),
+  ],
+  physicalHealth: [
+    opt("pregnant", "Pregnant or breastfeeding", "গর্ভবতী বা বুকের দুধ খাওয়াচ্ছি"),
+    opt("heart", "Heart problem / high blood pressure", "হৃদরোগ / উচ্চ রক্তচাপ"),
+    opt("epilepsy", "Epilepsy / past seizures", "মৃগী / আগে খিঁচুনি"),
+    opt("liver", "Liver problem / jaundice", "লিভারের সমস্যা / জন্ডিস"),
+    opt("lungs", "Asthma / lung problem", "হাঁপানি / ফুসফুসের সমস্যা"),
+    opt("diabetes", "Diabetes", "ডায়াবেটিস"),
+    opt("hiv_hep", "HIV or hepatitis", "এইচআইভি বা হেপাটাইটিস"),
+    opt("chronic_pain", "Long-term pain", "দীর্ঘমেয়াদি ব্যথা"),
+    opt("none", "None", "কিছু না"),
+  ],
+  treatment: [
+    opt("doctor", "Seeing a doctor", "ডাক্তার দেখাচ্ছি"),
+    opt("medicine", "Taking medicine for quitting", "ছাড়ার জন্য ওষুধ খাচ্ছি"),
+    opt("counselling", "Counselling", "কাউন্সেলিং"),
+    opt("rehab_past", "Was in rehab before", "আগে রিহ্যাবে ছিলাম"),
+    opt("group", "NA / AA / support group", "এনএ / এএ / সাপোর্ট গ্রুপ"),
+    opt("faith", "Religious leader / faith group", "ধর্মীয় নেতা / ধর্মীয় দল"),
+    opt("none", "No support yet", "এখনো কোনো সহায়তা নেই"),
+  ],
+  interests: [
+    opt("sport", "Cricket / football / sport", "ক্রিকেট / ফুটবল / খেলা"),
+    opt("gym", "Gym / exercise", "জিম / ব্যায়াম"),
+    opt("music", "Music", "গান-বাজনা"),
+    opt("prayer", "Prayer / faith", "নামাজ / প্রার্থনা"),
+    opt("reading", "Reading / learning", "পড়া / শেখা"),
+    opt("games", "Games", "গেম"),
+    opt("cooking", "Cooking", "রান্না"),
+    opt("art", "Art / writing / photos", "আঁকা / লেখা / ছবি তোলা"),
+    opt("nature", "Walks / nature / gardening", "হাঁটা / প্রকৃতি / বাগান"),
+    opt("family_time", "Time with family or kids", "পরিবার বা বাচ্চাদের সাথে সময়"),
+    opt("helping", "Helping others / volunteering", "অন্যকে সাহায্য / স্বেচ্ছাসেবা"),
+    opt("skills", "Learning a skill / earning", "দক্ষতা শেখা / আয় করা"),
+  ],
+};
+
+const BACKGROUND_MULTI = ["living", "routes", "functions", "relapseReasons", "pastWithdrawal", "mentalHealth", "physicalHealth", "treatment", "interests"];
+const BACKGROUND_SINGLE = ["ageGroup", "gender", "familyKnows", "occupation", "access", "usePattern", "longestQuit"];
+const backgroundKeys = (field) => (BACKGROUND[field] || []).map((item) => item.key);
+
+// Curated safety notes triggered by background answers (never AI-generated).
+const BACKGROUND_SAFETY = {
+  pregnant: L(
+    "You are pregnant or breastfeeding: please see a doctor before you stop. Stopping opioids, alcohol, sedatives or pregabalin suddenly can harm you and the baby — a doctor can make it safe.",
+    "আপনি গর্ভবতী বা বুকের দুধ খাওয়াচ্ছেন: ছাড়ার আগে অবশ্যই ডাক্তার দেখান। অপিয়য়েড, মদ, ঘুমের ওষুধ বা প্রিগাবালিন হঠাৎ বন্ধ করলে আপনার ও শিশুর ক্ষতি হতে পারে—ডাক্তার এটা নিরাপদ করতে পারেন।",
+  ),
+  inject: L(
+    "If you inject: never share needles or syringes, use new ones every time, and get a free HIV and hepatitis test. Injecting after a break carries a very high overdose risk.",
+    "ইনজেকশন নিলে: কখনো সুই-সিরিঞ্জ শেয়ার করবেন না, প্রতিবার নতুন ব্যবহার করুন, আর বিনামূল্যে এইচআইভি ও হেপাটাইটিস পরীক্ষা করান। বিরতির পর ইনজেকশন নিলে ওভারডোজের ঝুঁকি অনেক বেশি।",
+  ),
+  seizure_history: L(
+    "You have had seizures or severe withdrawal before. Your next withdrawal can be worse, so please plan it with a doctor and don't be alone for the first days.",
+    "আগে আপনার খিঁচুনি বা তীব্র উইথড্রয়াল হয়েছে। পরেরবার তা আরও খারাপ হতে পারে, তাই ডাক্তারের সাথে পরিকল্পনা করুন আর প্রথম কয়েকদিন একা থাকবেন না।",
+  ),
+  heart: L(
+    "With a heart problem, stimulants like yaba, ICE and cocaine are especially dangerous. Chest pain or a racing heart needs 999 straight away.",
+    "হৃদরোগ থাকলে ইয়াবা, আইস বা কোকেনের মতো উত্তেজক মাদক বিশেষভাবে বিপজ্জনক। বুকে ব্যথা বা বুক ধড়ফড় করলে সাথে সাথে ৯৯৯-এ ফোন করুন।",
+  ),
+  tramadol_seizure: L(
+    "Tramadol can cause seizures, especially with epilepsy or at high amounts. Cut down with a doctor rather than stopping suddenly on your own.",
+    "ট্রামাডল খিঁচুনি ঘটাতে পারে, বিশেষ করে মৃগী থাকলে বা বেশি পরিমাণে নিলে। নিজে হঠাৎ বন্ধ না করে ডাক্তারের সাথে ধীরে কমান।",
+  ),
+  self_harm: L(
+    "You have had thoughts of self-harm before, and mood can drop during withdrawal. Keep Kaan Pete Roi (09612-119911) and a trusted person close, and call 999 if you feel unsafe.",
+    "আগে আপনার নিজের ক্ষতির চিন্তা এসেছে, আর উইথড্রয়ালে মন আরও খারাপ হতে পারে। কান পেতে রই (০৯৬১২-১১৯৯১১) আর একজন বিশ্বস্ত মানুষকে কাছে রাখুন, অনিরাপদ মনে হলে ৯৯৯-এ ফোন করুন।",
+  ),
+  alone_opioid: L(
+    "You live alone and use opioids: overdose is most deadly when no one is around. Tell someone your plan and never use alone.",
+    "আপনি একা থাকেন এবং অপিয়য়েড নেন: আশেপাশে কেউ না থাকলে ওভারডোজ সবচেয়ে প্রাণঘাতী। কাউকে আপনার পরিকল্পনা জানান, কখনো একা নেবেন না।",
+  ),
+  under18: L(
+    "You are under 18: a trusted adult, school counsellor or the Child Helpline (1098, free, 24/7) can help you through this safely.",
+    "আপনার বয়স ১৮-এর কম: একজন বিশ্বস্ত বড় মানুষ, স্কুলের কাউন্সেলর বা শিশু হেল্পলাইন (১০৯৮, বিনামূল্যে, ২৪ ঘণ্টা) আপনাকে নিরাপদে সাহায্য করতে পারে।",
+  ),
+};
+
+// Extra "cut the ties" steps suggested by background answers.
+const BACKGROUND_CHECKLIST = {
+  users_nearby: L("Agree with the person you live with that they won't use or keep drugs around you", "যার সাথে থাকেন তার সাথে কথা বলুন—আপনার সামনে যেন নেশা না করে বা জিনিস না রাখে"),
+  very_easy: L("Block the seller's number and change the times and routes where you meet them", "বিক্রেতার নম্বর ব্লক করুন, আর যে সময়/পথে দেখা হয় তা বদলান"),
+  inject: L("Get a free HIV and hepatitis test and throw away old needles safely", "বিনামূল্যে এইচআইভি ও হেপাটাইটিস পরীক্ষা করান, পুরনো সুই নিরাপদে ফেলে দিন"),
+  night_shift: L("Plan a meal, water and a 10-minute break for the hardest hour of your shift", "শিফটের সবচেয়ে কঠিন সময়ের জন্য খাবার, পানি আর ১০ মিনিটের বিরতি ঠিক করুন"),
+  no_support: L("Book one visit with a doctor or counsellor this month", "এই মাসে একবার ডাক্তার বা কাউন্সেলরের কাছে যাওয়ার সময় ঠিক করুন"),
+  family_unaware: L("Choose one person you could tell, and what you would say", "কাকে জানাতে পারেন আর কী বলবেন—একজন মানুষ ঠিক করুন"),
+};
+
+// Common early warning signs of a relapse; the curated plan picks from these.
+const WARNING_SIGNS = {
+  common: [
+    L("Skipping check-ins or hiding how I feel", "চেক-ইন বাদ দেওয়া বা অনুভূতি লুকানো"),
+    L("Thinking 'just once won't hurt'", "ভাবা 'একবার খেলে কিছু হবে না'"),
+    L("Spending time near old using places or people", "পুরনো নেশার জায়গা বা মানুষের কাছে সময় কাটানো"),
+  ],
+  sleep: L("Sleeping badly for several nights", "কয়েক রাত ধরে ঠিকমতো ঘুম না হওয়া"),
+  depression: L("Staying in my room and not talking to anyone", "ঘরে বসে থাকা, কারো সাথে কথা না বলা"),
+  anger: L("Getting into more arguments than usual", "স্বাভাবিকের চেয়ে বেশি ঝগড়া করা"),
+  anxiety: L("Feeling on edge and restless for days", "কয়েকদিন ধরে অস্থির আর টেনশনে থাকা"),
+  money: L("Carrying extra cash for no reason", "অকারণে বাড়তি টাকা সাথে রাখা"),
+};
+
+// Withdrawal and health symptoms for the daily check-in. A red flag names the
+// crisis type and shows emergency help straight away.
+const SYMPTOMS = [
+  opt("shaking", "Shaking", "কাঁপুনি"),
+  opt("sweating", "Sweating / chills", "ঘাম / শীত শীত ভাব"),
+  opt("nausea", "Nausea / vomiting", "বমি ভাব / বমি"),
+  opt("diarrhoea", "Diarrhoea / stomach cramps", "পাতলা পায়খানা / পেট কামড়ানো"),
+  opt("aches", "Body aches", "শরীর ব্যথা"),
+  opt("headache", "Headache", "মাথাব্যথা"),
+  opt("anxious", "Anxious / restless", "উদ্বেগ / অস্থিরতা"),
+  opt("irritable", "Irritable", "খিটখিটে মেজাজ"),
+  opt("low_mood", "Low mood", "মন খারাপ"),
+  opt("no_sleep", "Can't sleep", "ঘুম আসে না"),
+  opt("exhausted", "Exhausted", "প্রচণ্ড ক্লান্তি"),
+  opt("hungry", "Very hungry", "খুব খিদে"),
+  opt("seizure", "Seizure / fits", "খিঁচুনি", { redFlag: "medical" }),
+  opt("hallucinations", "Seeing or hearing things", "এমন কিছু দেখা বা শোনা যা অন্যরা পায় না", { redFlag: "psychosis" }),
+  opt("confusion", "Severe confusion", "খুব বিভ্রান্তি", { redFlag: "medical" }),
+  opt("chest_pain", "Chest pain / racing heart", "বুকে ব্যথা / বুক ধড়ফড়", { redFlag: "medical" }),
+  opt("breathing", "Trouble breathing", "শ্বাসকষ্ট", { redFlag: "medical" }),
+  opt("suicidal", "Thoughts of ending my life", "জীবন শেষ করার চিন্তা", { redFlag: "suicide" }),
+];
+const SYMPTOM_KEYS = SYMPTOMS.map((item) => item.key);
+
 // SOS tools. The client renders them offline; the server needs the keys to rank
 // them and to validate the coach's suggestedTool.
 const TOOL_KEYS = ["urge_surf", "breathing", "reasons", "tape_forward", "grounding", "four_ds", "distract", "call_support", "coach"];
@@ -461,6 +724,18 @@ const TIMELINES = {
     { hours: 30 * DAYS, at: L("Months 1–3", "১–৩ মাস"), text: L("Mood and focus keep improving. Cravings come less often but people and places can still trigger them.", "মন আর মনোযোগ ভালো হতে থাকে। ইচ্ছে কম আসে, তবে মানুষ বা জায়গা দেখে জাগতে পারে।") },
     { hours: 180 * DAYS, at: L("Months 6–12", "৬–১২ মাস"), text: L("Memory, attention and motivation are noticeably better.", "স্মৃতিশক্তি, মনোযোগ আর আগ্রহ বেশ ভালো হয়।") },
     { hours: 365 * DAYS, at: L("1 year+", "১ বছর+"), text: L("Research shows the brain's reward system can recover substantially after long abstinence.", "গবেষণায় দেখা যায়, দীর্ঘদিন বিরত থাকলে মস্তিষ্কের আনন্দ-ব্যবস্থা অনেকটাই সেরে ওঠে।") },
+  ],
+  vape: [
+    { hours: 1 * DAYS, at: L("1 day", "১ দিন"), text: L("Nicotine levels fall; urges and irritability are strongest in the first days.", "নিকোটিনের মাত্রা কমে; প্রথম কয়েকদিন ইচ্ছে আর খিটখিটে ভাব সবচেয়ে বেশি থাকে।") },
+    { hours: 3 * DAYS, at: L("3 days", "৩ দিন"), text: L("Nicotine has left your body. Cravings peak now and then start to ease.", "শরীর থেকে নিকোটিন বের হয়ে গেছে। এখন ইচ্ছে সবচেয়ে বেশি, তারপর কমতে শুরু করবে।") },
+    { hours: 14 * DAYS, at: L("2–4 weeks", "২–৪ সপ্তাহ"), text: L("Breathing, coughing and throat irritation usually improve; sleep settles.", "শ্বাস, কাশি আর গলার জ্বালা সাধারণত ভালো হয়; ঘুম স্বাভাবিক হয়।") },
+    { hours: 90 * DAYS, at: L("3 months", "৩ মাস"), text: L("Heart rate and blood pressure are healthier and urges are much rarer.", "হৃদস্পন্দন আর রক্তচাপ ভালো থাকে, ইচ্ছে অনেক কম আসে।") },
+  ],
+  hallucinogen: [
+    { hours: 1 * DAYS, at: L("Week 1", "১ম সপ্তাহ"), text: L("Tiredness, low mood and poor sleep are common. Rest and keep to a routine.", "ক্লান্তি, মন খারাপ আর ঘুমের সমস্যা স্বাভাবিক। বিশ্রাম নিন, নিয়মিত রুটিন মেনে চলুন।") },
+    { hours: 14 * DAYS, at: L("Weeks 2–4", "২–৪ সপ্তাহ"), text: L("Mood, focus and sleep steadily improve.", "মন, মনোযোগ আর ঘুম ধীরে ধীরে ভালো হয়।") },
+    { hours: 60 * DAYS, at: L("Months 2–3", "২–৩ মাস"), text: L("Anxiety eases; with ketamine, bladder and stomach pain often improve.", "উদ্বেগ কমে; কেটামিনের ক্ষেত্রে মূত্রথলি আর পেটের ব্যথা প্রায়ই ভালো হয়।") },
+    { hours: 180 * DAYS, at: L("6 months+", "৬ মাস+"), text: L("Memory and motivation are noticeably better.", "স্মৃতিশক্তি আর আগ্রহ বেশ ভালো হয়।") },
   ],
   cannabis: [
     { hours: 1 * DAYS, at: L("Days 1–3", "১–৩ দিন"), text: L("Irritability, restlessness, low appetite and trouble sleeping may begin.", "খিটখিটে মেজাজ, অস্থিরতা, খিদে কমা আর ঘুমের সমস্যা শুরু হতে পারে।") },
@@ -665,6 +940,15 @@ module.exports = {
   REASON_KEYS,
   HALT,
   HALT_KEYS,
+  BACKGROUND,
+  BACKGROUND_MULTI,
+  BACKGROUND_SINGLE,
+  backgroundKeys,
+  BACKGROUND_SAFETY,
+  BACKGROUND_CHECKLIST,
+  WARNING_SIGNS,
+  SYMPTOMS,
+  SYMPTOM_KEYS,
   TOOL_KEYS,
   SUGGESTED_TOOL_KEYS,
   MILESTONES,

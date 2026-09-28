@@ -1,5 +1,5 @@
 const { Schema, model } = require("mongoose");
-const { HALT_KEYS, SUBSTANCE_KEYS } = require("../utils/recoveryContent");
+const { HALT_KEYS, SUBSTANCE_KEYS, SYMPTOM_KEYS } = require("../utils/recoveryContent");
 
 // One check-in per user per local day ("YYYY-MM-DD" in the user's timezone).
 const recoveryCheckInSchema = new Schema(
@@ -16,6 +16,7 @@ const recoveryCheckInSchema = new Schema(
     sleepHours: { type: Number, min: 0, max: 24 },
     halt: { type: [{ type: String, enum: HALT_KEYS }], default: [] },
     triggers: { type: [String], default: [] },
+    symptoms: { type: [{ type: String, enum: SYMPTOM_KEYS }], default: [] },
     noteEnc: { type: String, default: "" },
     reflectionEnc: { type: String, default: "" },
     risk: { type: String, enum: ["none", "elevated", "crisis"], default: "none" },

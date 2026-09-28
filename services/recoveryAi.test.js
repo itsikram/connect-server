@@ -153,3 +153,39 @@ test("curated plan always includes class-specific safety", () => {
   assert.match(plan.safetyNote, /Never quit abruptly without a doctor/);
   assert.ok(plan.checklist.some((item) => /See a doctor before cutting down/.test(item.text)));
 });
+
+test("background is described for the model in plain English without raw keys", async () => {
+  const { buildContext: build } = require("./recoveryAi");
+  const withBackground = build({
+    profile: {
+      substances: [{ key: "tramadol", primary: true, approach: "doctor" }],
+      background: { functions: ["pain"], relapseReasons: ["withdrawal"], interests: ["sport"], quitAttempts: 2, whatHelped: "Cricket in the evening", occupation: "driver" },
+    },
+  });
+  assert.deepEqual(withBackground.aboutPerson.whatUsingDoesForThem, ["Eases body pain"]);
+  assert.deepEqual(withBackground.aboutPerson.whyTheyWentBackBefore, ["Withdrawal was too hard"]);
+  assert.equal(withBackground.aboutPerson.dailyLife, "Driver / transport");
+  assert.equal(withBackground.aboutPerson.previousQuitAttempts, 2);
+  assert.ok(withBackground.safetyNotes.some((note) => /Tramadol can cause seizures/.test(note)));
+  assert.equal(build({ profile: { substances: [] } }).aboutPerson, undefined);
+});
+
+test("AI plans keep replacements and warning signs, and fall back to curated ones", async () => {
+  const plan = {
+    summary: "Plan",
+    ifThen: [{ trigger: "Pain", action: "Stretch and use a heat pack" }],
+    checklist: ["See a doctor"],
+    weeklyGoals: [{ week: 1, goal: "Doctor visit" }],
+    replacements: [{ need: "Pain relief", activity: "Physiotherapy exercises" }],
+    warningSigns: ["Skipping meals"],
+  };
+  const { ai } = stub({ text: JSON.stringify(plan) });
+  const withAi = await ai.generatePlan({ context, lang: "en" });
+  assert.deepEqual(withAi.replacements, [{ need: "Pain relief", activity: "Physiotherapy exercises" }]);
+  assert.deepEqual(withAi.warningSigns, ["Skipping meals"]);
+
+  const { ai: partial } = stub({ text: JSON.stringify({ ...plan, replacements: [], warningSigns: [] }) });
+  const filled = await partial.generatePlan({ context, lang: "bn", background: { functions: ["fun"] } });
+  assert.equal(filled.replacements[0].need, "মজা / বন্ধুদের সাথে মিশতে");
+  assert.ok(filled.warningSigns.length >= 3);
+});

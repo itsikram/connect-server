@@ -322,3 +322,65 @@ test("content is served in the requested language", async () => {
   assert.equal(typeof res.body.screeners.FTND.questions[0].options[0], "string");
   assert.ok(res.body.helplines.find((line) => line.key === "kaan_pete_roi").hours.includes("৩টা"));
 });
+
+test("background answers are validated, encrypted and personalise help reasons and the plan", async () => {
+  const { models, call } = setup();
+  const background = {
+    ageGroup: "25_34",
+    gender: "female",
+    living: ["alone", "bogus"],
+    routes: ["inject", "smoke"],
+    functions: ["sleep", "relax"],
+    pastWithdrawal: ["seizure", "none"],
+    mentalHealth: ["depression"],
+    physicalHealth: ["pregnant"],
+    treatment: ["none"],
+    quitAttempts: 3,
+    whatHelped: "Staying at my aunt's house",
+    notes: "Night guard job",
+  };
+  const saved = await call("saveProfile", { body: { ...onboardingBody, substances: [{ key: "heroin", approach: "doctor", quitDate: daysAgo(2), primary: true }], background } });
+  assert.equal(saved.statusCode, 200);
+  const stored = saved.body.profile.background;
+  assert.deepEqual(stored.living, ["alone"]);
+  assert.deepEqual(stored.pastWithdrawal, ["seizure"], "'none' is dropped next to real answers");
+  assert.equal(stored.quitAttempts, 3);
+  assert.equal(JSON.stringify(models.RecoveryProfile.docs[0]).includes("aunt"), false);
+
+  const dashboard = await call("dashboard", { query: { lang: "en" } });
+  assert.deepEqual(dashboard.body.proHelp.slice(0, 3), ["pregnancy", "withdrawal_history", "injecting"]);
+  assert.ok(dashboard.body.proHelp.includes("mental_health"));
+
+  const plan = await call("generatePlan", { query: { lang: "en" } });
+  assert.equal(plan.body.plan.source, "curated");
+  assert.match(plan.body.plan.safetyNote, /pregnant/);
+  assert.match(plan.body.plan.safetyNote, /never share needles/);
+  assert.deepEqual(plan.body.plan.replacements.map((item) => item.need), ["Helps me sleep", "Calms stress"]);
+  assert.ok(plan.body.plan.warningSigns.length >= 3);
+  assert.ok(plan.body.plan.checklist.some((item) => /HIV/.test(item.text)));
+
+  const cleared = await call("saveProfile", { body: { background: {} } });
+  assert.equal(cleared.body.profile.background, null);
+});
+
+test("red-flag symptoms in a check-in show emergency help", async () => {
+  const { call } = setup();
+  await call("saveProfile", { body: onboardingBody });
+  const res = await call("saveCheckin", { body: { mood: 3, craving: 4, symptoms: ["shaking", "seizure", "made-up"] }, query: { lang: "en" } });
+  assert.deepEqual(res.body.checkin.symptoms, ["shaking", "seizure"]);
+  assert.equal(res.body.crisis.type, "medical");
+  const calm = await call("saveCheckin", { body: { mood: 3, craving: 4, symptoms: ["headache"] } });
+  assert.equal(calm.body.crisis, null);
+});
+
+test("content lists new substances, background questions and symptoms", async () => {
+  const { call } = setup();
+  const res = await call("getContent", { query: { lang: "bn" } });
+  const keys = res.body.substances.map((item) => item.key);
+  ["tramadol", "injection", "cocaine", "mdma", "vape", "pregabalin", "ketamine", "lsd"].forEach((key) => assert.ok(keys.includes(key), key));
+  assert.equal(res.body.safetyClasses.hallucinogen.defaultApproach, "now");
+  assert.ok(res.body.background.functions.length >= 8);
+  assert.equal(res.body.background.pastWithdrawal.find((item) => item.key === "seizure").redFlag, true);
+  assert.equal(res.body.symptoms.find((item) => item.key === "suicidal").redFlag, "suicide");
+  assert.match(res.body.backgroundSafety.pregnant, /ডাক্তার/);
+});

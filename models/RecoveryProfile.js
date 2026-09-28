@@ -41,6 +41,8 @@ const recoveryProfileSchema = new Schema(
     reasonKeys: { type: [String], default: [] },
     reasonsEnc: { type: String, default: "" },
     letterEnc: { type: String, default: "" },
+    // Personal background (age group, health, history, interests...): encrypted JSON.
+    backgroundEnc: { type: String, default: "" },
     triggers: { type: [String], default: [] },
     riskHours: { type: [Number], default: [] },
     supportContactsEnc: { type: String, default: "" },

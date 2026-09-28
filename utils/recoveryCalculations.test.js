@@ -151,3 +151,11 @@ test("summarises the last seven days", () => {
   });
   assert.deepEqual(summary, { checkins: 2, avgMood: 3, avgCraving: 5.5, cravingsLogged: 3, cravingsResisted: 2 });
 });
+
+test("background adds urgent professional-help reasons and curated safety notes", () => {
+  const background = { physicalHealth: ["pregnant", "heart"], pastWithdrawal: ["hallucinations"], ageGroup: "under18", living: ["alone"] };
+  assert.deepEqual(calc.professionalHelpReasons({ substances: [{ key: "yaba" }], background, now: NOW }), ["pregnancy", "withdrawal_history", "youth"]);
+  assert.deepEqual(calc.backgroundSafetyKeys(background, [{ key: "yaba" }, { key: "heroin" }]), ["pregnant", "seizure_history", "heart", "alone_opioid", "under18"]);
+  assert.deepEqual(calc.backgroundSafetyKeys(null, [{ key: "tramadol" }]), []);
+  assert.deepEqual(calc.backgroundSafetyKeys({}, [{ key: "injection" }]), ["inject"]);
+});
