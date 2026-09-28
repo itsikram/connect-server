@@ -61,6 +61,7 @@ const {
   applyFaceServiceUrl,
 } = require("./utils/faceServiceSync");
 const { getExpoControlConfig, applyExpoControlUrl } = require("./utils/expoControlSync");
+const ExpoControlAccess = require("./models/ExpoControlAccess");
 
 const normalizeMultilineEnv = (value = "") =>
   String(value).replace(/\\n/g, "\n");
@@ -648,8 +649,68 @@ app.post("/api/expo-control-url", (req, res) => {
   return res.json(result);
 });
 
-app.get("/api/expo-control-config", isAuth, (req, res) => {
-  res.json(getExpoControlConfig());
+const expoControlAccountId = (req) => String(req.profile?.user?._id || req.profile?.user || "");
+
+// Accounts that saved a working key get it back on every browser/device, so
+// the key is pasted once per account instead of once per browser.
+app.get("/api/expo-control-config", isAuth, async (req, res) => {
+  try {
+    const accountId = expoControlAccountId(req);
+    const access = await ExpoControlAccess.findOne({ singletonKey: "default" }).lean();
+    const authorized = Boolean(
+      access?.accessKey && accountId && access.authorizedUsers?.some((id) => String(id) === accountId),
+    );
+    res.set("Cache-Control", "no-store");
+    return res.json({
+      ...getExpoControlConfig(),
+      authorized,
+      accessKey: authorized ? access.accessKey : undefined,
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: "Could not load Expo control settings" });
+  }
+});
+
+app.post("/api/expo-control-access", isAuth, async (req, res) => {
+  const key = String(req.body?.key || "").trim();
+  if (!key || key.length > 256) {
+    return res.status(400).json({ ok: false, code: "BAD_KEY", error: "Enter the access key." });
+  }
+  const { url } = getExpoControlConfig();
+  if (!url) {
+    return res.status(503).json({ ok: false, code: "PC_OFFLINE", error: "Your PC has not published its Expo control address yet." });
+  }
+  // Only save keys the PC itself accepts.
+  let status;
+  try {
+    const check = await fetch(`${url}/api/status`, {
+      headers: { "X-Expo-Control-Key": key },
+      signal: AbortSignal.timeout(15000),
+    });
+    status = check.status;
+  } catch (error) {
+    return res.status(503).json({ ok: false, code: "PC_OFFLINE", error: "Could not reach your PC to check the key." });
+  }
+  if (status === 401) {
+    return res.status(400).json({ ok: false, code: "BAD_KEY", error: "That access key didn't work." });
+  }
+  if (status !== 200) {
+    return res.status(503).json({ ok: false, code: "PC_OFFLINE", error: `Your PC answered ${status}; try again.` });
+  }
+  await ExpoControlAccess.findOneAndUpdate(
+    { singletonKey: "default" },
+    { $set: { accessKey: key }, $addToSet: { authorizedUsers: expoControlAccountId(req) } },
+    { upsert: true },
+  );
+  return res.json({ ok: true });
+});
+
+app.delete("/api/expo-control-access", isAuth, async (req, res) => {
+  await ExpoControlAccess.updateOne(
+    { singletonKey: "default" },
+    { $pull: { authorizedUsers: expoControlAccountId(req) } },
+  );
+  return res.json({ ok: true });
 });
 
 attachPeerRelayRoute(app, io);
