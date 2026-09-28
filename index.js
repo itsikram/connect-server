@@ -60,6 +60,7 @@ const {
   getFaceServiceConfig,
   applyFaceServiceUrl,
 } = require("./utils/faceServiceSync");
+const { getExpoControlConfig, applyExpoControlUrl } = require("./utils/expoControlSync");
 
 const normalizeMultilineEnv = (value = "") =>
   String(value).replace(/\\n/g, "\n");
@@ -617,6 +618,38 @@ app.post("/api/face-service-url", (req, res) => {
   const result = applyFaceServiceUrl(parsedUrl.toString(), "home-face-sync");
   if (!result.ok) return res.status(400).json({ ok: false, error: result.error });
   return res.json(result);
+});
+
+// Expo control (/expo): the home PC publishes its daemon's tunnel URL here,
+// the same way as face login. Every request through that tunnel also needs
+// the access key kept on the PC, so this URL alone grants nothing.
+app.post("/api/expo-control-url", (req, res) => {
+  const expectedSecret = String(
+    process.env.EXPO_CONTROL_SYNC_SECRET ||
+      process.env.FACE_SYNC_SECRET ||
+      process.env.COBALT_SYNC_SECRET ||
+      process.env.COBALT_API_KEY ||
+      "",
+  ).trim();
+  if (!expectedSecret) {
+    return res.status(503).json({ ok: false, error: "Expo control sync is not configured" });
+  }
+  const incomingSecret = String(
+    req.headers["x-expo-sync-secret"] || req.headers.authorization || req.body?.secret || "",
+  )
+    .replace(/^Bearer\s+/i, "")
+    .trim();
+  if (incomingSecret.length !== expectedSecret.length ||
+      !require("crypto").timingSafeEqual(Buffer.from(incomingSecret), Buffer.from(expectedSecret))) {
+    return res.status(401).json({ ok: false, error: "Invalid expo control sync secret" });
+  }
+  const result = applyExpoControlUrl(req.body?.url, "home-expo-control");
+  if (!result.ok) return res.status(400).json(result);
+  return res.json(result);
+});
+
+app.get("/api/expo-control-config", isAuth, (req, res) => {
+  res.json(getExpoControlConfig());
 });
 
 attachPeerRelayRoute(app, io);
