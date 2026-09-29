@@ -73,6 +73,7 @@ async function sendBump(io, { connectProfile, myProfile }) {
       await sendPushToProfile(toId, {
         title: 'You were bumped!',
         body: `${senderName} bumped you`,
+        image: senderPic,
         data: {
           type: 'bump',
           senderId: fromId,

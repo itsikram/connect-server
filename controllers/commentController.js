@@ -127,6 +127,7 @@ exports.postAddComment = async (req, res, next) => {
                         await sendPushToProfile(updateWatch.author._id, {
                             title: 'New comment',
                             body: `${myProfileData.fullName} commented on your video`,
+                            image: myProfileData.profilePic,
                             data: { type: 'watch_comment', watchId: String(watch) }
                         });
                     }
@@ -206,6 +207,7 @@ exports.postAddComment = async (req, res, next) => {
                     await sendPushToProfile(updatePost.author._id, {
                         title: 'New comment',
                         body: `${myProfileData.fullName} commented on your post`,
+                        image: myProfileData.profilePic,
                         data: { type: 'post_comment', postId: getPostId(post) }
                     });
                 }
@@ -326,6 +328,7 @@ exports.storyAddComment = async (req, res, next) => {
                     await sendPushToProfile(updateStory.author._id, {
                         title: 'New comment',
                         body: `${myProfileData.fullName} commented on your story`,
+                        image: myProfileData.profilePic,
                         data: { type: 'story_comment', storyId: String(storyId) }
                     });
                 }
@@ -387,6 +390,7 @@ exports.addCommentReact = async (req, res, next) => {
                             await sendPushToProfile(comment.author._id, {
                                 title: 'Comment liked',
                                 body: `${myProfile.fullName} liked your comment`,
+                                image: myProfile.profilePic,
                                 data: {
                                     type: 'comment_like',
                                     postId: parent?.id || getPostId(comment.post),
@@ -494,6 +498,7 @@ exports.postCommentReply = async (req, res, next) => {
                                 await sendPushToProfile(parent.doc.author._id, {
                                     title: 'New reply',
                                     body: `${myProfile.fullName} replied to your comment`,
+                                    image: myProfile.profilePic,
                                     data: {
                                         type: 'comment_reply',
                                         ...(parent.type === 'story'
@@ -532,6 +537,7 @@ exports.postCommentReply = async (req, res, next) => {
                                     await sendPushToProfile(parentComment.author._id, {
                                         title: 'New reply',
                                         body: `${myProfile.fullName} replied to your comment`,
+                                        image: myProfile.profilePic,
                                         data: {
                                             type: 'comment_reply',
                                             commentId: String(parentComment._id),

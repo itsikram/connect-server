@@ -9,8 +9,43 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const Profile = require('../models/Profile');
+const config = require('../config/config.json');
 const { getIncomingCallAlertForProfile } = require('./ringtone');
 const { messagePreview } = require('./messagePreview');
+
+/**
+ * Push providers download the image themselves, so it must be an absolute
+ * http(s) URL. Relative paths resolve against the web app; the generic default
+ * avatar is dropped because it adds nothing to the notification.
+ * @param {string} raw
+ * @returns {string} absolute URL, or '' when there is no usable image
+ */
+function resolvePushImageUrl(raw) {
+  const s = String(raw || '').trim();
+  if (!s || s === config?.defaultProfile) return '';
+  if (/^https?:\/\//i.test(s)) return s;
+  const base = process.env.CLIENT_URL || process.env.FRONTEND_URL;
+  if (!base || !s.startsWith('/')) return '';
+  try {
+    return new URL(s, base).toString();
+  } catch (_e) {
+    return '';
+  }
+}
+
+/** Profile picture of the notification's sender (data.senderId), if any. */
+async function lookupSenderImage(data = {}) {
+  const senderId = data.senderId || data.fromId;
+  if (!senderId) return '';
+  try {
+    const sender = await Profile.findOne({
+      $or: [{ _id: senderId }, { user: senderId }],
+    }).select('profilePic');
+    return resolvePushImageUrl(sender?.profilePic);
+  } catch (_e) {
+    return '';
+  }
+}
 
 function ensureFirebaseAdminInitialized() {
   if (admin.apps && admin.apps.length > 0) return;
@@ -159,6 +194,20 @@ function sanitizeFcmDataKeys(data) {
   return out;
 }
 
+/**
+ * iOS only renders an attachment through a Notification Service Extension;
+ * `mutable-content` lets that extension run, otherwise the alert shows as text.
+ * @param {string} imageUrl
+ */
+function apnsImageConfig(imageUrl) {
+  return {
+    apns: {
+      payload: { aps: { 'mutable-content': 1 } },
+      fcmOptions: { imageUrl },
+    },
+  };
+}
+
 /** Expo accepts up to 100 messages per request. */
 const EXPO_PUSH_MAX_BATCH = 100;
 
@@ -256,6 +305,8 @@ async function sendPushToTokens(tokens = [], notification = {}) {
   );
 
   const isIncomingCall = stringData.type === 'incoming_call';
+  const imageUrl = isIncomingCall ? '' : resolvePushImageUrl(notification.image);
+  if (imageUrl) stringData.image = imageUrl;
   const androidSoundName = isIncomingCall
     ? String(stringData.soundName || INCOMING_CALL_NOTIFICATION_SOUND)
     : 'default';
@@ -285,6 +336,9 @@ async function sendPushToTokens(tokens = [], notification = {}) {
         priority: 'high',
         channelId,
       };
+      if (imageUrl) {
+        message.richContent = { image: imageUrl };
+      }
       if (isIncomingCall) {
         // Expo Go iOS has no custom ringtone files; `default` is the sound that actually plays.
         message.sound = 'default';
@@ -387,6 +441,7 @@ async function sendPushToTokens(tokens = [], notification = {}) {
    notification: {
      title: notification.title || 'Notification',
      body: notificationBody,
+     ...(imageUrl ? { imageUrl } : {}),
     },
    data: stringData,
    tokens: fcmTokens,
@@ -396,8 +451,10 @@ async function sendPushToTokens(tokens = [], notification = {}) {
      notification: {
        channelId: String(notification.channelId || EXPO_DEFAULT_ANDROID_CHANNEL_ID),
        sound: 'default',
+       ...(imageUrl ? { imageUrl } : {}),
      },
    },
+   ...(imageUrl ? apnsImageConfig(imageUrl) : {}),
   };
 
   try {
@@ -464,6 +521,10 @@ async function sendPushToProfile(profileId, notification = {}) {
   const tokens = profile?.deviceTokens || [];
 
   let nextNotification = notification;
+  if (notification?.data?.type !== 'incoming_call' && !notification.image && tokens.length > 0) {
+    const image = await lookupSenderImage(notification.data);
+    if (image) nextNotification = { ...notification, image };
+  }
   if (notification?.data?.type === 'incoming_call') {
     const alert = await getIncomingCallAlertForProfile(profileId);
     nextNotification = {
@@ -501,7 +562,7 @@ module.exports = {
  * @param {string[]} fcmTokens
  * @param {{ title: string, body: string, data: Record<string, string> }} opts
  */
-async function sendFcmChatMulticast(fcmTokens, { title, body, data }) {
+async function sendFcmChatMulticast(fcmTokens, { title, body, data, imageUrl }) {
   if (!fcmTokens || fcmTokens.length === 0) {
     return { successCount: 0, failureCount: 0 };
   }
@@ -519,6 +580,7 @@ async function sendFcmChatMulticast(fcmTokens, { title, body, data }) {
       notification: {
         title: title || 'Message',
         body: body || ' ',
+        ...(imageUrl ? { imageUrl } : {}),
       },
       data,
       android: {
@@ -529,6 +591,7 @@ async function sendFcmChatMulticast(fcmTokens, { title, body, data }) {
           title: title || 'Message',
           body: body || ' ',
           channelId: 'messages_chat_peek_v3',
+          ...(imageUrl ? { imageUrl } : {}),
         },
       },
       apns: {
@@ -543,8 +606,10 @@ async function sendFcmChatMulticast(fcmTokens, { title, body, data }) {
               body: body || ' ',
             },
             sound: 'default',
+            ...(imageUrl ? { 'mutable-content': 1 } : {}),
           },
         },
+        ...(imageUrl ? { fcmOptions: { imageUrl } } : {}),
       },
     });
     console.log('[FCM chat] Android notification + data, APNs alert multicast', {
@@ -566,7 +631,7 @@ async function sendFcmChatMulticast(fcmTokens, { title, body, data }) {
  * @param {string[]} tokens
  * @param {{ title: string, body: string, data: Record<string, string> }} opts
  */
-async function sendChatMessagePushToTokens(tokens = [], { title, body, data }) {
+async function sendChatMessagePushToTokens(tokens = [], { title, body, data, imageUrl }) {
   if (!Array.isArray(tokens) || tokens.length === 0) {
     console.warn('[FCM chat] no tokens');
     return { successCount: 0, failureCount: 0 };
@@ -595,6 +660,7 @@ async function sendChatMessagePushToTokens(tokens = [], { title, body, data }) {
       sound: 'default',
       priority: 'high',
       channelId,
+      ...(imageUrl ? { richContent: { image: imageUrl } } : {}),
     }));
     const expoResult = await sendExpoPushBatch(messages);
     successCount += expoResult.successCount;
@@ -602,7 +668,7 @@ async function sendChatMessagePushToTokens(tokens = [], { title, body, data }) {
   }
 
   if (fcmTokens.length > 0) {
-    const fcmResult = await sendFcmChatMulticast(fcmTokens, { title, body, data });
+    const fcmResult = await sendFcmChatMulticast(fcmTokens, { title, body, data, imageUrl });
     successCount += fcmResult.successCount;
     failureCount += fcmResult.failureCount;
   }
@@ -729,6 +795,7 @@ async function sendChatMessageDataPush(receiverId, payload) {
   const messageBody = messagePreview(updatedMessage);
   const title = String(senderName || 'New Message');
   const body = String(messageBody || '');
+  const imageUrl = resolvePushImageUrl(connectProfile.profilePic || senderPP);
   const data = sanitizeFcmDataKeys({
     type: 'chat',
     title,
@@ -740,6 +807,7 @@ async function sendChatMessageDataPush(receiverId, payload) {
     message: String(messageBody || ''),
     senderName: String(senderName || ''),
     senderPic: String(connectProfile.profilePic || senderPP || ''),
+    image: imageUrl,
   });
 
   const profile = await Profile.findOne({
@@ -754,7 +822,7 @@ async function sendChatMessageDataPush(receiverId, payload) {
   }
 
   // Web Push is sent once from saveNotification — do not send here or iOS gets duplicates
-  return sendChatMessagePushToTokens(tokens, { title, body, data });
+  return sendChatMessagePushToTokens(tokens, { title, body, data, imageUrl });
 }
 
 module.exports.sendDataPushToTokens = sendDataPushToTokens;

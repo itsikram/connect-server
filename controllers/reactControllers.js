@@ -106,6 +106,7 @@ exports.postAddReact = async (req, res, next) => {
                             await sendPushToProfile(connectProfile._id, {
                                 title: 'New reaction',
                                 body: `${myProfileData.fullName} reacted to your post`,
+                                image: myProfileData.profilePic,
                                 data: { type: 'post_react', postId: String(addPostReact._id) }
                             })
                         }
@@ -142,6 +143,7 @@ exports.postAddReact = async (req, res, next) => {
                             await sendPushToProfile(connectProfile._id, {
                                 title: 'New reaction',
                                 body: `${myProfileData.fullName} reacted to your story`,
+                                image: myProfileData.profilePic,
                                 data: { type: 'story_react', storyId: String(addStoryReact._id) }
                             })
                         }
@@ -192,6 +194,7 @@ exports.postAddReact = async (req, res, next) => {
                             await sendPushToProfile(connectProfile._id, {
                                 title: 'New reaction',
                                 body: `${myProfileData.fullName} reacted to your video`,
+                                image: myProfileData.profilePic,
                                 data: { type: 'watch_react', watchId: String(addWatchReact._id) }
                             })
                         }
