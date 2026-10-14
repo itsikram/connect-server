@@ -529,6 +529,12 @@ attachPeerAdapter(io);
 // Setting up middilewares
 middilewares(app);
 
+// Hosting platforms (e.g. GoDaddy Node.js Hosting) health-check the site
+// root, so it must answer 200 even before the database is reachable.
+app.get("/", (req, res) => {
+  res.json({ status: "ok", service: "connect-server" });
+});
+
 app.get("/health", (req, res) => {
   res.status(mongoReady ? 200 : 503).json({
     ...getMetrics({ io }),
