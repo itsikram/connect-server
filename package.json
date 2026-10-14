@@ -2,7 +2,7 @@
   "name": "api",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "app.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node app.js",
@@ -14,7 +14,8 @@
     "start:lb:2": "node load-balancer/start-cluster.js 2",
     "start:lb:4": "node load-balancer/start-cluster.js 4",
     "postinstall": "node scripts/postinstall.js",
-    "client": "cd ../client && npm start"
+    "client": "cd ../client && npm start",
+    "build": "echo build"
   },
   "keywords": [],
   "author": "",
