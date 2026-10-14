@@ -260,13 +260,10 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             return;
         }
 
-        let myProfileData = null;
-        try {
-            myProfileData = await Profile.findById(me).select('fullName profilePic');
-        } catch (e) { }
-        const callerName = myProfileData?.fullName || 'Someone';
-        const callerProfilePic = myProfileData?.profilePic || '';
-
+        // Register the call BEFORE any await. The caller's cancel can arrive
+        // while the profile lookup below is pending (instant hang-up); it must
+        // find this record, otherwise the callee is rung afterwards and keeps
+        // ringing until the timeout.
         const call = {
             channelName: String(channelName),
             callerId: me,
@@ -284,6 +281,16 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
         // Clients reuse `${caller}-${callee}` as the channel for every call
         // between a pair, so a new call must clear the previous call's marker.
         finishedCalls.delete(call.channelName);
+        // Cancelled (or replaced) while we were awaiting.
+        const isStillRinging = () => activeCalls.get(call.channelName) === call && !call.accepted;
+
+        let myProfileData = null;
+        try {
+            myProfileData = await Profile.findById(me).select('fullName profilePic');
+        } catch (e) { }
+        if (!isStillRinging()) return;
+        const callerName = myProfileData?.fullName || 'Someone';
+        const callerProfilePic = myProfileData?.profilePic || '';
 
         // No connected device → the callee can only be reached by push.
         // Callee devices that do receive the call reply "Ringing...".
@@ -330,6 +337,9 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                 }
             });
         } catch (e) { }
+        // Don't send a web "incoming call" notification for a call that was
+        // cancelled while the FCM push was being sent.
+        if (!isStillRinging()) return;
         // iOS Home Screen / PWA (no FCM) — wake via Web Push
         try {
             await sendIncomingCallWebPush(calleeId, {
