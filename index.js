@@ -535,6 +535,17 @@ app.get("/", (req, res) => {
   res.json({ status: "ok", service: "connect-server" });
 });
 
+// Public IP this server's outbound connections come from, e.g. for the
+// MongoDB Atlas IP access list.
+app.get("/egress-ip", async (req, res) => {
+  try {
+    const response = await fetch("https://api.ipify.org?format=json");
+    res.json(await response.json());
+  } catch (error) {
+    res.status(502).json({ error: error.message });
+  }
+});
+
 app.get("/health", (req, res) => {
   res.status(mongoReady ? 200 : 503).json({
     ...getMetrics({ io }),
