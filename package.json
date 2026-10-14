@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node index.js",
+    "start": "node app.js",
     "dev": "nodemon index.js",
     "test:ai-feed": "node --test services/*.test.js",
     "test:recovery": "node --test utils/recoveryCalculations.test.js utils/recoveryCrisis.test.js utils/recoveryCrypto.test.js services/recoveryAi.test.js controllers/recoveryController.test.js",
@@ -28,14 +28,10 @@
     "@deepgram/sdk": "^4.8.0",
     "@distube/ytdl-core": "^4.16.12",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "@tensorflow/tfjs": "^4.22.0",
-    "@tensorflow/tfjs-node": "^4.22.0",
-    "@vladmandic/face-api": "^1.7.15",
     "agora-access-token": "^2.0.4",
     "axios": "^1.9.0",
-    "bcrypt": "^5.1.0",
+    "bcryptjs": "^2.4.3",
     "body-parser": "^1.20.3",
-    "canvas": "^3.2.0",
     "cli-progress": "^3.12.0",
     "cloudinary": "^2.5.1",
     "cors": "^2.8.5",
@@ -63,7 +59,7 @@
     "ytdl-core": "^4.11.5"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=18"
   },
   "type": "commonjs"
 }

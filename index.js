@@ -3,10 +3,14 @@ require("dotenv").config({ path: path.join(__dirname, ".env") });
 const dns = require("dns");
 // Local DNS (e.g. 192.168.1.1) often refuses MongoDB SRV lookups → querySrv ECONNREFUSED.
 // Prefer public resolvers so mongodb+srv:// still works if used.
-try {
-  dns.setServers(["8.8.8.8", "8.8.4.4", "1.1.1.1"]);
-} catch (_) {
-  /* ignore if unsupported */
+// Shared hosts (e.g. GoDaddy cPanel) may block outbound DNS to public
+// resolvers, so this can be turned off with USE_PUBLIC_DNS=false.
+if (process.env.USE_PUBLIC_DNS !== "false") {
+  try {
+    dns.setServers(["8.8.8.8", "8.8.4.4", "1.1.1.1"]);
+  } catch (_) {
+    /* ignore if unsupported */
+  }
 }
 
 const express = require("express");
