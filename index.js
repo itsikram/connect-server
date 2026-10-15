@@ -546,6 +546,65 @@ app.get("/egress-ip", async (req, res) => {
   }
 });
 
+// Shows which environment variables the server actually sees and where each
+// came from (host panel vs server/.env). Values are masked; URLs show only
+// scheme and host so no credentials are exposed.
+app.get("/env-check", (req, res) => {
+  const fs = require("fs");
+  const envPath = path.join(__dirname, ".env");
+  let fileVars = {};
+  let envFile = { path: envPath, exists: fs.existsSync(envPath) };
+  if (envFile.exists) {
+    try {
+      fileVars = require("dotenv").parse(fs.readFileSync(envPath));
+      envFile.keyCount = Object.keys(fileVars).length;
+    } catch (error) {
+      envFile.error = error.message;
+    }
+  }
+  const mask = (value) => {
+    if (value === undefined) return null;
+    if (value === "") return "(empty)";
+    const url = /^([a-z][a-z0-9+.-]*):\/\/(?:[^@/]*@)?([^/?#]*)/i.exec(value);
+    if (url) return `${url[1]}://${url[2]}/… (${value.length} chars)`;
+    if (value.length <= 6) return `*** (${value.length} chars)`;
+    return `${value.slice(0, 3)}*** (${value.length} chars)`;
+  };
+  // System variables every host sets; hidden to keep the list readable.
+  const systemKeys =
+    /^(PATH|HOME|PWD|OLDPWD|SHLVL|HOSTNAME|TERM|LANG|LC_.*|USER|LOGNAME|SHELL|TMPDIR|_|NODE_VERSION|YARN_VERSION|npm_.*|PASSENGER_.*|IN_PASSENGER)$/i;
+  const keys = new Set([
+    ...Object.keys(process.env).filter((key) => !systemKeys.test(key)),
+    ...Object.keys(fileVars),
+  ]);
+  const vars = {};
+  for (const key of [...keys].sort()) {
+    const value = process.env[key];
+    const inFile = Object.prototype.hasOwnProperty.call(fileVars, key);
+    vars[key] = {
+      set: value !== undefined && value !== "",
+      // dotenv never overrides a variable the host already set.
+      source:
+        value === undefined
+          ? "missing"
+          : inFile && fileVars[key] === value
+            ? ".env file"
+            : inFile
+              ? "host (overrides .env)"
+              : "host",
+      value: mask(value),
+    };
+  }
+  res.json({
+    nodeEnv: process.env.NODE_ENV || null,
+    mongoUriUsed: mask(mongoUri),
+    mongoUriVariable:
+      process.env.NODE_ENV == "production" ? "PROD_MONGODB_URI" : "DEV_MONGODB_URI",
+    envFile,
+    vars,
+  });
+});
+
 // Step-by-step MongoDB reachability check (DNS, TCP 27017, TLS) so a host
 // that blocks Atlas shows which step fails. No credentials are returned.
 app.get("/db-diag", async (req, res) => {
