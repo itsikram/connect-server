@@ -546,6 +546,69 @@ app.get("/egress-ip", async (req, res) => {
   }
 });
 
+// Step-by-step MongoDB reachability check (DNS, TCP 27017, TLS) so a host
+// that blocks Atlas shows which step fails. No credentials are returned.
+app.get("/db-diag", async (req, res) => {
+  const net = require("net");
+  const tls = require("tls");
+  const withTimeout = (promise, ms) =>
+    Promise.race([
+      promise,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`timeout after ${ms}ms`)), ms),
+      ),
+    ]);
+  const step = async (fn, ms = 8000) => {
+    const started = Date.now();
+    try {
+      const result = await withTimeout(fn(), ms);
+      return { ok: true, ms: Date.now() - started, result };
+    } catch (error) {
+      return { ok: false, ms: Date.now() - started, error: error.code || error.message };
+    }
+  };
+  const hosts = [0, 1, 2].map((n) => `icsbd-shard-00-0${n}.mm9fg.mongodb.net`);
+  const report = {
+    uriScheme: (mongoUri || "").split("://")[0] || "missing",
+    mongooseState: mongoose.connection.readyState,
+    dnsServers: dns.getServers(),
+    srv: await step(() =>
+      dns.promises.resolveSrv("_mongodb._tcp.icsbd.mm9fg.mongodb.net"),
+    ),
+    hosts: {},
+  };
+  for (const host of hosts) {
+    report.hosts[host] = {
+      dns: await step(() => dns.promises.lookup(host, { family: 4 })),
+      tcp: await step(
+        () =>
+          new Promise((resolve, reject) => {
+            const socket = net.connect(27017, host, () => {
+              socket.destroy();
+              resolve("connected");
+            });
+            socket.on("error", reject);
+          }),
+      ),
+      tls: await step(
+        () =>
+          new Promise((resolve, reject) => {
+            const socket = tls.connect(
+              { host, port: 27017, servername: host },
+              () => {
+                const protocol = socket.getProtocol();
+                socket.destroy();
+                resolve(protocol);
+              },
+            );
+            socket.on("error", reject);
+          }),
+      ),
+    };
+  }
+  res.json(report);
+});
+
 app.get("/health", (req, res) => {
   res.status(mongoReady ? 200 : 503).json({
     ...getMetrics({ io }),
