@@ -10,6 +10,9 @@
 // - Arrays of references are join tables named after the Mongo array
 //   (`reacts`, `shares`, `followers`, ...). Embedded blobs that are only read
 //   with their parent are Json columns.
+// - TEXT / MEDIUMTEXT columns that default to "" use
+//   @default(dbgenerated("('')")): MySQL 8 only accepts an expression default
+//   on TEXT, and a plain @default("") makes `CREATE TABLE` fail there.
 // - relationMode = "prisma": no database FKs, so migrated Mongo data with
 //   dangling references still loads. Every reference column is indexed.
 
@@ -689,7 +692,7 @@ model AIAutoPostConfig {
   keywords             Json?
   excludedTopics       Json?
   contentThemes        Json?
-  customInstructions   String    @default("") @db.Text
+  customInstructions   String    @default(dbgenerated("('')")) @db.Text
   language             String    @default("English") @db.VarChar(64)
   customLanguage       String    @default("") @db.VarChar(64)
   tone                 String    @default("natural") @db.VarChar(64)
@@ -727,7 +730,7 @@ model AiSettings {
   enabled         Json?
   models          Json?
   keys            Json?
-  cursorRepoUrl   String   @default("") @db.Text
+  cursorRepoUrl   String   @default(dbgenerated("('')")) @db.Text
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -845,7 +848,7 @@ model Portfolio {
   blogs          Json?
   contactPage    Json?
   seo            Json?
-  footerText     String   @default("") @db.Text
+  footerText     String   @default(dbgenerated("('')")) @db.Text
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -1001,7 +1004,7 @@ model Note {
   id        String   @id @default(cuid()) @db.VarChar(32)
   user      String   @db.VarChar(32)
   title     String   @db.VarChar(200)
-  content   String   @default("") @db.Text
+  content   String   @default(dbgenerated("('')")) @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1186,13 +1189,13 @@ model RecoveryProfile {
   /// { importance, confidence }
   readiness                Json?
   reasonKeys               Json?
-  reasonsEnc               String    @default("") @db.Text
-  letterEnc                String    @default("") @db.Text
-  backgroundEnc            String    @default("") @db.Text
+  reasonsEnc               String    @default(dbgenerated("('')")) @db.Text
+  letterEnc                String    @default(dbgenerated("('')")) @db.Text
+  backgroundEnc            String    @default(dbgenerated("('')")) @db.Text
   triggers                 Json?
   riskHours                Json?
-  supportContactsEnc       String    @default("") @db.Text
-  planEnc                  String    @default("") @db.MediumText
+  supportContactsEnc       String    @default(dbgenerated("('')")) @db.Text
+  planEnc                  String    @default(dbgenerated("('')")) @db.MediumText
   planSource               String    @default("") @db.VarChar(16)
   planGeneratedAt          DateTime?
   points                   Int       @default(0)
@@ -1200,7 +1203,7 @@ model RecoveryProfile {
   badges                   Json?
   /// { dayKey, noteEnc }
   daily                    Json?
-  chatSummaryEnc           String    @default("") @db.Text
+  chatSummaryEnc           String    @default(dbgenerated("('')")) @db.Text
   chatMessagesSinceSummary Int       @default(0)
   lastCrisisAt             DateTime?
   /// { aiEnabled, discreet, riskNudges }
@@ -1228,8 +1231,8 @@ model RecoveryCheckIn {
   halt          Json?
   triggers      Json?
   symptoms      Json?
-  noteEnc       String   @default("") @db.Text
-  reflectionEnc String   @default("") @db.Text
+  noteEnc       String   @default(dbgenerated("('')")) @db.Text
+  reflectionEnc String   @default(dbgenerated("('')")) @db.Text
   risk          String   @default("none") @db.VarChar(16)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -1267,8 +1270,8 @@ model RecoveryLapse {
   amount        Float    @default(0)
   trigger       String   @default("") @db.VarChar(32)
   feelingBefore String   @default("") @db.VarChar(40)
-  contextEnc    String   @default("") @db.Text
-  debriefEnc    String   @default("") @db.Text
+  contextEnc    String   @default(dbgenerated("('')")) @db.Text
+  debriefEnc    String   @default(dbgenerated("('')")) @db.Text
   restart       String   @default("continue") @db.VarChar(16)
   source        String   @default("lapse") @db.VarChar(16)
   createdAt     DateTime @default(now())
@@ -1336,7 +1339,7 @@ model SavedVideo {
   videoId      String   @db.VarChar(191)
   /// { _id, caption, author: {...}, thumbnail, videoURL, likes, ... }
   metadata     Json?
-  sourceUrl    String   @default("") @db.Text
+  sourceUrl    String   @default(dbgenerated("('')")) @db.Text
   status       String   @default("active") @db.VarChar(16)
   downloadedAt DateTime @default(now())
   createdAt    DateTime @default(now())
