@@ -21,6 +21,8 @@ async function notifyNewChatMessage(io, {
 }) {
   if (!updatedMessage || !senderId || !receiverId) return;
   if (String(receiverId) === String(senderId)) return;
+  // Call logs ("call ended") never push; missed calls are pushed by callingSocket.
+  if (updatedMessage.messageType === 'call') return;
 
   const messageId = String(updatedMessage._id || '');
   const now = Date.now();
