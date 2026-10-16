@@ -3,6 +3,7 @@ const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
 const { notifyNewChatMessage } = require('../utils/chatNotifications')
 const { senderDisplayName } = require('../utils/messagePreview')
 const presence = require('../sockets/presence')
+const config = require('../config/config.json')
 
 // Reminder bookkeeping columns never leave the server (was .select('-unseenReminder...')).
 const REMINDER_OMIT = {
@@ -406,7 +407,7 @@ exports.sendMessage = async (req, res, next) => {
         }
         
         const senderName = senderDisplayName(profileData);
-        let senderPP = profileData.profilePic || '/default-avatar.png';
+        let senderPP = profileData.profilePic || config.defaultProfile;
         
         // Emit via socket for real-time updates (same events as the socket send path)
         const messagePayload = { updatedMessage, senderName, senderPP, chatPage: true, isRealTime: true, tempId };
@@ -519,7 +520,7 @@ exports.getNewMessages = async (req, res, next) => {
                 senderPP:
                     senderProfile?.profilePic ||
                     msg.senderPP ||
-                    '/default-avatar.png',
+                    config.defaultProfile,
             };
         });
         
