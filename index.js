@@ -36,6 +36,7 @@ app.set("trust proxy", 1);
 // body-less 304 responses that the mobile client cannot use.
 app.disable("etag");
 const socketHandler = require("./sockets/socketHandler");
+const { attachRedisAdapter } = require("./utils/redisAdapter");
 const { initializeSpeechWebSocketServer } = require("./speech/speechWsServer");
 const httpServer = createServer(app);
 const admin = require("firebase-admin");
@@ -516,6 +517,7 @@ const io = socketIo(httpServer, {
 });
 
 global.io = io;
+attachRedisAdapter(io);
 
 socketHandler(io);
 initializeSpeechWebSocketServer(httpServer);

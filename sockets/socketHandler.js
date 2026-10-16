@@ -164,7 +164,14 @@ module.exports = function socketHandler(io) {
             if (!targetProfileId || targetProfileId.length < 5) return;
             try {
                 // First check if user is currently connected via socket (most accurate)
-                const isCurrentlyOnline = onlineUsers.has(targetProfileId);
+                // Local map first; with the Redis adapter also ask the other servers.
+                let isCurrentlyOnline = onlineUsers.has(String(targetProfileId));
+                if (!isCurrentlyOnline) {
+                    try {
+                        const remote = await io.in(String(targetProfileId)).fetchSockets();
+                        isCurrentlyOnline = remote.length > 0;
+                    } catch (_err) { /* adapter timeout: fall back to DB check */ }
+                }
                 
                 let isActive = false;
                 let lastLogin = null;

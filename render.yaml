@@ -1,5 +1,8 @@
-# Render Blueprint — Docker web service with in-container CPU load balancer.
-# Create/update from this file, or set the same env vars on an existing service.
+# Render Blueprint — two Connect servers sharing realtime state through Redis.
+# Set the same secrets (including REDIS_URL) (e.g. a free Upstash
+# Redis "rediss://..." URL) on BOTH services so sockets on one
+# server can reach users connected to the other.
+# Frontend: REACT_APP_SOCKET_URLS=https://connect-server.onrender.com,https://connect-server-2.onrender.com
 services:
   - type: web
     name: connect-server
@@ -8,6 +11,59 @@ services:
     dockerContext: .
     healthCheckPath: /health
     envVars:
+      - key: REDIS_URL
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: LB_BACKENDS
+        value: "2"
+      - key: LB_BACKEND_START_PORT
+        value: "4001"
+      - key: EMAIL_PROVIDER
+        value: smtp
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        sync: false
+      - key: SMTP_FORCE_IPV4
+        value: "true"
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: SMTP_FROM_NAME
+        value: Connect
+      - key: SMTP_TO
+        sync: false
+      - key: SMTP_CONNECTION_TIMEOUT
+        value: "20000"
+      - key: SMTP_GREETING_TIMEOUT
+        value: "15000"
+      - key: SMTP_SOCKET_TIMEOUT
+        value: "30000"
+      - key: CHECK_GOOGLE_CLOUD_ON_STARTUP
+        value: "true"
+      # PORT is injected by Render — do not hardcode it.
+      # Add Mongo/Firebase/SMTP secrets in the Render dashboard. Set
+      # FIREBASE_SERVICE_ACCOUNT_BASE64 to the base64-encoded service-account JSON.
+  - type: web
+    name: connect-server-2
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: REDIS_URL
+        sync: false
       - key: NODE_ENV
         value: production
       - key: LB_BACKENDS

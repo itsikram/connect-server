@@ -1,5 +1,6 @@
 // Minimal Ludo game socket relay for online play and device migration
 
+const { SharedMap } = require("../utils/sharedMap");
 const { debugLogger } = require("../utils/debugLogger");
 
 // Saved matches live in MongoDB (the host persists every action). The socket
@@ -97,8 +98,8 @@ const persistPauseState = (gameId, pause) => {
   Model.updateOne({ gameId }, { $set: update }).catch(() => {});
 };
 
-const games = new Map(); // gameId -> { createdAt: number, lastPlayers: object, onlinePlayers: Set<profileId>, offlinePlayers: Map<profileId, timestamp> }
-const userInvites = new Map(); // profileId -> [{ gameId, by, name, avatar, slotIndex, playerCount, ts }]
+const games = new SharedMap("ludo:games"); // gameId -> { createdAt: number, lastPlayers: object, onlinePlayers: Set<profileId>, offlinePlayers: Map<profileId, timestamp> }
+const userInvites = new SharedMap("ludo:invites"); // profileId -> [{ gameId, by, name, avatar, slotIndex, playerCount, ts }]
 const playerSockets = new Map(); // profileId -> Set<socketId> (track all sockets for a profile)
 
 const isHumanProfileId = (profileId) => {

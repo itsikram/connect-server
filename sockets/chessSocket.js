@@ -1,9 +1,10 @@
 // Chess game socket handler for online multiplayer and connect invites
 
+const { SharedMap } = require("../utils/sharedMap");
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-const games = new Map(); // gameId -> game snapshot
-const userInvites = new Map(); // profileId -> [{ gameId, by, name, avatar, ts }]
+const games = new SharedMap("chess:games"); // gameId -> game snapshot
+const userInvites = new SharedMap("chess:invites"); // profileId -> [{ gameId, by, name, avatar, ts }]
 const playerSockets = new Map(); // profileId -> Set<socketId>
 
 const publicGameState = (gameId, game) => ({
