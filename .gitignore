@@ -13,3 +13,6 @@ serviceAccountKey.json
 serviceAccountKeys.json
 /downloads
 /bin
+
+# Google Cloud service-account key (use GOOGLE_APPLICATION_CREDENTIALS)
+config/vertex-service-account.json
