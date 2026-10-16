@@ -1,7 +1,5 @@
-const Post = require("../models/Post");
-const Profile = require("../models/Profile");
-const Note = require("../models/Note");
-const CalendarEvent = require("../models/CalendarEvent");
+const { prisma } = require("../utils/db");
+const { graphIds } = require("../utils/profileGraph");
 
 exports.getDigest = async (req, res, next) => {
   try {
@@ -13,45 +11,45 @@ exports.getDigest = async (req, res, next) => {
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const soon = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
 
-    const currentProfile = await Profile.findById(profileId).select(
-      "connects connectReqs",
-    );
-    const connectsList = currentProfile?.connects || [];
+    const me = String(profileId);
+    const [connectsList, pendingConnectReqs] = await Promise.all([
+      graphIds.connects(me),
+      prisma.connectRequest.count({ where: { profile: me } }),
+    ]);
 
-    const myPosts = await Post.find({
-      author: profileId,
-      createdAt: { $gte: weekAgo },
-    }).select("reacts comments caption createdAt");
+    const myPosts = await prisma.post.findMany({
+      where: { author: me, createdAt: { gte: weekAgo } },
+      select: {
+        id: true,
+        caption: true,
+        createdAt: true,
+        _count: { select: { reacts: true, comments: true } },
+      },
+    });
 
-    const reactsReceived = myPosts.reduce(
-      (n, post) => n + (Array.isArray(post.reacts) ? post.reacts.length : 0),
-      0,
-    );
-    const commentsReceived = myPosts.reduce(
-      (n, post) => n + (Array.isArray(post.comments) ? post.comments.length : 0),
-      0,
-    );
+    const reactsReceived = myPosts.reduce((n, post) => n + post._count.reacts, 0);
+    const commentsReceived = myPosts.reduce((n, post) => n + post._count.comments, 0);
 
     const [notesThisWeek, upcomingEvents, topConnectPost] = await Promise.all([
-      Note.countDocuments({
-        user: profileId,
-        updatedAt: { $gte: weekAgo },
+      prisma.note.count({
+        where: { user: me, updatedAt: { gte: weekAgo } },
       }),
-      CalendarEvent.find({
-        user: profileId,
-        date: { $gte: new Date(), $lte: soon },
-      })
-        .sort({ date: 1 })
-        .limit(5)
-        .select("title date time"),
+      prisma.calendarEvent.findMany({
+        where: { user: me, date: { gte: new Date(), lte: soon } },
+        orderBy: { date: "asc" },
+        take: 5,
+        select: { id: true, title: true, date: true, time: true },
+      }),
       connectsList.length
-        ? Post.findOne({
-            author: { $in: connectsList },
-            audience: { $in: [1, 2] },
-            createdAt: { $gte: weekAgo },
+        ? prisma.post.findFirst({
+            where: {
+              author: { in: connectsList },
+              audience: { in: [1, 2] },
+              createdAt: { gte: weekAgo },
+            },
+            orderBy: { createdAt: "desc" },
+            select: { id: true, caption: true, author: true, createdAt: true },
           })
-            .sort({ createdAt: -1 })
-            .select("caption author createdAt")
         : null,
     ]);
 
@@ -60,7 +58,7 @@ exports.getDigest = async (req, res, next) => {
       reactsReceived,
       commentsReceived,
       connectCount: connectsList.length,
-      pendingConnectReqs: currentProfile?.connectReqs?.length || 0,
+      pendingConnectReqs,
       notesThisWeek,
       upcomingEvents,
       topConnectPost,

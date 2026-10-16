@@ -1,12 +1,11 @@
 const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
-const mongoose = require("mongoose");
 const { v4: uuidv4 } = require("uuid");
 const ytdl = require("@distube/ytdl-core");
 const { withCloudinaryAccount } = require("../utils/cloudinary");
-const Watch = require("../models/Watch");
-const YtDownloadProgress = require("../models/YtDownloadProgress");
+const { prisma, isValidId, pickModelFields } = require("../utils/db");
+const { isMySQLReady } = require("../config/prisma");
 const generateAndUploadThumbnail = require("../utils/generateThumbnail");
 const {
   isYtDlpAvailable,
@@ -136,13 +135,15 @@ const pickFormat = (formats, targetHeight) => {
 };
 
 const persistProgressToDb = (progressId, data) => {
-  if (!isRenderHost() || mongoose.connection.readyState !== 1) return;
+  if (!isRenderHost() || !isMySQLReady()) return;
 
-  YtDownloadProgress.findByIdAndUpdate(
-    progressId,
-    { $set: { ...data, _id: progressId } },
-    { upsert: true },
-  ).catch((err) => {
+  const id = String(progressId);
+  const fields = pickModelFields("YtDownloadProgress", data);
+  prisma.ytDownloadProgress.upsert({
+    where: { id },
+    update: fields,
+    create: { ...fields, id },
+  }).catch((err) => {
     console.warn("[yt-download] progress persist failed:", err.message);
   });
 };
@@ -158,15 +159,16 @@ const getProgress = async (progressId) => {
   const cached = JOB_PROGRESS.get(progressId);
   if (cached) return cached;
 
-  if (!isRenderHost() || mongoose.connection.readyState !== 1) {
+  if (!isRenderHost() || !isMySQLReady()) {
     return null;
   }
 
   try {
-    const doc = await YtDownloadProgress.findById(progressId).lean();
+    const doc = await prisma.ytDownloadProgress.findUnique({ where: { id: String(progressId) } });
     if (!doc) return null;
 
-    const { _id, __v, createdAt, updatedAt, ...data } = doc;
+    const { id: _rowId, _id, createdAt, updatedAt, ...stored } = doc;
+    const data = Object.fromEntries(Object.entries(stored).filter(([, value]) => value !== null));
     JOB_PROGRESS.set(progressId, data);
     return data;
   } catch (err) {
@@ -249,17 +251,17 @@ const createWatchFromVideo = async (videoUrl, caption, profileId, youtubeId) => 
     }
   }
 
-  const watch = new Watch({
-    caption: watchCaption,
-    videoUrl,
-    author: profileId,
-    thumbnail,
-    feeling: "",
-    audience: 3,
-    youtubeId: youtubeId || undefined,
+  return prisma.watch.create({
+    data: {
+      caption: watchCaption,
+      videoUrl,
+      author: profileId ? String(profileId) : null,
+      thumbnail,
+      feeling: "",
+      audience: 3,
+      youtubeId: youtubeId || null,
+    },
   });
-
-  return watch.save();
 };
 
 /** Reliable YouTube title for Watch caption (works even when yt-dlp filename is a UUID). */
@@ -790,15 +792,13 @@ const searchYouTubeVideos = async (query, maxResults = 12, profileId = null) => 
         };
       });
 
-    if (profileId && items.length && mongoose.isValidObjectId(profileId)) {
+    if (profileId && items.length && isValidId(profileId)) {
       const youtubeIds = items.map((item) => item.videoId);
-      const watches = await Watch.find({
-        author: profileId,
-        youtubeId: { $in: youtubeIds },
-      })
-        .select("_id caption thumbnail videoUrl youtubeId createdAt")
-        .sort({ createdAt: -1 })
-        .lean();
+      const watches = await prisma.watch.findMany({
+        where: { author: String(profileId), youtubeId: { in: youtubeIds } },
+        select: { id: true, caption: true, thumbnail: true, videoUrl: true, youtubeId: true, createdAt: true },
+        orderBy: { createdAt: "desc" },
+      });
       const watchByYoutubeId = new Map(
         watches.map((watch) => [String(watch.youtubeId), watch]),
       );

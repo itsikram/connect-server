@@ -1,9 +1,5 @@
-const Post = require('../models/Post');
-const Watch = require('../models/Watch');
-const Comment = require('../models/Comment');
-const CmntReply = require('../models/CmntReply');
-const Profile = require('../models/Profile');
-const UserInterestProfile = require('../models/UserInterestProfile');
+const { prisma, jsonObject } = require('../utils/db');
+const { profileArgs, commentInclude, postInclude, watchInclude, shapePost, shapeWatch } = require('./contentShape');
 
 const cosineSimilarity = (a, b) => {
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length || !a.length) return 0;
@@ -36,6 +32,19 @@ const rankItems = (items, profile, context = {}) => {
     return ranked.map((entry) => entry.item);
 };
 
+const FEED_AUTHOR = profileArgs(
+    ['fullName', 'displayName', 'username', 'nickname', 'profilePic', 'isOfficial', 'isVerified', 'isActive'],
+    ['firstName', 'surname']
+);
+const FEED_COMMENT_AUTHOR = profileArgs(
+    ['profilePic', 'fullName', 'displayName', 'username', 'nickname'],
+    ['firstName', 'surname']
+);
+
+/**
+ * `filter` / `fallbackFilter` are Prisma `where` objects for the Post / Watch
+ * model (see contentShape audienceWhere / publicWhere).
+ */
 const getRecommendations = async ({
     profileId,
     kind,
@@ -45,46 +54,39 @@ const getRecommendations = async ({
     fallbackFilter = {},
     context = {},
 }) => {
-    const Model = kind === 'watch' ? Watch : Post;
     const profile = await rebuildInterestProfile(profileId);
-    const buildQuery = (queryFilter) => {
-        const query = Model.find(queryFilter).sort({ createdAt: -1 }).limit(Math.max(limit * 50, 500));
-        query.populate({ path: 'author', select: 'fullName displayName username nickname profilePic isOfficial isVerified isActive user', populate: { path: 'user', select: 'firstName surname' } });
-        query.populate({
-            path: 'comments',
-            model: Comment,
-            options: { sort: { createdAt: -1 }, limit: 50 },
-            populate: [{
-                path: 'author',
-                model: Profile,
-                select: 'profilePic user fullName displayName username nickname',
-                populate: {
-                    path: 'user',
-                    select: 'firstName surname displayName fullName',
-                },
-            }, {
-                path: 'replies',
-                model: CmntReply,
-                populate: {
-                    path: 'author',
-                    model: Profile,
-                    select: 'profilePic user fullName displayName username nickname',
-                    populate: {
-                        path: 'user',
-                        select: 'firstName surname displayName fullName',
-                    },
-                },
-            }],
+    const fetchCandidates = async (where) => {
+        const commentOptions = {
+            comments: commentInclude(FEED_COMMENT_AUTHOR),
+            commentsExtra: { orderBy: { createdAt: 'desc' }, take: 50 },
+        };
+        const take = Math.max(limit * 50, 500);
+        if (kind === 'watch') {
+            const rows = await prisma.watch.findMany({
+                where,
+                orderBy: { createdAt: 'desc' },
+                take,
+                include: watchInclude({ author: FEED_AUTHOR, ...commentOptions }),
+            });
+            return rows.map(shapeWatch);
+        }
+        const rows = await prisma.post.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            take,
+            include: {
+                ...postInclude({ author: FEED_AUTHOR, ...commentOptions }),
+                parentPostDoc: { select: { id: true, author: true, caption: true, photos: true, type: true, createdAt: true } },
+            },
         });
-        if (kind === 'post') query.populate({ path: 'parentPost', select: 'author caption photos type createdAt' });
-        return query;
+        return rows.map(shapePost);
     };
 
-    let candidates = await buildQuery(filter).lean();
+    let candidates = await fetchCandidates(filter);
     let fallbackUsed = false;
     // If the personalized/connection-aware feed is empty, use only public content.
     if (candidates.length === 0 && Object.keys(fallbackFilter).length > 0) {
-        candidates = await buildQuery(fallbackFilter).lean();
+        candidates = await fetchCandidates(fallbackFilter);
         fallbackUsed = candidates.length > 0;
     }
 
@@ -98,14 +100,24 @@ const getRecommendations = async ({
     };
 };
 
+const normalizeCategories = (categories) => [...new Set((Array.isArray(categories) ? categories : [])
+    .map((category) => String(category || '').trim().toLowerCase())
+    .filter(Boolean))];
+
 const updateInterestProfile = async ({ profileId, item }) => {
-    const categories = [...new Set((item?.aiMetadata?.categories || [])
-        .map((category) => String(category || '').trim().toLowerCase())
-        .filter(Boolean))];
-    if (!categories.length) return;
-    const increments = {};
-    categories.forEach((category) => { increments[`categories.${category}`] = 1; });
-    await UserInterestProfile.findOneAndUpdate({ profile: profileId }, { $inc: { ...increments, interactionCount: 1 }, $set: { updatedAt: new Date() } }, { upsert: true });
+    const categories = normalizeCategories(item?.aiMetadata?.categories);
+    if (!categories.length || !profileId) return;
+    const profile = String(profileId);
+    await prisma.$transaction(async (tx) => {
+        const existing = await tx.userInterestProfile.findUnique({ where: { profile } });
+        const next = { ...jsonObject(existing?.categories) };
+        categories.forEach((category) => { next[category] = (Number(next[category]) || 0) + 1; });
+        await tx.userInterestProfile.upsert({
+            where: { profile },
+            update: { categories: next, interactionCount: { increment: 1 } },
+            create: { profile, categories: next, interactionCount: 1 },
+        });
+    });
 };
 
 const rebuildInterestProfile = async (profileId) => {
@@ -114,32 +126,37 @@ const rebuildInterestProfile = async (profileId) => {
 };
 
 const rebuildInterestProfiles = async (profileIds) => {
-    const ids = profileIds.filter(Boolean);
-    const scoresByProfile = new Map(ids.map((id) => [String(id), { categories: {}, interactionCount: 0 }]));
-    const [posts, watches] = await Promise.all([
-        Post.find({ 'reacts.profile': { $in: ids } }).select('reacts.profile aiMetadata.categories').lean(),
-        Watch.find({ 'reacts.profile': { $in: ids } }).select('reacts.profile aiMetadata.categories').lean(),
+    const ids = profileIds.filter(Boolean).map(String);
+    const scoresByProfile = new Map(ids.map((id) => [id, { categories: {}, interactionCount: 0 }]));
+    if (!ids.length) return new Map();
+    const [postReacts, watchReacts] = await Promise.all([
+        prisma.postReact.findMany({ where: { profile: { in: ids } }, select: { post: true, profile: true } }),
+        prisma.watchReact.findMany({ where: { profile: { in: ids } }, select: { watch: true, profile: true } }),
     ]);
-    for (const item of [...posts, ...watches]) {
-        const categories = [...new Set((item.aiMetadata?.categories || [])
-            .map((category) => String(category || '').trim().toLowerCase())
-            .filter(Boolean))];
-        if (!categories.length) continue;
-        const reactors = [...new Set((item.reacts || []).map((react) => String(react.profile)).filter(Boolean))];
-        reactors.forEach((profileId) => {
-            const scores = scoresByProfile.get(profileId);
-            if (!scores) return;
-            scores.interactionCount += 1;
-            categories.forEach((category) => { scores.categories[category] = (scores.categories[category] || 0) + 1; });
-        });
-    }
+    const postIds = [...new Set(postReacts.map((row) => row.post))];
+    const watchIds = [...new Set(watchReacts.map((row) => row.watch))];
+    const [posts, watches] = await Promise.all([
+        postIds.length ? prisma.post.findMany({ where: { id: { in: postIds } }, select: { id: true, aiCategories: true } }) : [],
+        watchIds.length ? prisma.watch.findMany({ where: { id: { in: watchIds } }, select: { id: true, aiCategories: true } }) : [],
+    ]);
+    const postCategories = new Map(posts.map((row) => [row.id, normalizeCategories(row.aiCategories)]));
+    const watchCategories = new Map(watches.map((row) => [row.id, normalizeCategories(row.aiCategories)]));
+    // One interaction per (item, reactor), as the old per-item reactor de-dup did.
+    const credit = (profileId, categories) => {
+        if (!categories?.length) return;
+        const scores = scoresByProfile.get(profileId);
+        if (!scores) return;
+        scores.interactionCount += 1;
+        categories.forEach((category) => { scores.categories[category] = (scores.categories[category] || 0) + 1; });
+    };
+    postReacts.forEach((row) => credit(row.profile, postCategories.get(row.post)));
+    watchReacts.forEach((row) => credit(row.profile, watchCategories.get(row.watch)));
+
     const updatedAt = new Date();
-    await UserInterestProfile.bulkWrite([...scoresByProfile.entries()].map(([profile, scores]) => ({
-        updateOne: {
-            filter: { profile },
-            update: { $set: { categories: scores.categories, interactionCount: scores.interactionCount, updatedAt } },
-            upsert: true,
-        },
+    await prisma.$transaction([...scoresByProfile.entries()].map(([profile, scores]) => prisma.userInterestProfile.upsert({
+        where: { profile },
+        update: { categories: scores.categories, interactionCount: scores.interactionCount },
+        create: { profile, categories: scores.categories, interactionCount: scores.interactionCount },
     })));
     return new Map([...scoresByProfile.keys()].map((profile) => [profile, { profile, ...scoresByProfile.get(profile), updatedAt }]));
 };

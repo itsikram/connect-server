@@ -8,7 +8,13 @@ const admin = require('firebase-admin');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const Profile = require('../models/Profile');
+const { prisma, jsonArray, editProfileJsonArray, toId } = require('./db');
+
+/** Profile by its id or its User id (the old { $or: [{ _id }, { user }] } lookup). */
+const findProfileByIdOrUser = (id, select) => {
+  const key = toId(id);
+  return prisma.profile.findFirst({ where: { OR: [{ id: key }, { user: key }] }, select });
+};
 const config = require('../config/config.json');
 const { getIncomingCallAlertForProfile } = require('./ringtone');
 const { messagePreview } = require('./messagePreview');
@@ -38,9 +44,7 @@ async function lookupSenderImage(data = {}) {
   const senderId = data.senderId || data.fromId;
   if (!senderId) return '';
   try {
-    const sender = await Profile.findOne({
-      $or: [{ _id: senderId }, { user: senderId }],
-    }).select('profilePic');
+    const sender = await findProfileByIdOrUser(senderId, { profilePic: true });
     return resolvePushImageUrl(sender?.profilePic);
   } catch (_e) {
     return '';
@@ -156,11 +160,15 @@ async function removeStaleDeviceTokens(profileId, invalidTokens = []) {
   }
 
   try {
-    const result = await Profile.updateOne(
-      { $or: [{ _id: profileId }, { user: profileId }] },
-      { $pullAll: { deviceTokens: tokens } },
-    );
-    const removed = Number(result?.modifiedCount || 0);
+    const owner = await findProfileByIdOrUser(profileId, { id: true });
+    let removed = 0;
+    if (owner) {
+      await editProfileJsonArray(owner.id, 'deviceTokens', (list) => {
+        const next = list.filter((t) => !tokens.includes(String(t)));
+        removed = next.length !== list.length ? 1 : 0;
+        return next;
+      });
+    }
     if (removed > 0) {
       console.warn('[push] removed stale FCM tokens from profile', {
         profileId,
@@ -515,10 +523,8 @@ async function sendPushToTokens(tokens = [], notification = {}) {
 async function sendPushToProfile(profileId, notification = {}) {
 
   if (!profileId) return { successCount: 0, failureCount: 0 };
-  const profile = await Profile.findOne({
-    $or: [{ _id: profileId }, { user: profileId }],
-  }).select('deviceTokens');
-  const tokens = profile?.deviceTokens || [];
+  const profile = await findProfileByIdOrUser(profileId, { deviceTokens: true });
+  const tokens = jsonArray(profile?.deviceTokens);
 
   let nextNotification = notification;
   if (notification?.data?.type !== 'incoming_call' && !notification.image && tokens.length > 0) {
@@ -769,10 +775,8 @@ async function sendDataPushToTokens(tokens = [], data = {}) {
  */
 async function sendDataPushToProfile(profileId, data = {}) {
   if (!profileId) return { successCount: 0, failureCount: 0 };
-  const profile = await Profile.findOne({
-    $or: [{ _id: profileId }, { user: profileId }],
-  })
-  const tokens = profile?.deviceTokens || [];
+  const profile = await findProfileByIdOrUser(profileId, { deviceTokens: true });
+  const tokens = jsonArray(profile?.deviceTokens);
   return sendDataPushToTokens(tokens, data);
 }
 
@@ -810,10 +814,8 @@ async function sendChatMessageDataPush(receiverId, payload) {
     image: imageUrl,
   });
 
-  const profile = await Profile.findOne({
-    $or: [{ _id: receiverId }, { user: receiverId }],
-  }).select('deviceTokens');
-  const tokens = profile?.deviceTokens || [];
+  const profile = await findProfileByIdOrUser(receiverId, { deviceTokens: true });
+  const tokens = jsonArray(profile?.deviceTokens);
 
   if (!tokens.length) {
     console.warn('[FCM chat] no deviceTokens on profile; client must POST /api/notification/token/register', {

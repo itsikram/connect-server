@@ -1,47 +1,40 @@
-const mongoose = require('mongoose');
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
-const Message = require('../models/Message');
+const { prisma } = require('../utils/db');
 
 const markAllMessagesSeen = async () => {
   try {
-    const mongoUri = process.env.DEV_MONGODB_URI || process.env.PROD_MONGODB_URI;
-    
-    if (!mongoUri) {
-      console.error('❌ No MongoDB URI configured');
+    if (!process.env.DATABASE_URL) {
+      console.error('❌ No DATABASE_URL configured');
       process.exit(1);
     }
 
-    console.log('🔌 Connecting to MongoDB...');
-    await mongoose.connect(mongoUri);
-    console.log('✅ Connected to MongoDB');
-
     console.log('📝 Marking all messages as seen...');
-    
-    const result = await Message.updateMany(
-      { isSeen: false },
-      { $set: { isSeen: true } }
-    );
+
+    const result = await prisma.message.updateMany({
+      where: { isSeen: false },
+      data: { isSeen: true },
+    });
 
     console.log('✅ Update complete!');
-    console.log(`   Modified: ${result.modifiedCount} messages`);
-    console.log(`   Matched: ${result.matchedCount} messages`);
+    console.log(`   Modified: ${result.count} messages`);
 
-    if (result.modifiedCount > 0) {
-      console.log(`\n✨ All ${result.modifiedCount} unseen messages marked as seen`);
+    if (result.count > 0) {
+      console.log(`\n✨ All ${result.count} unseen messages marked as seen`);
     } else {
       console.log('\nℹ️  No unseen messages found');
     }
 
     // Verify the update
-    const unseenCount = await Message.countDocuments({ isSeen: false });
-    const seenCount = await Message.countDocuments({ isSeen: true });
-    
+    const unseenCount = await prisma.message.count({ where: { isSeen: false } });
+    const seenCount = await prisma.message.count({ where: { isSeen: true } });
+
     console.log('\n📊 Message Status:');
     console.log(`   Seen: ${seenCount}`);
     console.log(`   Unseen: ${unseenCount}`);
 
-    await mongoose.connection.close();
+    await prisma.$disconnect();
     console.log('\n✅ Done!');
     process.exit(0);
   } catch (error) {

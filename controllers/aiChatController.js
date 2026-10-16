@@ -1,4 +1,4 @@
-const AIChat = require("../models/AIChat");
+const { prisma, isValidId } = require("../utils/db");
 const { resetCursorSessionsForUser } = require("../utils/cursorAgentClient");
 
 const getProfileId = (req) => req.profile?._id;
@@ -16,21 +16,12 @@ exports.saveAIChat = async (req, res) => {
       return res.status(400).json({ message: "Messages must be an array" });
     }
 
-    const chat = await AIChat.findOneAndUpdate(
-      { user: profileId },
-      {
-        $set: {
-          messages,
-          sessionTimestamp: timestamp || new Date(),
-        },
-      },
-      {
-        new: true,
-        upsert: true,
-        runValidators: true,
-        setDefaultsOnInsert: true,
-      },
-    );
+    const sessionTimestamp = timestamp ? new Date(timestamp) : new Date();
+    await prisma.aIChat.upsert({
+      where: { user: String(profileId) },
+      update: { messages, sessionTimestamp },
+      create: { user: String(profileId), messages, sessionTimestamp },
+    });
 
     return res.status(200).json({ success: true });
   } catch (error) {
@@ -47,7 +38,10 @@ exports.getAIChatHistory = async (req, res) => {
       return res.status(401).json({ message: "Authentication required" });
     }
 
-    const chats = await AIChat.find({ user: profileId }).sort({ updatedAt: -1 });
+    const chats = await prisma.aIChat.findMany({
+      where: { user: String(profileId) },
+      orderBy: { updatedAt: "desc" },
+    });
     return res.status(200).json(chats);
   } catch (error) {
     console.error("Error fetching AI chat history:", error);
@@ -63,7 +57,10 @@ exports.getLatestAIChat = async (req, res) => {
       return res.status(401).json({ message: "Authentication required" });
     }
 
-    const chat = await AIChat.findOne({ user: profileId }).sort({ updatedAt: -1 });
+    const chat = await prisma.aIChat.findFirst({
+      where: { user: String(profileId) },
+      orderBy: { updatedAt: "desc" },
+    });
     return res.status(200).json(chat || { messages: [] });
   } catch (error) {
     console.error("Error fetching latest AI chat:", error);
@@ -80,12 +77,15 @@ exports.deleteAIChat = async (req, res) => {
       return res.status(401).json({ message: "Authentication required" });
     }
 
-    const filter = { user: profileId };
-    if (chatId) filter._id = chatId;
+    if (chatId && !isValidId(chatId)) {
+      return res.status(400).json({ message: "Invalid chat ID" });
+    }
 
-    const result = chatId
-      ? await AIChat.deleteOne(filter)
-      : await AIChat.deleteMany(filter);
+    const where = { user: String(profileId) };
+    if (chatId) where.id = String(chatId);
+
+    const { count: deletedCount } = await prisma.aIChat.deleteMany({ where });
+    const result = { deletedCount };
 
     if (chatId && result.deletedCount === 0) {
       return res.status(404).json({ message: "AI chat not found" });
@@ -98,10 +98,6 @@ exports.deleteAIChat = async (req, res) => {
       deletedCount: result.deletedCount,
     });
   } catch (error) {
-    if (error.name === "CastError") {
-      return res.status(400).json({ message: "Invalid chat ID" });
-    }
-
     console.error("Error deleting AI chat:", error);
     return res.status(500).json({ message: "Failed to delete AI chat" });
   }

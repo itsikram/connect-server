@@ -197,29 +197,28 @@ function getLocationDescription(connect, userLat, userLon, lang = 'eng') {
  * @returns {Promise} - Update result
  */
 async function batchUpdateLocations(updates) {
-  const Profile = require('../models/Profile');
+  const { prisma } = require('./db');
 
   try {
-    const bulkOps = updates.map(update => ({
-      updateOne: {
-        filter: { _id: update.profileId },
-        update: {
-          $set: {
+    const timestamp = new Date();
+    const results = await prisma.$transaction(
+      updates.map((update) =>
+        prisma.profile.updateMany({
+          where: { id: String(update.profileId) },
+          data: {
             lastLocation: {
               latitude: update.latitude,
               longitude: update.longitude,
-              timestamp: new Date()
+              timestamp
             }
           }
-        }
-      }
-    }));
-
-    const result = await Profile.bulkWrite(bulkOps);
+        })
+      )
+    );
     return {
       success: true,
-      modified: result.modifiedCount,
-      errors: result.errors || []
+      modified: results.reduce((sum, result) => sum + result.count, 0),
+      errors: []
     };
   } catch (error) {
     console.error('Error in batchUpdateLocations:', error);

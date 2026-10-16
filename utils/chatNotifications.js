@@ -2,7 +2,7 @@
 // and HTTP send paths so web and mobile always get the same alerts.
 //   1) Mobile: FCM / Expo push (visible notification + tap data)
 //   2) Web: bell-feed record + socket `newNotification` + Web Push (VAPID)
-const Profile = require('../models/Profile');
+const { prisma, jsonArray } = require('./db');
 const { sendChatMessageDataPush } = require('./pushNotifications');
 const { messagePreview } = require('./messagePreview');
 
@@ -55,10 +55,13 @@ async function notifyNewChatMessage(io, {
   // 2) Web: bell feed + socket + Web Push
   try {
     const { saveNotification } = require('../controllers/notificationController');
-    const receiverProfile = await Profile.findById(receiverId).select('browserIds');
+    const receiverProfile = await prisma.profile.findUnique({
+      where: { id: String(receiverId) },
+      select: { browserIds: true },
+    });
     const activeBrowserIds =
-      receiverProfile?.browserIds
-        ?.filter((browser) => browser.isActive)
+      jsonArray(receiverProfile?.browserIds)
+        .filter((browser) => browser.isActive)
         ?.map((browser) => browser.browserId) || [];
 
     await saveNotification(io, {

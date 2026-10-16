@@ -1,6 +1,4 @@
-const Report = require('../models/Report')
-const Post = require('../models/Post')
-const Profile = require('../models/Profile')
+const { prisma } = require('../utils/db')
 
 const REPORT_REASONS = [
     'Spam',
@@ -41,7 +39,7 @@ exports.reportPost = async (req, res, next) => {
             return res.status(400).json({ message: reasonError })
         }
 
-        const post = await Post.findById(postId).select('author')
+        const post = await prisma.post.findUnique({ where: { id: String(postId) }, select: { id: true, author: true } })
         if (!post) {
             return res.status(404).json({ message: 'Post not found' })
         }
@@ -50,22 +48,26 @@ exports.reportPost = async (req, res, next) => {
             return res.status(400).json({ message: 'You cannot report your own post' })
         }
 
-        const existing = await Report.findOne({
-            type: 'post',
-            targetPost: postId,
-            reportedBy: reporterId,
-            status: 'open',
+        const existing = await prisma.report.findFirst({
+            where: {
+                type: 'post',
+                targetPost: String(postId),
+                reportedBy: String(reporterId),
+                status: 'open',
+            },
         })
         if (existing) {
             return res.status(409).json({ message: 'You already reported this post' })
         }
 
-        const report = await Report.create({
-            type: 'post',
-            targetPost: postId,
-            reportedBy: reporterId,
-            reason,
-            details,
+        const report = await prisma.report.create({
+            data: {
+                type: 'post',
+                targetPost: String(postId),
+                reportedBy: String(reporterId),
+                reason,
+                details,
+            },
         })
 
         return res.status(201).json({
@@ -93,7 +95,7 @@ exports.reportProfile = async (req, res, next) => {
             return res.status(400).json({ message: reasonError })
         }
 
-        const profile = await Profile.findById(profileId).select('_id')
+        const profile = await prisma.profile.findUnique({ where: { id: String(profileId) }, select: { id: true } })
         if (!profile) {
             return res.status(404).json({ message: 'Profile not found' })
         }
@@ -102,22 +104,26 @@ exports.reportProfile = async (req, res, next) => {
             return res.status(400).json({ message: 'You cannot report your own profile' })
         }
 
-        const existing = await Report.findOne({
-            type: 'profile',
-            targetProfile: profileId,
-            reportedBy: reporterId,
-            status: 'open',
+        const existing = await prisma.report.findFirst({
+            where: {
+                type: 'profile',
+                targetProfile: String(profileId),
+                reportedBy: String(reporterId),
+                status: 'open',
+            },
         })
         if (existing) {
             return res.status(409).json({ message: 'You already reported this profile' })
         }
 
-        const report = await Report.create({
-            type: 'profile',
-            targetProfile: profileId,
-            reportedBy: reporterId,
-            reason,
-            details,
+        const report = await prisma.report.create({
+            data: {
+                type: 'profile',
+                targetProfile: String(profileId),
+                reportedBy: String(reporterId),
+                reason,
+                details,
+            },
         })
 
         return res.status(201).json({

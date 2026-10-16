@@ -1,5 +1,4 @@
-const Setting = require('../models/Setting');
-const Profile = require('../models/Profile');
+const { prisma } = require('./db');
 
 const RINGTONE_WEB_SRC = {
   1: '/assets/audio/default-ringtone.mp3',
@@ -29,12 +28,17 @@ function getIncomingCallAlertConfig(ringtoneId) {
 async function getIncomingCallAlertForProfile(profileId) {
   if (!profileId) return getIncomingCallAlertConfig(1);
   try {
-    const profile = await Profile.findOne({
-      $or: [{ _id: profileId }, { user: profileId }],
-    }).select('_id');
+    const id = String(profileId);
+    const profile = await prisma.profile.findFirst({
+      where: { OR: [{ id }, { user: id }] },
+      select: { id: true },
+    });
     if (!profile) return getIncomingCallAlertConfig(1);
 
-    const setting = await Setting.findOne({ profile: profile._id }).select('ringtone').lean();
+    const setting = await prisma.setting.findFirst({
+      where: { profile: profile.id },
+      select: { ringtone: true },
+    });
     return getIncomingCallAlertConfig(setting?.ringtone);
   } catch (error) {
     console.warn('getIncomingCallAlertForProfile failed', error?.message || error);

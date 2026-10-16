@@ -14,6 +14,43 @@ const { newId } = require("../utils/objectId");
 const withId = (data) =>
   data && typeof data === "object" && data.id == null ? { ...data, id: newId() } : data;
 
+const isPlainObject = (value) =>
+  value !== null && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date);
+
+// A computed field is only returned for a `select` that names it, so every
+// selection that picks `id` also picks `_id` (nested relation selects too).
+// Without this, `select: { id: true, ... }` rows would lose their `_id`.
+function addComputedIdToSelects(args) {
+  if (!isPlainObject(args)) return;
+  if (isPlainObject(args.select)) {
+    const selection = args.select;
+    if (selection.id === true && !("_id" in selection)) selection._id = true;
+    for (const [key, value] of Object.entries(selection)) {
+      if (key !== "_count" && isPlainObject(value)) addComputedIdToSelects(value);
+    }
+  }
+  if (isPlainObject(args.include)) {
+    for (const [key, value] of Object.entries(args.include)) {
+      if (key !== "_count" && isPlainObject(value)) addComputedIdToSelects(value);
+    }
+  }
+}
+
+// Operations whose `select` describes rows (not counts / aggregates).
+const ROW_OPERATIONS = new Set([
+  "findUnique",
+  "findUniqueOrThrow",
+  "findFirst",
+  "findFirstOrThrow",
+  "findMany",
+  "create",
+  "createManyAndReturn",
+  "update",
+  "updateManyAndReturn",
+  "upsert",
+  "delete",
+]);
+
 const base = new PrismaClient({
   log: process.env.NODE_ENV === "production" ? ["error"] : ["warn", "error"],
 });
@@ -29,6 +66,10 @@ const prisma = base.$extends({
   },
   query: {
     $allModels: {
+      $allOperations({ operation, args, query }) {
+        if (ROW_OPERATIONS.has(operation)) addComputedIdToSelects(args);
+        return query(args);
+      },
       create({ args, query }) {
         args.data = withId(args.data);
         return query(args);

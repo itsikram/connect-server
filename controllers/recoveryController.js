@@ -1,8 +1,10 @@
-const RecoveryProfileModel = require("../models/RecoveryProfile");
-const RecoveryCheckInModel = require("../models/RecoveryCheckIn");
-const RecoveryCravingModel = require("../models/RecoveryCraving");
-const RecoveryLapseModel = require("../models/RecoveryLapse");
-const RecoveryChatMessageModel = require("../models/RecoveryChatMessage");
+const {
+  RecoveryProfile: RecoveryProfileModel,
+  RecoveryCheckIn: RecoveryCheckInModel,
+  RecoveryCraving: RecoveryCravingModel,
+  RecoveryLapse: RecoveryLapseModel,
+  RecoveryChatMessage: RecoveryChatMessageModel,
+} = require("../services/recoveryStore");
 const defaultAi = require("../services/recoveryAi");
 const {
   BACKGROUND,

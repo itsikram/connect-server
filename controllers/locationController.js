@@ -3,7 +3,17 @@
  * Handles connect location queries and AI responses
  */
 
-const Profile = require("../models/Profile");
+const { prisma } = require("../utils/db");
+const { findProfileWithGraph } = require("../utils/profileGraph");
+
+/** Profile with its graph arrays (connects as ids), as Profile.findById returned. */
+const loadProfile = (profileId) => findProfileWithGraph({ id: String(profileId) });
+
+const saveLastLocation = (profileId, lat, lon) =>
+  prisma.profile.update({
+    where: { id: String(profileId) },
+    data: { lastLocation: { latitude: lat, longitude: lon, timestamp: new Date() } },
+  });
 const {
   getConnectsLocations,
   formatAIResponse,
@@ -62,7 +72,7 @@ exports.getConnectsNearby = async (req, res, next) => {
     }
 
     // Get user profile
-    const userProfile = await Profile.findById(profileId);
+    const userProfile = await loadProfile(profileId);
     if (!userProfile) {
       return res.status(404).json({
         error: true,
@@ -72,13 +82,7 @@ exports.getConnectsNearby = async (req, res, next) => {
     }
 
     // Update user's current location (for real-time tracking)
-    await Profile.findByIdAndUpdate(profileId, {
-      lastLocation: {
-        latitude: lat,
-        longitude: lon,
-        timestamp: new Date(),
-      },
-    });
+    await saveLastLocation(profileId, lat, lon);
 
     // Get connects locations
     const locationData = await getConnectsLocations(userProfile, lat, lon, {
@@ -123,7 +127,7 @@ exports.getConnectsLocationRaw = async (req, res, next) => {
       });
     }
 
-    const userProfile = await Profile.findById(profileId);
+    const userProfile = await loadProfile(profileId);
     if (!userProfile) {
       return res.status(404).json({
         error: true,
@@ -190,17 +194,7 @@ exports.shareLocation = async (req, res, next) => {
       });
     }
 
-    const updatedProfile = await Profile.findByIdAndUpdate(
-      profileId,
-      {
-        lastLocation: {
-          latitude: lat,
-          longitude: lon,
-          timestamp: new Date(),
-        },
-      },
-      { new: true },
-    );
+    const updatedProfile = await saveLastLocation(profileId, lat, lon);
 
     return res.status(200).json({
       success: true,
@@ -235,8 +229,8 @@ exports.getConnectLocation = async (req, res, next) => {
     }
 
     // Check if connect exists and is in user's connect list
-    const userProfile = await Profile.findById(profileId);
-    if (!userProfile || !userProfile.connects.includes(connectId)) {
+    const userProfile = await loadProfile(profileId);
+    if (!userProfile || !userProfile.connects.includes(String(connectId))) {
       return res.status(403).json({
         error: true,
         message:
@@ -247,14 +241,18 @@ exports.getConnectLocation = async (req, res, next) => {
       });
     }
 
-    const connectProfile = await Profile.findById(connectId).select([
-      "fullName",
-      "displayName",
-      "lastLocation",
-      "presentAddress",
-      "permanentAddress",
-      "profilePic",
-    ]);
+    const connectProfile = await prisma.profile.findUnique({
+      where: { id: String(connectId) },
+      select: {
+        id: true,
+        fullName: true,
+        displayName: true,
+        lastLocation: true,
+        presentAddress: true,
+        permanentAddress: true,
+        profilePic: true,
+      },
+    });
 
     if (!connectProfile) {
       return res.status(404).json({
@@ -341,7 +339,7 @@ exports.searchNearby = async (req, res, next) => {
       }
     }
 
-    const userProfile = await Profile.findById(profileId);
+    const userProfile = await loadProfile(profileId);
     if (!userProfile) {
       return res.status(404).json({
         error: true,

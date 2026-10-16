@@ -1,6 +1,4 @@
-const Post = require("../models/Post");
-const Profile = require("../models/Profile");
-const Message = require("../models/Message");
+const { prisma } = require("./db");
 const { ensureOfficialAccount } = require("./connectOfficialAccount");
 
 const BD_OFFSET_MS = 6 * 60 * 60 * 1000;
@@ -51,21 +49,22 @@ const pickPrompt = (list) => {
 };
 
 const alreadyPosted = async (authorId, source, since) => {
-  const existing = await Post.findOne({
-    author: authorId,
-    source,
-    createdAt: { $gte: since },
-  }).select("_id");
+  const existing = await prisma.post.findFirst({
+    where: { author: String(authorId), source, createdAt: { gte: since } },
+    select: { id: true },
+  });
   return Boolean(existing);
 };
 
 const createOfficialPost = async (profile, caption, source) => {
-  await Post.create({
-    caption: String(caption).slice(0, 500),
-    author: profile._id,
-    audience: 1,
-    source,
-    type: "post",
+  await prisma.post.create({
+    data: {
+      caption: String(caption).slice(0, 500),
+      author: String(profile._id),
+      audience: 1,
+      source,
+      type: "post",
+    },
   });
   console.log(`[connect-prompts] posted ${source}`);
 };
@@ -77,35 +76,47 @@ const sendWeeklyRecaps = async (officialProfile) => {
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const recapCutoff = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000);
 
-  const authors = await Post.distinct("author", { createdAt: { $gte: weekAgo } });
-  const targets = await Profile.find({
-    _id: { $in: authors, $ne: officialProfile._id },
-    isOfficial: { $ne: true },
-    $or: [
-      { lastWeeklyRecapAt: { $exists: false } },
-      { lastWeeklyRecapAt: null },
-      { lastWeeklyRecapAt: { $lt: recapCutoff } },
-    ],
-  }).limit(40);
+  const authorRows = await prisma.post.findMany({
+    where: { createdAt: { gte: weekAgo }, author: { not: null } },
+    distinct: ["author"],
+    select: { author: true },
+  });
+  const officialId = String(officialProfile._id);
+  const authors = authorRows.map((row) => row.author).filter((id) => id !== officialId);
+  const targets = authors.length
+    ? await prisma.profile.findMany({
+        where: {
+          id: { in: authors },
+          isOfficial: false,
+          OR: [{ lastWeeklyRecapAt: null }, { lastWeeklyRecapAt: { lt: recapCutoff } }],
+        },
+        select: { id: true },
+        take: 40,
+      })
+    : [];
 
   for (const profile of targets) {
-    const posts = await Post.find({
-      author: profile._id,
-      createdAt: { $gte: weekAgo },
-    }).select("reacts comments");
-    const reacts = posts.reduce((n, p) => n + (p.reacts?.length || 0), 0);
-    const comments = posts.reduce((n, p) => n + (p.comments?.length || 0), 0);
+    const posts = await prisma.post.findMany({
+      where: { author: profile.id, createdAt: { gte: weekAgo } },
+      select: { id: true, _count: { select: { reacts: true, comments: true } } },
+    });
+    const reacts = posts.reduce((n, p) => n + p._count.reacts, 0);
+    const comments = posts.reduce((n, p) => n + p._count.comments, 0);
     const text = `Your week on Connect: ${posts.length} post${posts.length === 1 ? "" : "s"}, ${reacts} reacts, ${comments} comments. Want to share a highlight? Open Home and tap Share a highlight.`;
     const room = [String(officialProfile._id), String(profile._id)].sort().join("_");
-    await Message.create({
-      room,
-      senderId: String(officialProfile._id),
-      receiverId: String(profile._id),
-      message: text,
-      messageType: "text",
+    await prisma.message.create({
+      data: {
+        room,
+        senderId: officialId,
+        receiverId: String(profile._id),
+        message: text,
+        messageType: "text",
+      },
     });
-    profile.lastWeeklyRecapAt = new Date();
-    await profile.save();
+    await prisma.profile.update({
+      where: { id: profile.id },
+      data: { lastWeeklyRecapAt: new Date() },
+    });
   }
 
   if (targets.length) {

@@ -1,5 +1,5 @@
 const express = require('express');
-const SavedVideo = require('../models/SavedVideo');
+const { prisma, populated } = require('../utils/db');
 const isAuth = require('../middlewares/isAuth');
 
 const router = express.Router();
@@ -50,7 +50,7 @@ router.post('/save', isAuth, async (req, res) => {
       safeMetadata.videoURL = canonicalSourceUrl;
     }
     // Get userId from profile (which is populated by isAuth middleware)
-    const userId = req.profile?.user?._id;
+    const userId = req.profile?.user?._id ? String(req.profile.user._id) : null;
 
     console.log('[SavedVideo] Save request:', {
       videoId,
@@ -71,18 +71,17 @@ router.post('/save', isAuth, async (req, res) => {
     }
 
     // Upsert: update if exists, create if doesn't
-    const savedVideo = await SavedVideo.findOneAndUpdate(
-      { userId, videoId: String(videoId) },
-      {
-        userId,
-        videoId: String(videoId),
-        metadata: safeMetadata,
-        status: 'active',
-        sourceUrl: canonicalSourceUrl,
-        downloadedAt: new Date(),
-      },
-      { upsert: true, new: true }
-    );
+    const fields = {
+      metadata: safeMetadata,
+      status: 'active',
+      sourceUrl: canonicalSourceUrl,
+      downloadedAt: new Date(),
+    };
+    const savedVideo = await prisma.savedVideo.upsert({
+      where: { userId_videoId: { userId, videoId: String(videoId) } },
+      update: fields,
+      create: { userId, videoId: String(videoId), ...fields },
+    });
 
     console.log('[SavedVideo] ✓ Video saved successfully:', {
       videoId: savedVideo.videoId,
@@ -114,7 +113,7 @@ router.post('/save', isAuth, async (req, res) => {
 router.get('/history', isAuth, async (req, res) => {
   try {
     // Get userId from profile (which is populated by isAuth middleware)
-    const userId = req.profile?.user?._id;
+    const userId = req.profile?.user?._id ? String(req.profile.user._id) : null;
 
     console.log('[SavedVideo] History request for user:', userId?.toString());
 
@@ -126,12 +125,14 @@ router.get('/history', isAuth, async (req, res) => {
       });
     }
 
-    const savedVideos = await SavedVideo.find({
-      userId,
-      status: 'active',
-    })
-      .populate('userId', 'email firstName surname')
-      .sort({ downloadedAt: -1 });
+    const savedVideos = populated(
+      await prisma.savedVideo.findMany({
+        where: { userId, status: 'active' },
+        include: { userIdDoc: { select: { id: true, email: true, firstName: true, surname: true } } },
+        orderBy: { downloadedAt: 'desc' },
+      }),
+      'userId'
+    );
 
     console.log('[SavedVideo] ✓ Found videos:', {
       count: savedVideos.length,
@@ -161,7 +162,7 @@ router.get('/history', isAuth, async (req, res) => {
  */
 router.delete('/:videoId', isAuth, async (req, res) => {
   try {
-    const userId = req.profile?.user?._id;
+    const userId = req.profile?.user?._id ? String(req.profile.user._id) : null;
     const { videoId } = req.params;
 
     console.log('[SavedVideo] Delete request:', { videoId, userId: userId?.toString() });
@@ -173,13 +174,12 @@ router.delete('/:videoId', isAuth, async (req, res) => {
       });
     }
 
-    const result = await SavedVideo.findOneAndUpdate(
-      { userId, videoId: String(videoId) },
-      { status: 'deleted' },
-      { new: true }
-    );
+    const { count } = await prisma.savedVideo.updateMany({
+      where: { userId, videoId: String(videoId) },
+      data: { status: 'deleted' },
+    });
 
-    if (!result) {
+    if (!count) {
       console.log('[SavedVideo] Video not found:', { videoId, userId: userId.toString() });
       return res.status(404).json({
         success: false,
@@ -208,7 +208,7 @@ router.delete('/:videoId', isAuth, async (req, res) => {
  */
 router.post('/batch-delete', isAuth, async (req, res) => {
   try {
-    const userId = req.profile?.user?._id;
+    const userId = req.profile?.user?._id ? String(req.profile.user._id) : null;
     const { videoIds } = req.body;
 
     if (!userId) {
@@ -225,10 +225,11 @@ router.post('/batch-delete', isAuth, async (req, res) => {
       });
     }
 
-    const result = await SavedVideo.updateMany(
-      { userId, videoId: { $in: videoIds.map(String) } },
-      { status: 'deleted' }
-    );
+    const { count } = await prisma.savedVideo.updateMany({
+      where: { userId, videoId: { in: videoIds.map(String) }, status: { not: 'deleted' } },
+      data: { status: 'deleted' },
+    });
+    const result = { modifiedCount: count };
 
     console.log('[SavedVideo] ✓ Batch deleted:', { count: result.modifiedCount });
 
@@ -251,7 +252,7 @@ router.post('/batch-delete', isAuth, async (req, res) => {
  */
 router.delete('/clear-all', isAuth, async (req, res) => {
   try {
-    const userId = req.profile?.user?._id;
+    const userId = req.profile?.user?._id ? String(req.profile.user._id) : null;
 
     if (!userId) {
       return res.status(400).json({
@@ -260,10 +261,11 @@ router.delete('/clear-all', isAuth, async (req, res) => {
       });
     }
 
-    const result = await SavedVideo.updateMany(
-      { userId },
-      { status: 'deleted' }
-    );
+    const { count } = await prisma.savedVideo.updateMany({
+      where: { userId, status: { not: 'deleted' } },
+      data: { status: 'deleted' },
+    });
+    const result = { modifiedCount: count };
 
     console.log('[SavedVideo] ✓ Cleared all videos:', { count: result.modifiedCount });
 

@@ -1,4 +1,4 @@
-const Setting = require('../models/Setting')
+const { prisma, pickModelFields } = require('../utils/db')
 const streamifier = require('streamifier')
 const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
 const { withCloudinaryAccount } = require('../utils/cloudinary')
@@ -28,6 +28,14 @@ const defaultSettings = () => ({
     connectChatSettings: {},
 })
 
+const findSetting = (profileId) =>
+    prisma.setting.findFirst({ where: { profile: String(profileId) }, orderBy: { createdAt: 'asc' } })
+
+const createSetting = (profileId, values) =>
+    prisma.setting.create({
+        data: { ...pickModelFields('Setting', { ...defaultSettings(), ...values }), profile: String(profileId) },
+    })
+
 exports.getSetting = async (req, res, next) => {
     try {
         const profileId = req.query.profileId
@@ -35,7 +43,7 @@ exports.getSetting = async (req, res, next) => {
             return res.status(400).json({ message: 'profileId is required' })
         }
 
-        const settings = await Setting.findOne({ profile: profileId })
+        const settings = await findSetting(profileId)
         if (settings) {
             return res.status(200).json(settings)
         }
@@ -49,16 +57,12 @@ exports.getSetting = async (req, res, next) => {
 exports.addSetting = async (req, res, next) => {
     try {
         const profileId = req.profile._id
-        const existing = await Setting.findOne({ profile: profileId })
+        const existing = await findSetting(profileId)
         if (existing) {
             return res.status(200).json(existing)
         }
 
-        const saved = await new Setting({
-            profile: profileId,
-            ...defaultSettings(),
-            ...req.body,
-        }).save()
+        const saved = await createSetting(profileId, req.body)
 
         return res.status(200).json(saved)
     } catch (error) {
@@ -117,21 +121,16 @@ exports.updateSetting = async (req, res, next) => {
             }
         }
 
-        const existing = await Setting.findOne({ profile: profileId })
+        const existing = await findSetting(profileId)
         if (!existing) {
-            const saved = await new Setting({
-                profile: profileId,
-                ...defaultSettings(),
-                ...settingObject,
-            }).save()
+            const saved = await createSetting(profileId, settingObject)
             return res.status(200).json(saved)
         }
 
-        const updatedSetting = await Setting.findOneAndUpdate(
-            { profile: profileId },
-            { $set: settingObject },
-            { new: true }
-        )
+        const updatedSetting = await prisma.setting.update({
+            where: { id: existing.id },
+            data: pickModelFields('Setting', settingObject),
+        })
 
         if (updatedSetting) {
             if (req.file && existing?.chatBackground && existing.chatBackground !== updatedSetting.chatBackground) {

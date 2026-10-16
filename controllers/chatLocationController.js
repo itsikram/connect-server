@@ -3,8 +3,17 @@
  * Handles AI-powered natural language queries about connect locations
  */
 
-const Profile = require("../models/Profile");
-const Relationship = require("../models/Relationship");
+const { prisma } = require("../utils/db");
+const { findProfileWithGraph } = require("../utils/profileGraph");
+
+/** Profile with its graph arrays (connects as ids), as Profile.findById returned. */
+const loadProfile = (profileId) => findProfileWithGraph({ id: String(profileId) });
+
+const saveLastLocation = (profileId, lat, lon) =>
+  prisma.profile.update({
+    where: { id: String(profileId) },
+    data: { lastLocation: { latitude: lat, longitude: lon, timestamp: new Date() } },
+  });
 const {
   processLocationChatQuery,
   getFullConnectDetails,
@@ -64,7 +73,7 @@ exports.chatLocationQuery = async (req, res, next) => {
       });
     }
 
-    const userProfile = await Profile.findById(profileId);
+    const userProfile = await loadProfile(profileId);
     if (!userProfile) {
       return res.status(404).json({
         error: true,
@@ -73,13 +82,7 @@ exports.chatLocationQuery = async (req, res, next) => {
     }
 
     // Update user's location
-    await Profile.findByIdAndUpdate(profileId, {
-      lastLocation: {
-        latitude: lat,
-        longitude: lon,
-        timestamp: new Date(),
-      },
-    });
+    await saveLastLocation(profileId, lat, lon);
 
     // Process the chat query
     const chatResponse = await processLocationChatQuery(
@@ -201,19 +204,32 @@ exports.getChatConnectsList = async (req, res, next) => {
       });
     }
 
-    const userProfile = await Profile.findById(profileId).populate({
-      path: "connects",
-      select: [
-        "_id",
-        "fullName",
-        "displayName",
-        "profilePic",
-        "lastLocation",
-        "presentAddress",
-        "permanentAddress",
-        "isActive",
-      ],
+    const userProfile = await prisma.profile.findUnique({
+      where: { id: String(profileId) },
+      select: {
+        id: true,
+        connects: {
+          orderBy: { createdAt: "asc" },
+          select: {
+            connectDoc: {
+              select: {
+                id: true,
+                fullName: true,
+                displayName: true,
+                profilePic: true,
+                lastLocation: true,
+                presentAddress: true,
+                permanentAddress: true,
+                isActive: true,
+              },
+            },
+          },
+        },
+      },
     });
+    if (userProfile) {
+      userProfile.connects = userProfile.connects.map((row) => row.connectDoc).filter(Boolean);
+    }
 
     if (!userProfile || !userProfile.connects) {
       return res.status(200).json({
@@ -224,12 +240,16 @@ exports.getChatConnectsList = async (req, res, next) => {
       });
     }
 
-    const relationshipRows = await Relationship.find({
-      $or: [
-        { userA: profileId, userB: { $in: userProfile.connects } },
-        { userB: profileId, userA: { $in: userProfile.connects } },
-      ],
-    }).select("userA userB relationType");
+    const connectIds = userProfile.connects.map((connect) => connect.id);
+    const relationshipRows = await prisma.relationship.findMany({
+      where: {
+        OR: [
+          { userA: String(profileId), userB: { in: connectIds } },
+          { userB: String(profileId), userA: { in: connectIds } },
+        ],
+      },
+      select: { userA: true, userB: true, relationType: true },
+    });
     const relationshipMap = new Map();
     relationshipRows.forEach((row) => {
       const otherId = String(row.userA) === String(profileId)

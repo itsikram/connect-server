@@ -1,4 +1,4 @@
-const { prisma, pluck } = require('./db')
+const { Prisma, prisma, pluck } = require('./db')
 const { deleteCloudinaryResources } = require('./cloudinaryCleanup')
 
 /**
@@ -50,9 +50,12 @@ const deleteUserData = async (profileId) => {
         prisma.comment.deleteMany({ where: { id: { in: commentIds } } }),
         prisma.report.deleteMany({ where: { OR: [{ reportedBy: profileId }, { targetProfile: profileId }, { targetPost: { in: postIds } }] } }),
         prisma.aIGeneratedPost.deleteMany({ where: { OR: [{ author: profileId }, { post: { in: postIds } }] } }),
-        prisma.post.deleteMany({ where: { author: profileId } }),
-        prisma.watch.deleteMany({ where: { author: profileId } }),
-        prisma.story.deleteMany({ where: { author: profileId } }),
+        // Raw DELETEs for rows other rows may still point at (a share of their
+        // post, the User row's profile ref): relationMode "prisma" emulates
+        // NoAction as restrict, while Mongo left those references dangling.
+        prisma.$executeRaw`DELETE FROM posts WHERE author = ${profileId}`,
+        prisma.$executeRaw`DELETE FROM watches WHERE author = ${profileId}`,
+        prisma.$executeRaw`DELETE FROM stories WHERE author = ${profileId}`,
         prisma.message.deleteMany({ where: { OR: [{ senderId: profileId }, { receiverId: profileId }] } }),
         prisma.notification.deleteMany({ where: { receiverId: profileId } }),
 
@@ -96,8 +99,8 @@ const deleteUserData = async (profileId) => {
         prisma.transaction.deleteMany({ where: byUserId }),
         prisma.tip.deleteMany({ where: { OR: [{ senderId: { in: userIds } }, { creatorId: { in: userIds } }] } }),
 
-        prisma.profile.deleteMany({ where: { id: profileId } }),
-        prisma.user.deleteMany({ where: { id: { in: userIds } } }),
+        prisma.$executeRaw`DELETE FROM profiles WHERE id = ${profileId}`,
+        ...(userIds.length ? [prisma.$executeRaw`DELETE FROM users WHERE id IN (${Prisma.join(userIds)})`] : []),
     ])
 
     await deleteCloudinaryResources([

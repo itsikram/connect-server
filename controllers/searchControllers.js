@@ -1,8 +1,7 @@
-const Profile = require("../models/Profile");
-const Post = require("../models/Post");
-const Watch = require("../models/Watch");
+const { prisma, populated, containsInsensitive } = require("../utils/db");
+const { PRIVATE_OMIT } = require("../utils/profileGraph");
+const { postInclude, watchInclude, shapePost, shapeWatch } = require("../services/contentShape");
 const {
-  escapeRegex,
   getSearchMatchScore,
   getSearchTokens,
 } = require("../utils/searchMatching");
@@ -10,7 +9,6 @@ const {
 exports.getSearchResult = async (req, res, next) => {
   try {
     const queryString = String(req.query.input || "").trim();
-    const escapedQuery = escapeRegex(queryString);
 
     let searchResponse = {
       posts: null,
@@ -18,80 +16,56 @@ exports.getSearchResult = async (req, res, next) => {
       videos: null,
     };
 
-    let usersFound = await Profile.find({
-      $or: [
-        {
-          fullName: {
-            $regex: escapedQuery,
-            $options: "i",
-          },
-        },
-        {
-          banglaName: {
-            $regex: escapedQuery,
-            $options: "i",
-          },
-        },
-        {
-          displayName: {
-            $regex: escapedQuery,
-            $options: "i",
-          },
-        },
-        {
-          nickname: {
-            $regex: escapedQuery,
-            $options: "i",
-          },
-        },
-        {
-          username: {
-            $regex: escapedQuery,
-            $options: "i",
-          },
-        },
-      ],
-    })
-      .select(
-        "_id fullName displayName username nickname banglaName profilePic bio user",
-      )
-      .populate({ path: "user", select: "firstName surname username" })
-      .limit(25)
-      .lean();
+    const nameFields = ["fullName", "banglaName", "displayName", "nickname", "username"];
+    let usersFound = await prisma.profile.findMany({
+      where: { OR: nameFields.map((field) => ({ [field]: containsInsensitive(queryString) })) },
+      select: {
+        id: true,
+        fullName: true,
+        displayName: true,
+        username: true,
+        nickname: true,
+        banglaName: true,
+        profilePic: true,
+        bio: true,
+        user: true,
+        userDoc: { select: { id: true, firstName: true, surname: true, username: true } },
+      },
+      take: 25,
+    });
+    usersFound = populated(usersFound, "user");
 
     if (usersFound) {
       searchResponse.users = usersFound;
     }
 
-    let postsFound = await Post.find({
-      caption: {
-        $regex: escapedQuery,
-        $options: "i",
-      },
-    })
-      .populate("author")
-      .limit(25);
+    const authorArgs = { omit: PRIVATE_OMIT };
+    let postsFound = (
+      await prisma.post.findMany({
+        where: { caption: containsInsensitive(queryString) },
+        include: postInclude({ author: authorArgs }),
+        take: 25,
+      })
+    ).map(shapePost);
 
     if (postsFound) {
       searchResponse.posts = postsFound;
     }
     const videoTokens = getSearchTokens(queryString);
-    const videoPattern = videoTokens.map(escapeRegex).join("|");
-    let videoCandidates = videoPattern
-      ? await Watch.find({
-          caption: { $regex: videoPattern, $options: "i" },
+    const findVideos = (args) =>
+      prisma.watch
+        .findMany({ ...args, include: watchInclude({ author: authorArgs }), take: 100 })
+        .then((rows) => rows.map(shapeWatch));
+    let videoCandidates = videoTokens.length
+      ? await findVideos({
+          where: { OR: videoTokens.map((token) => ({ caption: containsInsensitive(token) })) },
         })
-          .populate("author")
-          .limit(100)
       : [];
 
     // If every token was misspelled, compare against a bounded recent set
     // rather than returning no result immediately.
     if (videoCandidates.length === 0 && videoTokens.length > 0) {
-      videoCandidates = await Watch.find({})
-        .sort({ createdAt: -1 })
-        .populate("author")
-        .limit(100);
+      videoCandidates = await findVideos({ orderBy: { createdAt: "desc" } });
     }
 
     const videosFound = videoCandidates

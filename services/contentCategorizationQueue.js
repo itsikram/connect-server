@@ -1,5 +1,12 @@
-const Post = require('../models/Post');
-const Watch = require('../models/Watch');
+const { prisma } = require('../utils/db');
+const { withAiMetadata, aiMetadataData } = require('./contentShape');
+
+const delegateFor = (kind) => (kind === 'watch' ? prisma.watch : prisma.post);
+const reactsRelation = { select: { profile: true }, orderBy: { createdAt: 'asc' } };
+
+/** updateMany so a deleted post/watch is a no-op, like findByIdAndUpdate on a missing id. */
+const setAiColumns = (kind, id, meta) =>
+    delegateFor(kind).updateMany({ where: { id: String(id) }, data: aiMetadataData(meta) });
 const { categorizeContent, contentText, contentHash, mediaUrlFor } = require('./aiCategorizationService');
 const { updateInterestProfile } = require('./recommendationService');
 
@@ -13,11 +20,11 @@ const processNext = async () => {
     const job = queue.shift();
     queuedKeys.delete(`${job.kind}:${job.id}`);
     try {
-        const Model = job.kind === 'watch' ? Watch : Post;
-        await Model.findByIdAndUpdate(job.id, {
-            $set: { 'aiMetadata.status': 'pending', 'aiMetadata.error': undefined }
-        });
-        const content = await Model.findById(job.id).lean();
+        await setAiColumns(job.kind, job.id, { status: 'pending', error: null });
+        const content = withAiMetadata(await delegateFor(job.kind).findUnique({
+            where: { id: String(job.id) },
+            include: { reacts: reactsRelation },
+        }));
         if (content) {
             const hash = contentHash(`${contentText(content, job.kind)}\n${mediaUrlFor(content, job.kind)}`);
             if (
@@ -28,7 +35,7 @@ const processNext = async () => {
                 return;
             }
             const result = await categorizeContent({ content, kind: job.kind });
-            await Model.findByIdAndUpdate(job.id, { $set: { aiMetadata: result } });
+            await setAiColumns(job.kind, job.id, result);
             if (result.categories?.length && Array.isArray(content.reacts)) {
                 await Promise.all(content.reacts
                     .map((react) => react?.profile)
@@ -37,8 +44,7 @@ const processNext = async () => {
             }
         }
     } catch (error) {
-        const Model = job.kind === 'watch' ? Watch : Post;
-        await Model.findByIdAndUpdate(job.id, { $set: { 'aiMetadata.status': 'failed', 'aiMetadata.error': String(error.message || error).slice(0, 300) } }).catch((updateError) => {
+        await setAiColumns(job.kind, job.id, { status: 'failed', error: String(error.message || error).slice(0, 300) }).catch((updateError) => {
             console.error('[ai-categorization] failed to persist job error:', updateError.message || updateError);
         });
         console.error('[ai-categorization] job failed:', error.message || error);

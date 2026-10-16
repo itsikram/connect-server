@@ -1,5 +1,10 @@
-const Message = require('../models/Message')
-const Profile = require('../models/Profile')
+const { prisma, populated } = require('../utils/db')
+
+// Name + picture of a profile (null when there is no such profile).
+const findCallProfile = (id) =>
+    id
+        ? prisma.profile.findUnique({ where: { id: String(id) }, select: { id: true, fullName: true, profilePic: true } })
+        : Promise.resolve(null)
 const { sendPushToProfile } = require('../utils/pushNotifications')
 const { sendWebPushToProfile } = require('../utils/webPush')
 const { getIncomingCallAlertForProfile } = require('../utils/ringtone')
@@ -150,7 +155,7 @@ async function sendMissedCallPush(calleeId, callerId, isAudio, channelName) {
     const article = isAudio ? 'an' : 'a';
     let callerName = '';
     try {
-        callerName = (await Profile.findById(callerId).select('fullName'))?.fullName || '';
+        callerName = (await findCallProfile(callerId))?.fullName || '';
     } catch (e) { }
     const body = callerName ? `${callerName} tried to reach you` : `You missed ${article} ${label} call`;
     try {
@@ -205,19 +210,32 @@ async function logCallMessage(io, { callerId, calleeId, isAudio, callEvent, dura
         const message = callEvent === 'missed'
             ? `Missed ${label} call`
             : `${isAudio ? 'Audio' : 'Video'} call ended`;
-        const callMsg = new Message({
-            room,
-            senderId: String(callerId),
-            receiverId: String(calleeId),
-            message,
-            messageType: 'call',
-            callType,
-            callEvent,
-            ...(Number.isFinite(duration) && duration > 0 ? { duration } : {}),
-        });
-        await callMsg.save();
-        const updatedMessage = await Message.findOne({ _id: callMsg._id }).populate('parent');
-        const senderProfile = await Profile.findById(callerId).populate('user');
+        const updatedMessage = populated(
+            await prisma.message.create({
+                data: {
+                    room,
+                    senderId: String(callerId),
+                    receiverId: String(calleeId),
+                    message,
+                    messageType: 'call',
+                    callType,
+                    callEvent,
+                    ...(Number.isFinite(duration) && duration > 0 ? { duration } : {}),
+                },
+                include: { parentDoc: true },
+            }),
+            'parent'
+        );
+        const senderProfile = callerId
+            ? populated(
+                await prisma.profile.findUnique({
+                    where: { id: String(callerId) },
+                    omit: { deviceTokens: true, browserIds: true, webPushSubscriptions: true },
+                    include: { userDoc: { omit: { password: true, resetPasswordToken: true, resetPasswordExpire: true } } },
+                }),
+                'user'
+            )
+            : null;
         const senderName = `${senderProfile?.user?.firstName || ''} ${senderProfile?.user?.surname || ''}`.trim();
         const senderPP = senderProfile?.profilePic || config?.defaultProfile;
         io.to([room, String(callerId), String(calleeId)]).emit('newMessage', {
@@ -286,7 +304,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
 
         let myProfileData = null;
         try {
-            myProfileData = await Profile.findById(me).select('fullName profilePic');
+            myProfileData = await findCallProfile(me);
         } catch (e) { }
         if (!isStillRinging()) return;
         const callerName = myProfileData?.fullName || 'Someone';
@@ -465,8 +483,8 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             }
 
             const [calleeProfileData, callerProfileData] = await Promise.all([
-                Profile.findById(me).select('fullName profilePic').catch(() => null),
-                Profile.findById(callerId).select('fullName profilePic').catch(() => null),
+                findCallProfile(me).catch(() => null),
+                findCallProfile(callerId).catch(() => null),
             ]);
 
             // Only the device that placed the call should join. Other idle

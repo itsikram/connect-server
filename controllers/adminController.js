@@ -1,14 +1,18 @@
-const Admin = require('../models/Admin')
-const Profile = require('../models/Profile')
-const UserInterestProfile = require('../models/UserInterestProfile')
+const { prisma, populated, isValidId, jsonObject, pickModelFields } = require('../utils/db')
 const { rebuildInterestProfile, rebuildInterestProfiles } = require('../services/recommendationService')
-const User = require('../models/User')
-const Post = require('../models/Post')
-const Watch = require('../models/Watch')
-const Story = require('../models/Story')
-const Comment = require('../models/Comment')
-const CmntReply = require('../models/CmntReply')
-const Report = require('../models/Report')
+const { GRAPH_INCLUDE, shapeProfile, CONNECT_PUBLIC_SELECT, USER_PUBLIC_SELECT } = require('../utils/profileGraph')
+const {
+    profileArgs,
+    commentInclude,
+    postInclude,
+    watchInclude,
+    storyInclude,
+    shapePost,
+    shapeWatch,
+    shapeStory,
+    deleteCommentsWhere,
+    removeContent,
+} = require('../services/contentShape')
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
@@ -37,6 +41,49 @@ const getAdminAppUrl = () => {
     return url;
 };
 
+// Never send password hashes / reset tokens in admin payloads.
+const USER_SAFE = { omit: { password: true, resetPasswordToken: true, resetPasswordExpire: true } }
+
+const findAdminByEmail = (email) => prisma.admin.findFirst({ where: { email } })
+
+/** Admin profile payload: full profile, populated user and graph arrays (connects etc. as profile objects). */
+const profileGraphInclude = (populate = []) => {
+    const include = { ...GRAPH_INCLUDE, userDoc: USER_SAFE }
+    const card = { select: { ...CONNECT_PUBLIC_SELECT, userDoc: { select: USER_PUBLIC_SELECT } } }
+    if (populate.includes('connects')) include.connects = { select: { connect: true, connectDoc: card }, orderBy: { createdAt: 'asc' } }
+    if (populate.includes('following')) include.following = { select: { following: true, followingDoc: card }, orderBy: { createdAt: 'asc' } }
+    if (populate.includes('blockedUsers')) include.blockedUsers = { select: { blocked: true, blockedDoc: card }, orderBy: { createdAt: 'asc' } }
+    return include
+}
+
+const shapeAdminProfile = (row) => {
+    if (!row) return row
+    if (Array.isArray(row.following) && row.following.some((f) => 'followingDoc' in f)) {
+        row.following = row.following.map((f) => populated(f.followingDoc, 'user')).filter(Boolean)
+    }
+    if (Array.isArray(row.blockedUsers) && row.blockedUsers.some((b) => 'blockedDoc' in b)) {
+        row.blockedUsers = row.blockedUsers.map((b) => populated(b.blockedDoc, 'user')).filter(Boolean)
+    }
+    shapeProfile(row)
+    if (Array.isArray(row.following)) row.followingCount = row.following.length
+    return row
+}
+
+const PRIVATE_PROFILE_OMIT = { deviceTokens: true, browserIds: true, webPushSubscriptions: true }
+
+const findAdminProfile = async (id, populate) =>
+    isValidId(id)
+        ? shapeAdminProfile(await prisma.profile.findUnique({
+            where: { id: String(id) },
+            omit: PRIVATE_PROFILE_OMIT,
+            include: profileGraphInclude(populate),
+        }))
+        : null
+
+const AUTHOR_CARD = profileArgs(['fullName', 'displayName', 'profilePic', 'coverPic', 'bio'])
+// The old .populate('author', '<fields>') did not populate author.user.
+AUTHOR_CARD.select.userDoc = false
+
 const escapeHtml = (value) =>
     String(value)
         .replace(/&/g, '&amp;')
@@ -61,7 +108,7 @@ exports.signUp = async (req, res, next) => {
         }
 
         // Check if admin already exists
-        let existingAdmin = await Admin.findOne({ email: email.toLowerCase() });
+        let existingAdmin = await findAdminByEmail(email.toLowerCase());
         if (existingAdmin) {
             return res.status(400).json({
                 message: `Admin account already exists with email ${email}`
@@ -72,14 +119,14 @@ exports.signUp = async (req, res, next) => {
         let hashPassword = await bcrypt.hash(password, 10);
 
         // Create new admin
-        let newAdmin = new Admin({
-            fullName,
-            email: email.toLowerCase(),
-            password: hashPassword,
-            role: role || 'admin'
+        let adminData = await prisma.admin.create({
+            data: {
+                fullName,
+                email: email.toLowerCase(),
+                password: hashPassword,
+                role: role || 'admin'
+            }
         });
-
-        let adminData = await newAdmin.save();
 
         // Generate JWT token
         let accessToken = jwt.sign({
@@ -118,7 +165,7 @@ exports.login = async (req, res, next) => {
         }
 
         // Find admin by email
-        let admin = await Admin.findOne({ email: email.toLowerCase() });
+        let admin = await findAdminByEmail(email.toLowerCase());
 
         if (!admin) {
             return res.status(404).json({
@@ -169,7 +216,7 @@ exports.deleteAccount = async (req, res, next) => {
         }
 
         // Find admin by email
-        let admin = await Admin.findOne({ email: email.toLowerCase() });
+        let admin = await findAdminByEmail(email.toLowerCase());
 
         if (!admin) {
             return res.status(404).json({
@@ -187,7 +234,7 @@ exports.deleteAccount = async (req, res, next) => {
         }
 
         // Delete admin account
-        await Admin.findByIdAndDelete(admin._id);
+        await prisma.admin.delete({ where: { id: admin.id } });
 
         return res.status(200).json({
             message: 'Admin account deleted successfully'
@@ -210,7 +257,7 @@ const serializeInterestProfile = (interestProfile) => {
 
     const categories = interestProfile.categories instanceof Map
         ? Array.from(interestProfile.categories.entries())
-        : Object.entries(interestProfile.categories || {});
+        : Object.entries(jsonObject(interestProfile.categories));
 
     return {
         lovedCategories: categories
@@ -225,11 +272,15 @@ const serializeInterestProfile = (interestProfile) => {
 
 exports.getProfiles = async (req, res, next) => {
     try {
-        let profiles = await Profile.find().populate(['user', 'connects']).limit(50);
+        let profiles = (await prisma.profile.findMany({
+            omit: PRIVATE_PROFILE_OMIT,
+            include: profileGraphInclude(['connects']),
+            take: 50,
+        })).map(shapeAdminProfile);
         const rebuiltInterests = await rebuildInterestProfiles(profiles.map((profile) => profile._id));
-        const interestProfiles = await UserInterestProfile.find({
-            profile: { $in: profiles.map((profile) => profile._id) }
-        }).lean();
+        const interestProfiles = await prisma.userInterestProfile.findMany({
+            where: { profile: { in: profiles.map((profile) => profile.id) } }
+        });
         const interestsByProfile = new Map(interestProfiles.map((interestProfile) => [
             String(interestProfile.profile),
             serializeInterestProfile(interestProfile)
@@ -239,7 +290,7 @@ exports.getProfiles = async (req, res, next) => {
         }
 
         return res.status(200).json(profiles.map((profile) => ({
-            ...profile.toObject(),
+            ...profile,
             ...(interestsByProfile.get(String(profile._id)) || serializeInterestProfile(null))
         })));
     } catch (error) {
@@ -250,7 +301,7 @@ exports.getProfiles = async (req, res, next) => {
 exports.getProfile = async (req, res, next) => {
     try {
         const { id } = req.params;
-        let profile = await Profile.findById(id).populate(['user', 'connects', 'following', 'blockedUsers']);
+        let profile = await findAdminProfile(id, ['connects', 'following', 'blockedUsers']);
 
         if (!profile) {
             return res.status(404).json({ message: 'Profile not found' });
@@ -258,7 +309,7 @@ exports.getProfile = async (req, res, next) => {
 
         const interestProfile = await rebuildInterestProfile(profile._id);
         return res.status(200).json({
-            ...profile.toObject(),
+            ...profile,
             ...serializeInterestProfile(interestProfile)
         });
     } catch (error) {
@@ -272,33 +323,31 @@ exports.updateProfile = async (req, res, next) => {
         const updateData = req.body;
 
         // Find the profile
-        let profile = await Profile.findById(id).populate('user');
+        let profile = isValidId(id)
+            ? await prisma.profile.findUnique({ where: { id: String(id) }, select: { id: true, user: true } })
+            : null;
         if (!profile) {
             return res.status(404).json({ message: 'Profile not found' });
         }
 
         // Update profile fields
-        if (updateData.bio !== undefined) profile.bio = updateData.bio;
-        if (updateData.presentAddress !== undefined) profile.presentAddress = updateData.presentAddress;
-        if (updateData.permanentAddress !== undefined) profile.permanentAddress = updateData.permanentAddress;
-        if (updateData.isActive !== undefined) profile.isActive = updateData.isActive;
-        if (updateData.isVerified !== undefined) profile.isVerified = updateData.isVerified;
+        const profileFields = ['bio', 'presentAddress', 'permanentAddress', 'isActive', 'isVerified']
+            .filter((field) => updateData[field] !== undefined);
+        const userFields = ['firstName', 'surname', 'email', 'gender', 'DOB']
+            .filter((field) => updateData[field] !== undefined);
+        const pick = (fields) => Object.fromEntries(fields.map((field) => [field, updateData[field]]));
 
         // Update user fields
-        if (profile.user) {
-            if (updateData.firstName !== undefined) profile.user.firstName = updateData.firstName;
-            if (updateData.surname !== undefined) profile.user.surname = updateData.surname;
-            if (updateData.email !== undefined) profile.user.email = updateData.email;
-            if (updateData.gender !== undefined) profile.user.gender = updateData.gender;
-            if (updateData.DOB !== undefined) profile.user.DOB = updateData.DOB;
-
-            await profile.user.save();
+        if (profile.user && userFields.length) {
+            await prisma.user.updateMany({ where: { id: profile.user }, data: pickModelFields('User', pick(userFields)) });
         }
 
-        await profile.save();
+        if (profileFields.length) {
+            await prisma.profile.update({ where: { id: profile.id }, data: pickModelFields('Profile', pick(profileFields)) });
+        }
 
         // Return updated profile
-        const updatedProfile = await Profile.findById(id).populate(['user', 'connects', 'following', 'blockedUsers']);
+        const updatedProfile = await findAdminProfile(id, ['connects', 'following', 'blockedUsers']);
 
         return res.status(200).json({
             message: 'Profile updated successfully',
@@ -324,15 +373,19 @@ exports.setUserPassword = async (req, res, next) => {
         }
 
         // Find profile and associated user
-        const profile = await Profile.findById(id).populate('user');
-        if (!profile || !profile.user) {
+        const profile = isValidId(id)
+            ? await prisma.profile.findUnique({ where: { id: String(id) }, select: { id: true, user: true } })
+            : null;
+        const user = profile?.user
+            ? await prisma.user.findUnique({ where: { id: profile.user }, select: { id: true } })
+            : null;
+        if (!profile || !user) {
             return res.status(404).json({ message: 'Profile or user not found' });
         }
 
         // Hash and set the new password
         const hashed = await bcrypt.hash(newPassword, 10);
-        profile.user.password = hashed;
-        await profile.user.save();
+        await prisma.user.update({ where: { id: user.id }, data: { password: hashed } });
 
         return res.status(200).json({ message: 'Password updated successfully' });
     } catch (error) {
@@ -345,40 +398,54 @@ exports.deleteProfile = async (req, res, next) => {
 
     try {
 
-        let getProfile = await Profile.findById(profileId)
+        let getProfile = profileId && isValidId(profileId)
+            ? await prisma.profile.findUnique({ where: { id: String(profileId) }, select: { id: true, user: true } })
+            : null
 
-        if (getProfile) {
-            await Profile.findByIdAndDelete(profileId)
-
-            if (getProfile.user?._id) {
-                await User.findByIdAndDelete(getProfile.user?._id)
-    
-                if (profileId) {
-                    await deleteUserData(profileId)
-                    return res.json({ message: 'Account Deleted Successfully' })
-                }
-            }
-           
+        if (getProfile?.user) {
+            // Removes the profile, its user and everything that belongs to them.
+            await deleteUserData(profileId)
+            return res.json({ message: 'Account Deleted Successfully' })
         }
 
-
-
+        // The Mongoose version never answered this case (the request hung).
+        return res.json({ message: 'Account Deletion Failed' })
     } catch (error) {
         console.log(error)
         return res.json({ message: 'Account Deletion Failed' })
     }
 }
 
+/** .populate('parentPost') — the shared post as stored (author left as an id). */
+const attachParentPosts = async (posts) => {
+    const list = (Array.isArray(posts) ? posts : [posts]).filter(Boolean)
+    const ids = [...new Set(list.map((post) => post.parentPost).filter((id) => typeof id === 'string'))]
+    if (!ids.length) return
+    const parents = (await prisma.post.findMany({
+        where: { id: { in: ids } },
+        include: postInclude({ author: false }),
+    })).map(shapePost)
+    const byId = new Map(parents.map((parent) => [parent.id, parent]))
+    list.forEach((post) => {
+        if (typeof post.parentPost === 'string') post.parentPost = byId.get(post.parentPost) || null
+    })
+}
+
+const ADMIN_COMMENT_AUTHOR = profileArgs(['fullName', 'displayName', 'profilePic'], ['firstName', 'surname'])
+const ADMIN_REPLY_AUTHOR = { select: { id: true, fullName: true, displayName: true, profilePic: true, user: true } }
+const ADMIN_VIEWER = { select: { id: true, fullName: true, displayName: true, profilePic: true } }
+
 exports.getPosts = async (req, res, next) => {
     try {
-        let posts = await Post.find()
-            .populate('author', 'fullName displayName profilePic coverPic bio')
-            .populate('parentPost')
-            .sort({ createdAt: -1 })
-            .limit(100);
+        let posts = (await prisma.post.findMany({
+            include: postInclude({ author: AUTHOR_CARD, parent: false }),
+            orderBy: { createdAt: 'desc' },
+            take: 100,
+        })).map(shapePost);
+        await attachParentPosts(posts);
 
         console.log('Fetched posts:', posts.length);
-        
+
         return res.status(200).json(posts);
     } catch (error) {
         next(error);
@@ -388,35 +455,22 @@ exports.getPosts = async (req, res, next) => {
 exports.getPost = async (req, res, next) => {
     try {
         const { id } = req.params;
-        
-        let post = await Post.findById(id)
-            .populate('author', 'fullName displayName profilePic coverPic bio')
-            .populate('parentPost')
-            .populate({
-                path: 'comments',
-                populate: [
-                    {
-                        path: 'author',
-                        select: 'fullName displayName profilePic',
-                        populate: {
-                            path: 'user',
-                            select: 'firstName surname'
-                        }
-                    },
-                    {
-                        path: 'replies',
-                        populate: {
-                            path: 'author',
-                            select: 'fullName displayName profilePic'
-                        }
-                    }
-                ]
-            })
-            .populate('viewers', 'fullName displayName profilePic');
+
+        let post = isValidId(id)
+            ? shapePost(await prisma.post.findUnique({
+                where: { id: String(id) },
+                include: postInclude({
+                    author: AUTHOR_CARD,
+                    comments: commentInclude(ADMIN_COMMENT_AUTHOR, ADMIN_REPLY_AUTHOR),
+                    viewers: ADMIN_VIEWER,
+                }),
+            }))
+            : null;
 
         if (!post) {
             return res.status(404).json({ message: 'Post not found' });
         }
+        await attachParentPosts(post);
 
         return res.status(200).json(post);
     } catch (error) {
@@ -430,27 +484,27 @@ exports.updatePost = async (req, res, next) => {
         const updateData = req.body;
 
         // Find the post first
-        let post = await Post.findById(id);
+        let post = isValidId(id) ? await prisma.post.findUnique({ where: { id: String(id) }, select: { id: true } }) : null;
         if (!post) {
             return res.status(404).json({ message: 'Post not found' });
         }
 
-        // Update post fields
-        if (updateData.caption !== undefined) post.caption = updateData.caption;
-        if (updateData.content !== undefined) post.content = updateData.content;
-        if (updateData.text !== undefined) post.text = updateData.text;
-        if (updateData.feelings !== undefined) post.feelings = updateData.feelings;
-        if (updateData.location !== undefined) post.location = updateData.location;
-        if (updateData.audience !== undefined) post.audience = updateData.audience;
-        if (updateData.isActive !== undefined) post.isActive = updateData.isActive;
-        if (updateData.photos !== undefined) post.photos = updateData.photos;
-
-        await post.save();
+        // Update post fields (content / text / isActive are not Post columns; Mongoose dropped them too)
+        const fields = ['caption', 'feelings', 'location', 'audience', 'photos']
+            .filter((field) => updateData[field] !== undefined);
+        if (fields.length) {
+            await prisma.post.update({
+                where: { id: post.id },
+                data: pickModelFields('Post', Object.fromEntries(fields.map((field) => [field, updateData[field]]))),
+            });
+        }
 
         // Return updated post with populated fields
-        const updatedPost = await Post.findById(id)
-            .populate('author', 'fullName displayName profilePic coverPic bio')
-            .populate('parentPost');
+        const updatedPost = shapePost(await prisma.post.findUnique({
+            where: { id: post.id },
+            include: postInclude({ author: AUTHOR_CARD }),
+        }));
+        await attachParentPosts(updatedPost);
 
         return res.status(200).json({
             message: 'Post updated successfully',
@@ -464,49 +518,52 @@ exports.updatePost = async (req, res, next) => {
 exports.deletePost = async (req, res, next) => {
     try {
         const { id } = req.params;
-        
+
         // Find the post first
-        let post = await Post.findById(id);
+        let post = isValidId(id) ? await prisma.post.findUnique({ where: { id: String(id) }, select: { id: true, photos: true } }) : null;
         if (!post) {
             return res.status(404).json({ message: 'Post not found' });
         }
-        
-        // Find all comments associated with this post
-        const comments = await Comment.find({ post: id });
-        const replies = await CmntReply.find({ parent: { $in: comments.map((comment) => comment._id) } }).select('attachment');
-        
-        // Delete all comment replies for each comment
-        for (const comment of comments) {
-            await CmntReply.deleteMany({ parent: comment._id });
-        }
-        
-        // Delete all comments for this post
-        await Comment.deleteMany({ post: id });
-        
-        // Finally delete the post
-        await Post.findByIdAndDelete(id);
-        await deleteCloudinaryResources([post.photos, ...comments.map((comment) => comment.attachment), ...replies.map((reply) => reply.attachment)]);
-        
-        return res.status(200).json({ 
+
+        const result = await deleteContentWithComments('post', post.id);
+        await deleteCloudinaryResources([post.photos, ...result.attachments]);
+
+        return res.status(200).json({
             message: 'Post and all associated comments and replies deleted successfully',
-            deletedComments: comments.length,
-            deletedReplies: comments.reduce((total, comment) => total + comment.replies.length, 0)
+            deletedComments: result.deletedComments,
+            deletedReplies: result.deletedReplies
         });
     } catch (error) {
         next(error);
     }
 }
 
+/** Delete a post / watch / story, its comments and their replies. */
+const deleteContentWithComments = async (kind, id) => {
+    const { comments, replies, commentIds } = await deleteCommentsWhere({ [kind]: id })
+    await prisma.$transaction([
+        prisma.cmntReply.deleteMany({ where: { parent: { in: commentIds } } }),
+        prisma.comment.deleteMany({ where: { id: { in: commentIds } } }),
+    ])
+    await removeContent(kind, id)
+    return {
+        deletedComments: comments.length,
+        deletedReplies: replies.length,
+        attachments: [...comments.map((comment) => comment.attachment), ...replies.map((reply) => reply.attachment)],
+    }
+}
+
 // Watch Admin Functions
 exports.getWatches = async (req, res, next) => {
     try {
-        let watches = await Watch.find()
-            .populate('author', 'fullName displayName profilePic coverPic bio')
-            .sort({ createdAt: -1 })
-            .limit(100);
+        let watches = (await prisma.watch.findMany({
+            include: watchInclude({ author: AUTHOR_CARD }),
+            orderBy: { createdAt: 'desc' },
+            take: 100,
+        })).map(shapeWatch);
 
         console.log('Fetched watches:', watches.length);
-        
+
         return res.status(200).json(watches);
     } catch (error) {
         next(error);
@@ -516,29 +573,16 @@ exports.getWatches = async (req, res, next) => {
 exports.getWatch = async (req, res, next) => {
     try {
         const { id } = req.params;
-        
-        let watch = await Watch.findById(id)
-            .populate('author', 'fullName displayName profilePic coverPic bio')
-            .populate({
-                path: 'comments',
-                populate: [
-                    {
-                        path: 'author',
-                        select: 'fullName displayName profilePic',
-                        populate: {
-                            path: 'user',
-                            select: 'firstName surname'
-                        }
-                    },
-                    {
-                        path: 'replies',
-                        populate: {
-                            path: 'author',
-                            select: 'fullName displayName profilePic'
-                        }
-                    }
-                ]
-            });
+
+        let watch = isValidId(id)
+            ? shapeWatch(await prisma.watch.findUnique({
+                where: { id: String(id) },
+                include: watchInclude({
+                    author: AUTHOR_CARD,
+                    comments: commentInclude(ADMIN_COMMENT_AUTHOR, ADMIN_REPLY_AUTHOR),
+                }),
+            }))
+            : null;
 
         if (!watch) {
             return res.status(404).json({ message: 'Watch not found' });
@@ -556,21 +600,25 @@ exports.updateWatch = async (req, res, next) => {
         const updateData = req.body;
 
         // Find the watch first
-        let watch = await Watch.findById(id);
+        let watch = isValidId(id) ? await prisma.watch.findUnique({ where: { id: String(id) }, select: { id: true } }) : null;
         if (!watch) {
             return res.status(404).json({ message: 'Watch not found' });
         }
 
         // Update watch fields
-        if (updateData.caption !== undefined) watch.caption = updateData.caption;
-        if (updateData.feeling !== undefined) watch.feeling = updateData.feeling;
-        if (updateData.audience !== undefined) watch.audience = updateData.audience;
-
-        await watch.save();
+        const fields = ['caption', 'feeling', 'audience'].filter((field) => updateData[field] !== undefined);
+        if (fields.length) {
+            await prisma.watch.update({
+                where: { id: watch.id },
+                data: pickModelFields('Watch', Object.fromEntries(fields.map((field) => [field, updateData[field]]))),
+            });
+        }
 
         // Return updated watch with populated fields
-        const updatedWatch = await Watch.findById(id)
-            .populate('author', 'fullName displayName profilePic coverPic bio');
+        const updatedWatch = shapeWatch(await prisma.watch.findUnique({
+            where: { id: watch.id },
+            include: watchInclude({ author: AUTHOR_CARD }),
+        }));
 
         return res.status(200).json({
             message: 'Watch updated successfully',
@@ -584,33 +632,22 @@ exports.updateWatch = async (req, res, next) => {
 exports.deleteWatch = async (req, res, next) => {
     try {
         const { id } = req.params;
-        
+
         // Find the watch first
-        let watch = await Watch.findById(id);
+        let watch = isValidId(id)
+            ? await prisma.watch.findUnique({ where: { id: String(id) }, select: { id: true, videoUrl: true, thumbnail: true } })
+            : null;
         if (!watch) {
             return res.status(404).json({ message: 'Watch not found' });
         }
 
-        // Find all comments associated with this watch
-        const comments = await Comment.find({ watch: id });
-        const replies = await CmntReply.find({ parent: { $in: comments.map((comment) => comment._id) } }).select('attachment');
-        
-        // Delete all comment replies for each comment
-        for (const comment of comments) {
-            await CmntReply.deleteMany({ parent: comment._id });
-        }
-        
-        // Delete all comments for this watch
-        await Comment.deleteMany({ watch: id });
-        
-        // Finally delete the watch
-        await Watch.findByIdAndDelete(id);
-        await deleteCloudinaryResources([watch.videoUrl, watch.thumbnail, ...comments.map((comment) => comment.attachment), ...replies.map((reply) => reply.attachment)]);
-        
-        return res.status(200).json({ 
+        const result = await deleteContentWithComments('watch', watch.id);
+        await deleteCloudinaryResources([watch.videoUrl, watch.thumbnail, ...result.attachments]);
+
+        return res.status(200).json({
             message: 'Watch and all associated comments and replies deleted successfully',
-            deletedComments: comments.length,
-            deletedReplies: comments.reduce((total, comment) => total + comment.replies.length, 0)
+            deletedComments: result.deletedComments,
+            deletedReplies: result.deletedReplies
         });
     } catch (error) {
         next(error);
@@ -620,9 +657,10 @@ exports.deleteWatch = async (req, res, next) => {
 // Story Admin Functions
 exports.getStories = async (req, res, next) => {
     try {
-        const stories = await Story.find()
-            .populate('author', 'fullName displayName profilePic coverPic bio')
-            .sort({ createdAt: -1 });
+        const stories = (await prisma.story.findMany({
+            include: storyInclude({ author: AUTHOR_CARD }),
+            orderBy: { createdAt: 'desc' },
+        })).map(shapeStory);
 
         return res.status(200).json(stories);
     } catch (error) {
@@ -633,24 +671,20 @@ exports.getStories = async (req, res, next) => {
 exports.deleteStory = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const story = await Story.findById(id);
+        const story = isValidId(id)
+            ? await prisma.story.findUnique({ where: { id: String(id) }, select: { id: true, image: true, music: true } })
+            : null;
 
         if (!story) {
             return res.status(404).json({ message: 'Story not found' });
         }
 
-        const comments = await Comment.find({ post: id });
-        const replies = await CmntReply.find({ parent: { $in: comments.map((comment) => comment._id) } }).select('attachment');
-        for (const comment of comments) {
-            await CmntReply.deleteMany({ parent: comment._id });
-        }
-        await Comment.deleteMany({ post: id });
-        await Story.findByIdAndDelete(id);
-        await deleteCloudinaryResources([story.image, story.music, ...comments.map((comment) => comment.attachment), ...replies.map((reply) => reply.attachment)]);
+        const result = await deleteContentWithComments('story', story.id);
+        await deleteCloudinaryResources([story.image, story.music, ...result.attachments]);
 
         return res.status(200).json({
             message: 'Story and associated comments and replies deleted successfully',
-            deletedComments: comments.length
+            deletedComments: result.deletedComments
         });
     } catch (error) {
         next(error);
@@ -668,19 +702,31 @@ exports.getStats = async (req, res, next) => {
             totalWatches,
             totalComments
         ] = await Promise.all([
-            User.countDocuments({}),
-            Profile.countDocuments({}),
-            Profile.countDocuments({ isActive: true }),
-            Post.countDocuments({}),
-            Watch.countDocuments({}),
-            Comment.countDocuments({})
+            prisma.user.count(),
+            prisma.profile.count(),
+            prisma.profile.count({ where: { isActive: true } }),
+            prisma.post.count(),
+            prisma.watch.count(),
+            prisma.comment.count()
         ]);
 
         // Fetch recent items
         const [recentProfiles, recentPosts, recentWatches] = await Promise.all([
-            Profile.find({}).sort({ createdAt: -1 }).limit(5).populate('user', 'firstName surname'),
-            Post.find({}).sort({ createdAt: -1 }).limit(5).populate('author', 'fullName displayName profilePic'),
-            Watch.find({}).sort({ createdAt: -1 }).limit(5).populate('author', 'fullName displayName profilePic')
+            prisma.profile.findMany({
+                orderBy: { createdAt: 'desc' },
+                take: 5,
+                select: { id: true, fullName: true, createdAt: true, user: true, userDoc: { select: { id: true, firstName: true, surname: true } } },
+            }).then((rows) => populated(rows, 'user')),
+            prisma.post.findMany({
+                orderBy: { createdAt: 'desc' },
+                take: 5,
+                select: { id: true, createdAt: true, author: true, authorDoc: { select: { id: true, fullName: true, displayName: true, profilePic: true } } },
+            }).then((rows) => populated(rows, 'author')),
+            prisma.watch.findMany({
+                orderBy: { createdAt: 'desc' },
+                take: 5,
+                select: { id: true, createdAt: true, author: true, authorDoc: { select: { id: true, fullName: true, displayName: true, profilePic: true } } },
+            }).then((rows) => populated(rows, 'author'))
         ]);
 
         const recentActivities = [
@@ -727,13 +773,38 @@ exports.getStats = async (req, res, next) => {
 }
 
 // Reports (Admin)
+const REPORTER = {
+    select: {
+        id: true, fullName: true, displayName: true, profilePic: true, user: true,
+        userDoc: { select: { id: true, firstName: true, surname: true } },
+    },
+}
+
+const shapeReport = (report) => {
+    if (!report) return report
+    populated(report, 'targetPost', 'targetProfile', 'reportedBy')
+    if (report.targetPost && typeof report.targetPost === 'object') populated(report.targetPost, 'author')
+    if (report.targetProfile && typeof report.targetProfile === 'object') populated(report.targetProfile, 'user')
+    if (report.reportedBy && typeof report.reportedBy === 'object') populated(report.reportedBy, 'user')
+    return report
+}
+
 exports.getReportedPosts = async (req, res, next) => {
     try {
-        const reports = await Report.find({ type: 'post' })
-            .populate({ path: 'targetPost', select: 'caption type photos author createdAt', populate: { path: 'author', select: 'fullName displayName profilePic' } })
-            .populate({ path: 'reportedBy', select: 'fullName displayName profilePic', populate: { path: 'user', select: 'firstName surname' } })
-            .sort({ createdAt: -1 })
-            .limit(200)
+        const reports = (await prisma.report.findMany({
+            where: { type: 'post' },
+            include: {
+                targetPostDoc: {
+                    select: {
+                        id: true, caption: true, type: true, photos: true, author: true, createdAt: true,
+                        authorDoc: { select: { id: true, fullName: true, displayName: true, profilePic: true } },
+                    },
+                },
+                reportedByDoc: REPORTER,
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 200,
+        })).map(shapeReport)
         return res.status(200).json(reports)
     } catch (error) {
         next(error)
@@ -742,11 +813,20 @@ exports.getReportedPosts = async (req, res, next) => {
 
 exports.getReportedProfiles = async (req, res, next) => {
     try {
-        const reports = await Report.find({ type: 'profile' })
-            .populate({ path: 'targetProfile', select: 'fullName displayName username profilePic user', populate: { path: 'user', select: 'firstName surname email' } })
-            .populate({ path: 'reportedBy', select: 'fullName displayName profilePic', populate: { path: 'user', select: 'firstName surname' } })
-            .sort({ createdAt: -1 })
-            .limit(200)
+        const reports = (await prisma.report.findMany({
+            where: { type: 'profile' },
+            include: {
+                targetProfileDoc: {
+                    select: {
+                        id: true, fullName: true, displayName: true, username: true, profilePic: true, user: true,
+                        userDoc: { select: { id: true, firstName: true, surname: true, email: true } },
+                    },
+                },
+                reportedByDoc: REPORTER,
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 200,
+        })).map(shapeReport)
         return res.status(200).json(reports)
     } catch (error) {
         next(error)
@@ -760,9 +840,15 @@ exports.updateReportStatus = async (req, res, next) => {
         if (!['open', 'reviewed', 'dismissed'].includes(status)) {
             return res.status(400).json({ message: 'Invalid status' })
         }
-        const updated = await Report.findByIdAndUpdate(id, { status }, { new: true })
-            .populate('targetPost')
-            .populate('targetProfile')
+        const { count } = isValidId(id)
+            ? await prisma.report.updateMany({ where: { id: String(id) }, data: { status } })
+            : { count: 0 }
+        const updated = count
+            ? shapeReport(await prisma.report.findUnique({
+                where: { id: String(id) },
+                include: { targetPostDoc: true, targetProfileDoc: { omit: PRIVATE_PROFILE_OMIT } },
+            }))
+            : null
         if (!updated) {
             return res.status(404).json({ message: 'Report not found' })
         }
@@ -780,7 +866,7 @@ exports.forgotPassword = async (req, res, next) => {
     }
 
     try {
-        const admin = await Admin.findOne({ email });
+        const admin = await findAdminByEmail(email);
 
         if (!admin) {
             return res.status(200).json({
@@ -791,9 +877,10 @@ exports.forgotPassword = async (req, res, next) => {
         const resetToken = crypto.randomBytes(32).toString('hex');
         const hashedResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
 
-        admin.resetPasswordToken = hashedResetToken;
-        admin.resetPasswordExpire = Date.now() + 15 * 60 * 1000;
-        await admin.save();
+        await prisma.admin.update({
+            where: { id: admin.id },
+            data: { resetPasswordToken: hashedResetToken, resetPasswordExpire: new Date(Date.now() + 15 * 60 * 1000) },
+        });
 
         const resetUrl = `${getAdminAppUrl()}/reset-password/${resetToken}`;
         const text = [
@@ -833,9 +920,10 @@ exports.forgotPassword = async (req, res, next) => {
                 { html, throwOnError: true }
             );
         } catch (mailError) {
-            admin.resetPasswordToken = undefined;
-            admin.resetPasswordExpire = undefined;
-            await admin.save();
+            await prisma.admin.update({
+                where: { id: admin.id },
+                data: { resetPasswordToken: null, resetPasswordExpire: null },
+            });
             console.error('Admin forgot password email send failed:', mailError.message || mailError);
             return res.status(500).json({
                 message: 'Unable to send reset email right now. Please try again later.',
@@ -872,19 +960,21 @@ exports.resetPassword = async (req, res, next) => {
 
     try {
         const hashedResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-        const admin = await Admin.findOne({
-            resetPasswordToken: hashedResetToken,
-            resetPasswordExpire: { $gt: Date.now() },
+        const admin = await prisma.admin.findFirst({
+            where: {
+                resetPasswordToken: hashedResetToken,
+                resetPasswordExpire: { gt: new Date() },
+            },
         });
 
         if (!admin) {
             return res.status(400).json({ message: 'Invalid or expired reset link' });
         }
 
-        admin.password = await bcrypt.hash(password, 10);
-        admin.resetPasswordToken = undefined;
-        admin.resetPasswordExpire = undefined;
-        await admin.save();
+        await prisma.admin.update({
+            where: { id: admin.id },
+            data: { password: await bcrypt.hash(password, 10), resetPasswordToken: null, resetPasswordExpire: null },
+        });
 
         return res.status(200).json({ message: 'Password reset successful. Please login.' });
     } catch (error) {

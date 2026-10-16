@@ -4,7 +4,7 @@ const {
   searchYouTubeVideos,
   extractYouTubeVideoId,
 } = require("../services/ytDownloadService");
-const Watch = require("../models/Watch");
+const { prisma } = require("../utils/db");
 
 const getPublicBaseUrl = (req) => {
   const fromEnv =
@@ -55,7 +55,9 @@ exports.startDownload = async (req, res) => {
     }
 
     if (postAsWatch && youtubeId) {
-      const existingWatch = await Watch.findOne({ author: profileId, youtubeId }).lean();
+      const existingWatch = await prisma.watch.findFirst({
+        where: { author: String(profileId), youtubeId: String(youtubeId) },
+      });
       if (existingWatch) {
         return res.json({
           status: "completed",

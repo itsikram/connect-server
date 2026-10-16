@@ -4,7 +4,8 @@
  * Provides detailed conversational responses
  */
 
-const Profile = require("../../models/Profile");
+const { prisma, populated } = require("../../utils/db");
+const { graphIds } = require("../../utils/profileGraph");
 const {
   calculateDistance,
   getDirection,
@@ -414,9 +415,9 @@ function buildSingleConnectResponse(locationData, query, lang = "eng") {
  */
 async function getFullConnectDetails(connectId, userProfileId, lang = "eng") {
   try {
-    const userProfile = await Profile.findById(userProfileId);
+    const userConnects = userProfileId ? await graphIds.connects(userProfileId) : [];
 
-    if (!userProfile || !userProfile.connects.includes(connectId)) {
+    if (!userConnects.includes(String(connectId))) {
       return {
         success: false,
         message:
@@ -426,23 +427,30 @@ async function getFullConnectDetails(connectId, userProfileId, lang = "eng") {
       };
     }
 
-    const connect = await Profile.findById(connectId)
-      .populate("user", ["firstName", "surname", "email"])
-      .select([
-        "fullName",
-        "displayName",
-        "username",
-        "profilePic",
-        "bio",
-        "lastLocation",
-        "presentAddress",
-        "permanentAddress",
-        "workPlaces",
-        "schools",
-        "isActive",
-        "lastEmotion",
-        "lastEmotionText",
-      ]);
+    const connect = populated(
+      await prisma.profile.findUnique({
+        where: { id: String(connectId) },
+        select: {
+          id: true,
+          fullName: true,
+          displayName: true,
+          username: true,
+          profilePic: true,
+          bio: true,
+          lastLocation: true,
+          presentAddress: true,
+          permanentAddress: true,
+          workPlaces: true,
+          schools: true,
+          isActive: true,
+          lastEmotion: true,
+          lastEmotionText: true,
+          user: true,
+          userDoc: { select: { id: true, firstName: true, surname: true, email: true } },
+        },
+      }),
+      "user",
+    );
 
     if (!connect) {
       return {

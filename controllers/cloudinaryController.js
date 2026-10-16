@@ -1,5 +1,37 @@
 const { v2: cloudinary } = require('cloudinary');
-const mongoose = require('mongoose');
+const { Prisma } = require('@prisma/client');
+const { prisma } = require('../utils/db');
+const { isMySQLReady } = require('../config/prisma');
+
+// Every model with its text / Json columns: the tables that can hold Cloudinary URLs.
+const textColumnsByModel = () => Prisma.dmmf.datamodel.models
+  .map((model) => ({
+    name: model.name,
+    delegate: prisma[model.name.charAt(0).toLowerCase() + model.name.slice(1)],
+    columns: model.fields
+      .filter((field) => field.kind !== 'object' && (field.type === 'String' || field.type === 'Json') && !field.isId)
+      .map((field) => ({ name: field.name, json: field.type === 'Json' })),
+  }))
+  .filter((model) => model.delegate && model.columns.length);
+
+/** Stream every row (id + text/Json columns) of every table in id order. */
+async function* allTextRows() {
+  for (const model of textColumnsByModel()) {
+    const select = { id: true, ...Object.fromEntries(model.columns.map((column) => [column.name, true])) };
+    let cursor = null;
+    for (;;) {
+      const rows = await model.delegate.findMany({
+        select,
+        orderBy: { id: 'asc' },
+        take: 500,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      for (const row of rows) yield { model, row };
+      if (rows.length < 500) break;
+      cursor = rows[rows.length - 1].id;
+    }
+  }
+}
 const {
   getAccountConfig: getConfiguredAccountConfig,
   withCloudinaryConfig,
@@ -46,7 +78,7 @@ const getConfiguredAccounts = () => {
 const isAudioResource = (resource) => AUDIO_FORMATS.has(String(resource.format || '').toLowerCase());
 
 const getLegacyDatabaseResources = async (legacy) => {
-  if (!mongoose.connection.db || !legacy?.cloud_name) return [];
+  if (!isMySQLReady() || !legacy?.cloud_name) return [];
   const marker = `res.cloudinary.com/${legacy.cloud_name}/`;
   const found = new Map();
   const visit = (value) => {
@@ -78,9 +110,9 @@ const getLegacyDatabaseResources = async (legacy) => {
     }
     if (value && typeof value === 'object') Object.values(value).forEach(visit);
   };
-  for (const collection of await mongoose.connection.db.collections()) {
-    if (collection.collectionName.startsWith('system.')) continue;
-    for await (const document of collection.find({})) visit(document);
+  for await (const { row } of allTextRows()) {
+    const { id, _id, ...values } = row;
+    visit(values);
   }
   return [...found.values()];
 };
@@ -157,42 +189,56 @@ const replaceCloudinaryReferences = async (resources, source, destination) => {
   const destinationMarker = `res.cloudinary.com/${destination.cloud_name}/`;
   const database = { documentsUpdated: 0, referencesUpdated: 0, errors: [] };
 
-  const visit = (value, path, updates) => {
+  const replaceValue = (value) => {
     if (typeof value === 'string') {
       const exact = replacements.get(value);
       const replaced = exact || (value.includes(sourceMarker) ? value.replaceAll(sourceMarker, destinationMarker) : null);
-      if (replaced && replaced !== value) updates[path] = replaced;
-      return;
+      return replaced && replaced !== value ? { value: replaced, count: 1 } : { value, count: 0 };
     }
-    if (!value || typeof value !== 'object') return;
+    if (!value || typeof value !== 'object') return { value, count: 0 };
+    let count = 0;
+    const next = Array.isArray(value) ? [] : {};
     Object.entries(value).forEach(([key, child]) => {
-      if (key === '_id' || key === '__v') return;
-      visit(child, path ? `${path}.${key}` : key, updates);
+      if (key === '_id' || key === '__v') {
+        next[key] = child;
+        return;
+      }
+      const result = replaceValue(child);
+      next[key] = result.value;
+      count += result.count;
     });
+    return { value: next, count };
   };
 
-  const connection = mongoose.connection;
-  if (connection.readyState !== 1 || !connection.db) {
-    throw new Error('MongoDB must be connected before Cloudinary references can be updated');
+  if (!isMySQLReady()) {
+    throw new Error('MySQL must be connected before Cloudinary references can be updated');
   }
 
-  const collections = await connection.db.collections();
-  for (const collection of collections) {
-    if (collection.collectionName.startsWith('system.')) continue;
-    try {
-      const cursor = collection.find({});
-      for await (const document of cursor) {
-        const updates = {};
-        visit(document, '', updates);
-        if (Object.keys(updates).length) {
-          await collection.updateOne({ _id: document._id }, { $set: updates });
-          database.documentsUpdated += 1;
-          database.referencesUpdated += Object.keys(updates).length;
+  const failedModels = new Set();
+  try {
+    for await (const { model, row } of allTextRows()) {
+      if (failedModels.has(model.name)) continue;
+      const updates = {};
+      let references = 0;
+      for (const column of model.columns) {
+        const result = replaceValue(row[column.name]);
+        if (result.count) {
+          updates[column.name] = result.value;
+          references += result.count;
         }
       }
-    } catch (error) {
-      database.errors.push({ collection: collection.collectionName, reason: error.message || 'Database update failed' });
+      if (!references) continue;
+      try {
+        await model.delegate.update({ where: { id: row.id }, data: updates });
+        database.documentsUpdated += 1;
+        database.referencesUpdated += references;
+      } catch (error) {
+        failedModels.add(model.name);
+        database.errors.push({ collection: model.name, reason: error.message || 'Database update failed' });
+      }
     }
+  } catch (error) {
+    database.errors.push({ collection: '*', reason: error.message || 'Database update failed' });
   }
 
   return database;

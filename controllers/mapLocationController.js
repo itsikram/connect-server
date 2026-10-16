@@ -3,7 +3,11 @@
  * Handles map-based location visualization
  */
 
-const Profile = require("../models/Profile");
+const { prisma } = require("../utils/db");
+const { findProfileWithGraph } = require("../utils/profileGraph");
+
+/** Profile with its graph arrays (connects as ids), as Profile.findById returned. */
+const loadProfile = (profileId) => findProfileWithGraph({ id: String(profileId) });
 const { getConnectsLocations } = require("../services/ai/locationService");
 const {
   generateMapData,
@@ -40,7 +44,7 @@ exports.getMapData = async (req, res, next) => {
       });
     }
 
-    const userProfile = await Profile.findById(profileId);
+    const userProfile = await loadProfile(profileId);
     if (!userProfile) {
       return res.status(404).json({
         error: true,
@@ -102,7 +106,7 @@ exports.getGeoJSON = async (req, res, next) => {
       });
     }
 
-    const userProfile = await Profile.findById(profileId);
+    const userProfile = await loadProfile(profileId);
     if (!userProfile) {
       return res.status(404).json({
         error: true,
@@ -164,7 +168,7 @@ exports.getKML = async (req, res, next) => {
       });
     }
 
-    const userProfile = await Profile.findById(profileId);
+    const userProfile = await loadProfile(profileId);
     if (!userProfile) {
       return res.status(404).json({
         error: true,
@@ -233,7 +237,7 @@ exports.getMapEmbedHTML = async (req, res, next) => {
       });
     }
 
-    const userProfile = await Profile.findById(profileId);
+    const userProfile = await loadProfile(profileId);
     if (!userProfile) {
       return res.status(404).json({
         error: true,
@@ -374,7 +378,7 @@ exports.getNearbySummary = async (req, res, next) => {
       });
     }
 
-    const userProfile = await Profile.findById(profileId);
+    const userProfile = await loadProfile(profileId);
     if (!userProfile) {
       return res.status(404).json({
         error: true,

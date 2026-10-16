@@ -1,8 +1,8 @@
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 const dns = require("dns");
-// Local DNS (e.g. 192.168.1.1) often refuses MongoDB SRV lookups → querySrv ECONNREFUSED.
-// Prefer public resolvers so mongodb+srv:// still works if used.
+// Local DNS (e.g. 192.168.1.1) often refuses or stalls lookups for external
+// services (Cloudinary, Firebase, AI providers); prefer public resolvers.
 // Shared hosts (e.g. GoDaddy cPanel) may block outbound DNS to public
 // resolvers, so this can be turned off with USE_PUBLIC_DNS=false.
 if (process.env.USE_PUBLIC_DNS !== "false") {
@@ -15,19 +15,7 @@ if (process.env.USE_PUBLIC_DNS !== "false") {
 
 const express = require("express");
 const PORT = process.env.PORT || 4000;
-const mongoose = require("mongoose");
 const { connectMySQL, isMySQLReady } = require("./config/prisma");
-const MONGODB_URI =
-  process.env.NODE_ENV == "production"
-    ? process.env.PROD_MONGODB_URI
-    : process.env.DEV_MONGODB_URI;
-mongoose.set("strictQuery", false);
-mongoose.set("strictPopulate", false);
-// Do not let database-backed requests sit in Mongoose's buffer while the
-// connection is unavailable. The readiness middleware below returns 503
-// immediately instead.
-mongoose.set("bufferCommands", false);
-mongoose.set("bufferTimeoutMS", 0);
 const socketIo = require("socket.io");
 const { createServer } = require("http");
 const cors = require("cors");
@@ -66,7 +54,8 @@ const {
   applyFaceServiceUrl,
 } = require("./utils/faceServiceSync");
 const { getExpoControlConfig, applyExpoControlUrl } = require("./utils/expoControlSync");
-const ExpoControlAccess = require("./models/ExpoControlAccess");
+const { prisma, jsonArray } = require("./utils/db");
+const { startDbCleanupWorker } = require("./utils/dbCleanupWorker");
 
 const normalizeMultilineEnv = (value = "") =>
   String(value).replace(/\\n/g, "\n");
@@ -536,8 +525,8 @@ app.get("/", (req, res) => {
   res.json({ status: "ok", service: "connect-server" });
 });
 
-// Public IP this server's outbound connections come from, e.g. for the
-// MongoDB Atlas IP access list.
+// Public IP this server's outbound connections come from, e.g. for a
+// remote database's IP access list.
 app.get("/egress-ip", async (req, res) => {
   try {
     const response = await fetch("https://api.ipify.org?format=json");
@@ -598,19 +587,17 @@ app.get("/env-check", (req, res) => {
   }
   res.json({
     nodeEnv: process.env.NODE_ENV || null,
-    mongoUriUsed: mask(mongoUri),
-    mongoUriVariable:
-      process.env.NODE_ENV == "production" ? "PROD_MONGODB_URI" : "DEV_MONGODB_URI",
+    databaseUrlUsed: mask(process.env.DATABASE_URL),
+    databaseUrlVariable: "DATABASE_URL",
     envFile,
     vars,
   });
 });
 
-// Step-by-step MongoDB reachability check (DNS, TCP 27017, TLS) so a host
-// that blocks Atlas shows which step fails. No credentials are returned.
+// Step-by-step MySQL reachability check (DNS, TCP, query) so a host that
+// blocks the database shows which step fails. No credentials are returned.
 app.get("/db-diag", async (req, res) => {
   const net = require("net");
-  const tls = require("tls");
   const withTimeout = (promise, ms) =>
     Promise.race([
       promise,
@@ -627,62 +614,46 @@ app.get("/db-diag", async (req, res) => {
       return { ok: false, ms: Date.now() - started, error: error.code || error.message };
     }
   };
-  const hosts = [0, 1, 2].map((n) => `icsbd-shard-00-0${n}.mm9fg.mongodb.net`);
+  let target = null;
+  try {
+    const url = new URL(process.env.DATABASE_URL || "");
+    target = { host: url.hostname, port: Number(url.port) || 3306, database: url.pathname.slice(1) };
+  } catch (_e) {
+    /* reported below */
+  }
   const report = {
-    uriScheme: (mongoUri || "").split("://")[0] || "missing",
-    mongooseState: mongoose.connection.readyState,
+    uriScheme: (process.env.DATABASE_URL || "").split("://")[0] || "missing",
+    mysql: isMySQLReady() ? "connected" : "disconnected",
     dnsServers: dns.getServers(),
-    srv: await step(() =>
-      dns.promises.resolveSrv("_mongodb._tcp.icsbd.mm9fg.mongodb.net"),
-    ),
-    hosts: {},
+    target,
   };
-  for (const host of hosts) {
-    report.hosts[host] = {
-      dns: await step(() => dns.promises.lookup(host, { family: 4 })),
-      tcp: await step(
-        () =>
-          new Promise((resolve, reject) => {
-            const socket = net.connect(27017, host, () => {
-              socket.destroy();
-              resolve("connected");
-            });
-            socket.on("error", reject);
-          }),
-      ),
-      tls: await step(
-        () =>
-          new Promise((resolve, reject) => {
-            const socket = tls.connect(
-              { host, port: 27017, servername: host },
-              () => {
-                const protocol = socket.getProtocol();
-                socket.destroy();
-                resolve(protocol);
-              },
-            );
-            socket.on("error", reject);
-          }),
-      ),
-    };
+  if (target) {
+    report.dns = await step(() => dns.promises.lookup(target.host, { family: 4 }));
+    report.tcp = await step(
+      () =>
+        new Promise((resolve, reject) => {
+          const socket = net.connect(target.port, target.host, () => {
+            socket.destroy();
+            resolve("connected");
+          });
+          socket.on("error", reject);
+        }),
+    );
+    report.query = await step(() => prisma.$queryRaw`SELECT 1 AS ok`.then(() => "ok"));
   }
   res.json(report);
 });
 
-app.get("/health", (req, res) => {
-  res.status(mongoReady ? 200 : 503).json({
+const healthReport = (req, res) => {
+  const ready = isMySQLReady();
+  res.status(ready ? 200 : 503).json({
     ...getMetrics({ io }),
-    database: mongoReady ? "connected" : "disconnected",
-    mysql: isMySQLReady() ? "connected" : "disconnected",
+    database: ready ? "connected" : "disconnected",
+    mysql: ready ? "connected" : "disconnected",
   });
-});
-app.get("/api/health", (req, res) => {
-  res.status(mongoReady ? 200 : 503).json({
-    ...getMetrics({ io }),
-    database: mongoReady ? "connected" : "disconnected",
-    mysql: isMySQLReady() ? "connected" : "disconnected",
-  });
-});
+};
+app.get("/health", healthReport);
+app.get("/api/health", healthReport);
 
 app.get("/api/youtube/cobalt-config", (req, res) => {
   res.json(getCobaltConfig());
@@ -795,6 +766,19 @@ app.post("/api/expo-control-url", (req, res) => {
   return res.json(result);
 });
 
+// Read-modify-write of the ExpoControlAccess singleton's authorizedUsers list.
+const editExpoControlUsers = (change, extra = {}, { create = true } = {}) =>
+  prisma.$transaction(async (tx) => {
+    const row = await tx.expoControlAccess.findUnique({ where: { singletonKey: "default" } });
+    if (!row && !create) return;
+    const authorizedUsers = change(jsonArray(row?.authorizedUsers).map(String));
+    await tx.expoControlAccess.upsert({
+      where: { singletonKey: "default" },
+      update: { ...extra, authorizedUsers },
+      create: { singletonKey: "default", ...extra, authorizedUsers },
+    });
+  });
+
 const expoControlAccountId = (req) => String(req.profile?.user?._id || req.profile?.user || "");
 
 // Accounts that saved a working key get it back on every browser/device, so
@@ -802,9 +786,9 @@ const expoControlAccountId = (req) => String(req.profile?.user?._id || req.profi
 app.get("/api/expo-control-config", isAuth, async (req, res) => {
   try {
     const accountId = expoControlAccountId(req);
-    const access = await ExpoControlAccess.findOne({ singletonKey: "default" }).lean();
+    const access = await prisma.expoControlAccess.findUnique({ where: { singletonKey: "default" } });
     const authorized = Boolean(
-      access?.accessKey && accountId && access.authorizedUsers?.some((id) => String(id) === accountId),
+      access?.accessKey && accountId && jsonArray(access.authorizedUsers).some((id) => String(id) === accountId),
     );
     res.set("Cache-Control", "no-store");
     return res.json({
@@ -843,33 +827,26 @@ app.post("/api/expo-control-access", isAuth, async (req, res) => {
   if (status !== 200) {
     return res.status(503).json({ ok: false, code: "PC_OFFLINE", error: `Your PC answered ${status}; try again.` });
   }
-  await ExpoControlAccess.findOneAndUpdate(
-    { singletonKey: "default" },
-    { $set: { accessKey: key }, $addToSet: { authorizedUsers: expoControlAccountId(req) } },
-    { upsert: true },
-  );
+  const accountId = expoControlAccountId(req);
+  await editExpoControlUsers((users) => (users.includes(accountId) ? users : [...users, accountId]), { accessKey: key });
   return res.json({ ok: true });
 });
 
 app.delete("/api/expo-control-access", isAuth, async (req, res) => {
-  await ExpoControlAccess.updateOne(
-    { singletonKey: "default" },
-    { $pull: { authorizedUsers: expoControlAccountId(req) } },
-  );
+  const accountId = expoControlAccountId(req);
+  await editExpoControlUsers((users) => users.filter((id) => id !== accountId), {}, { create: false });
   return res.json({ ok: true });
 });
 
 attachPeerRelayRoute(app, io);
 
-let mongoReady = mongoose.connection.readyState === 1;
-
 app.use("/api", (req, res, next) => {
-  if (mongoReady) return next();
+  if (isMySQLReady()) return next();
   return res.status(503).json({
     ok: false,
     error: "Database unavailable",
     message:
-      "MongoDB is not connected. Check the MongoDB service or Atlas IP whitelist.",
+      "MySQL is not connected. Check DATABASE_URL and that the MySQL server is running.",
   });
 });
 
@@ -1019,60 +996,34 @@ app.get("/fcm", async (req, res) => {
 
 // Root route should serve index.html
 
-const mongoUri =
-  MONGODB_URI || process.env.MONGODB_URI || process.env.PROD_MONGODB_URI;
-
-mongoose.connection.on("connected", () => {
-  mongoReady = true;
-  console.log("MongoDB connected");
-});
-
-mongoose.connection.on("disconnected", () => {
-  mongoReady = false;
-  console.error(
-    "MongoDB disconnected — database-backed requests will return HTTP 503 until it reconnects.",
-  );
-});
-
-mongoose.connection.on("error", (e) => {
-  mongoReady = false;
-  console.error("MongoDB connection error:", e.message || e);
-});
-
 const runWorkers = () =>
   process.env.RUN_WORKERS !== "0" &&
   process.env.RUN_WORKERS !== "false" &&
   process.env.DISABLE_WORKERS !== "1" &&
   process.env.DISABLE_WORKERS !== "true";
 
-mongoose
-  .connect(mongoUri, {
-    serverSelectionTimeoutMS: 20000,
-    family: 4, // prefer IPv4 — avoids flaky IPv6 on some local networks
-  })
-  .then(() => {
-    if (runWorkers()) {
-      startUnseenMessageReminderWorker();
-      startDailyPromptWorker();
-      startFitnessReminderWorker();
-      startTaskReminderWorker();
-      startAiAutoPostWorker();
-    } else {
-      console.log("Background workers skipped on this instance");
-    }
-  })
-  .catch((e) => {
-    mongoReady = false;
+connectMySQL().then((ready) => {
+  if (!ready) {
     console.error(
-      "MongoDB connection failed — server is running without database-backed API routes:",
-      e.message || e,
+      "MySQL connection failed — server is running without database-backed API routes",
     );
-  });
-
-connectMySQL();
+    return;
+  }
+  if (runWorkers()) {
+    startUnseenMessageReminderWorker();
+    startDailyPromptWorker();
+    startFitnessReminderWorker();
+    startTaskReminderWorker();
+    startAiAutoPostWorker();
+    // Replaces Mongo's TTL indexes (recovery chat retention, yt-download progress).
+    startDbCleanupWorker();
+  } else {
+    console.log("Background workers skipped on this instance");
+  }
+});
 
 // A rejected promise in a socket or timer handler (for example a query
-// issued while MongoDB is still connecting) must not take the whole API
+// issued while MySQL is still connecting) must not take the whole API
 // process down with every connected socket. Log it instead.
 process.on("unhandledRejection", (reason) => {
   console.error("[unhandledRejection]", reason);

@@ -1,6 +1,7 @@
 // Helpers for porting Mongoose code to Prisma while keeping API payloads in
 // the shape the web and Expo clients expect. See the conventions at the top
 // of prisma/schema.prisma.
+const { Prisma } = require("@prisma/client");
 const { prisma } = require("../config/prisma");
 const { newId, isValidId, idTimestamp } = require("./objectId");
 
@@ -71,7 +72,81 @@ function containsInsensitive(text) {
   return { contains: String(text ?? "") };
 }
 
+/**
+ * Read-modify-write of a Profile Json array column (deviceTokens, browserIds,
+ * webPushSubscriptions) — replaces $push / $pull / $addToSet on embedded arrays.
+ * Returns the new array, or null when the profile does not exist.
+ */
+async function editProfileJsonArray(profileId, field, change) {
+  return prisma.$transaction(async (tx) => {
+    const row = await tx.profile.findUnique({ where: { id: String(profileId) }, select: { [field]: true } });
+    if (!row) return null;
+    const next = change(jsonArray(row[field]));
+    await tx.profile.update({ where: { id: String(profileId) }, data: { [field]: next } });
+    return next;
+  });
+}
+
+const modelFieldCache = new Map();
+
+/** Writable scalar / Json column names of a Prisma model (by model name, e.g. "Setting"). */
+function modelFields(modelName) {
+  if (!modelFieldCache.has(modelName)) {
+    const model = Prisma.dmmf.datamodel.models.find((m) => m.name === modelName);
+    if (!model) throw new Error(`Unknown Prisma model ${modelName}`);
+    const fields = model.fields.filter((f) => f.kind !== "object" && !f.isUpdatedAt);
+    modelFieldCache.set(modelName, new Map(fields.map((f) => [f.name, f.type])));
+  }
+  return modelFieldCache.get(modelName);
+}
+
+/** Cast a request value to a column type, the way Mongoose casting did. */
+function castToColumn(type, value) {
+  if (value === null) return type === "Json" ? Prisma.DbNull : null;
+  switch (type) {
+    case "Boolean":
+      if (typeof value === "string") {
+        if (value === "true" || value === "1") return true;
+        if (value === "false" || value === "0" || value === "") return false;
+      }
+      return typeof value === "number" ? value !== 0 : value;
+    case "Int":
+    case "Float": {
+      if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) {
+        return type === "Int" ? Math.trunc(Number(value)) : Number(value);
+      }
+      return value;
+    }
+    case "DateTime":
+      return typeof value === "string" || typeof value === "number" ? new Date(value) : value;
+    case "String":
+      return typeof value === "number" || typeof value === "boolean" ? String(value) : value;
+    default:
+      return value;
+  }
+}
+
+/**
+ * Keep only keys that are columns of the model (Mongoose's strict mode
+ * silently dropped unknown paths; Prisma rejects them). `id`, `createdAt`
+ * are dropped too unless listed in `keep`.
+ */
+function pickModelFields(modelName, data, { keep = [] } = {}) {
+  const fields = modelFields(modelName);
+  const out = {};
+  for (const [key, value] of Object.entries(data || {})) {
+    if (value === undefined) continue;
+    if ((key === "id" || key === "_id" || key === "createdAt") && !keep.includes(key)) continue;
+    if (fields.has(key)) out[key] = castToColumn(fields.get(key), value);
+  }
+  return out;
+}
+
 module.exports = {
+  Prisma,
+  editProfileJsonArray,
+  modelFields,
+  pickModelFields,
   prisma,
   newId,
   isValidId,

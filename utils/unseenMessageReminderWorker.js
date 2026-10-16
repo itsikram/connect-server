@@ -1,6 +1,5 @@
 const { randomUUID } = require('crypto');
-const Message = require('../models/Message');
-const Profile = require('../models/Profile');
+const { prisma, populated } = require('./db');
 const sendEmailNotification = require('./sendEmailNotification');
 
 const DEFAULT_DELAY_MS = 5 * 60 * 1000;
@@ -108,28 +107,39 @@ const buildReminderEmail = ({ senderName, receiverName, unreadCount, latestPrevi
 
 const reminderEligibilityFilter = (cutoffDate, staleLockDate) => ({
   isSeen: false,
-  messageType: { $ne: 'call' },
-  timestamp: { $lte: cutoffDate },
+  messageType: { not: 'call' },
+  timestamp: { lte: cutoffDate },
   unseenReminderEmailSentAt: null,
-  $or: [
+  OR: [
     { unseenReminderEmailProcessingAt: null },
-    { unseenReminderEmailProcessingAt: { $lte: staleLockDate } },
+    { unseenReminderEmailProcessingAt: { lte: staleLockDate } },
   ],
 });
+
+const findProfileWithUser = (id) =>
+  prisma.profile
+    .findUnique({
+      where: { id: String(id) },
+      select: {
+        id: true,
+        fullName: true,
+        user: true,
+        userDoc: { select: { id: true, firstName: true, surname: true, email: true } },
+      },
+    })
+    .then((row) => populated(row, 'user'));
 
 const clearProcessingState = async (messageIds, extraSet = {}) => {
   if (!messageIds.length) return;
 
-  await Message.updateMany(
-    { _id: { $in: messageIds } },
-    {
-      $set: {
-        unseenReminderEmailProcessingKey: null,
-        unseenReminderEmailProcessingAt: null,
-        ...extraSet,
-      },
-    }
-  );
+  await prisma.message.updateMany({
+    where: { id: { in: messageIds } },
+    data: {
+      unseenReminderEmailProcessingKey: null,
+      unseenReminderEmailProcessingAt: null,
+      ...extraSet,
+    },
+  });
 };
 
 const processReminderGroup = async ({ senderId, receiverId, cutoffDate, staleLockDate }) => {
@@ -140,43 +150,42 @@ const processReminderGroup = async ({ senderId, receiverId, cutoffDate, staleLoc
   const processingKey = randomUUID();
   const processingAt = new Date();
 
-  const claimResult = await Message.updateMany(
-    {
+  const claimResult = await prisma.message.updateMany({
+    where: {
       ...reminderEligibilityFilter(cutoffDate, staleLockDate),
       senderId: String(senderId),
       receiverId: String(receiverId),
     },
-    {
-      $set: {
-        unseenReminderEmailProcessingKey: processingKey,
-        unseenReminderEmailProcessingAt: processingAt,
-        unseenReminderEmailLastError: null,
-      },
-    }
-  );
+    data: {
+      unseenReminderEmailProcessingKey: processingKey,
+      unseenReminderEmailProcessingAt: processingAt,
+      unseenReminderEmailLastError: null,
+    },
+  });
 
-  if (!claimResult.modifiedCount) {
+  if (!claimResult.count) {
     return;
   }
 
-  const claimedMessages = await Message.find({
-    senderId: String(senderId),
-    receiverId: String(receiverId),
-    unseenReminderEmailProcessingKey: processingKey,
-  })
-    .sort({ timestamp: 1 })
-    .lean();
+  const claimedMessages = await prisma.message.findMany({
+    where: {
+      senderId: String(senderId),
+      receiverId: String(receiverId),
+      unseenReminderEmailProcessingKey: processingKey,
+    },
+    orderBy: { timestamp: 'asc' },
+  });
 
   if (!claimedMessages.length) {
     return;
   }
 
-  const messageIds = claimedMessages.map((message) => message._id);
+  const messageIds = claimedMessages.map((message) => message.id);
 
   try {
     const [senderProfile, receiverProfile] = await Promise.all([
-      Profile.findById(senderId).populate('user', 'firstName surname email').lean(),
-      Profile.findById(receiverId).populate('user', 'firstName surname email').lean(),
+      findProfileWithUser(senderId),
+      findProfileWithUser(receiverId),
     ]);
 
     const receiverEmail = receiverProfile?.user?.email?.trim();
@@ -215,20 +224,18 @@ const processReminderGroup = async ({ senderId, receiverId, cutoffDate, staleLoc
       throwOnError: true,
     });
 
-    await Message.updateMany(
-      {
-        _id: { $in: messageIds },
+    await prisma.message.updateMany({
+      where: {
+        id: { in: messageIds },
         unseenReminderEmailProcessingKey: processingKey,
       },
-      {
-        $set: {
-          unseenReminderEmailSentAt: new Date(),
-          unseenReminderEmailProcessingKey: null,
-          unseenReminderEmailProcessingAt: null,
-          unseenReminderEmailLastError: null,
-        },
-      }
-    );
+      data: {
+        unseenReminderEmailSentAt: new Date(),
+        unseenReminderEmailProcessingKey: null,
+        unseenReminderEmailProcessingAt: null,
+        unseenReminderEmailLastError: null,
+      },
+    });
   } catch (error) {
     const errorMessage = error?.message || String(error);
     console.error(
@@ -258,22 +265,16 @@ const runUnseenMessageReminderScan = async () => {
     const cutoffDate = new Date(Date.now() - reminderDelayMs);
     const staleLockDate = new Date(Date.now() - staleLockMs);
 
-    const groups = await Message.aggregate([
-      { $match: reminderEligibilityFilter(cutoffDate, staleLockDate) },
-      {
-        $group: {
-          _id: {
-            senderId: '$senderId',
-            receiverId: '$receiverId',
-          },
-        },
-      },
-      { $limit: maxGroupsPerRun },
-    ]);
+    const groups = await prisma.message.groupBy({
+      by: ['senderId', 'receiverId'],
+      where: reminderEligibilityFilter(cutoffDate, staleLockDate),
+      take: maxGroupsPerRun,
+      orderBy: [{ senderId: 'asc' }, { receiverId: 'asc' }],
+    });
 
     for (const group of groups) {
-      const senderId = group?._id?.senderId;
-      const receiverId = group?._id?.receiverId;
+      const senderId = group?.senderId;
+      const receiverId = group?.receiverId;
       await processReminderGroup({ senderId, receiverId, cutoffDate, staleLockDate });
     }
   } catch (error) {

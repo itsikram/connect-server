@@ -1,6 +1,11 @@
-const Profile = require("../models/Profile");
-const Relationship = require("../models/Relationship");
-const mongoose = require("mongoose");
+const { prisma, isValidId, jsonArray, populated, isDuplicate } = require("../utils/db");
+const {
+  findProfileWithGraph,
+  graphIds,
+  shapeProfile,
+  GRAPH_INCLUDE,
+  PRIVATE_OMIT,
+} = require("../utils/profileGraph");
 const { saveNotification } = require("./notificationController");
 const { sendPushToProfile } = require("../utils/pushNotifications");
 const sendEmailNotification = require("../utils/sendEmailNotification.js");
@@ -15,12 +20,43 @@ const normalizeRelationTypes = (value) => {
 const saveRelationships = async (first, second, relationTypes, createdBy) => {
   const [userA, userB] = [String(first), String(second)].sort();
   await Promise.all(relationTypes.map((relationType) =>
-    Relationship.updateOne(
-      { userA, userB, relationType },
-      { $setOnInsert: { userA, userB, relationType, createdBy } },
-      { upsert: true },
-    ),
+    prisma.relationship.upsert({
+      where: { userA_userB_relationType: { userA, userB, relationType } },
+      update: {},
+      create: { userA, userB, relationType, createdBy: String(createdBy) },
+    }),
   ));
+};
+
+/** Full profile (private push fields omitted) with graph arrays — the old `{ new: true }` result. */
+const loadGraphProfile = (id) => findProfileWithGraph({ id: String(id) });
+
+const withoutRequester = (relations, requester) =>
+  jsonArray(relations).filter((item) => !idsMatch(item?.requester, requester));
+
+/** Rewrite a profile's pendingConnectRelations Json array. */
+const editPendingRelations = (profileId, change) =>
+  prisma.$transaction(async (tx) => {
+    const row = await tx.profile.findUnique({
+      where: { id: String(profileId) },
+      select: { pendingConnectRelations: true },
+    });
+    if (!row) return;
+    await tx.profile.update({
+      where: { id: String(profileId) },
+      data: { pendingConnectRelations: change(jsonArray(row.pendingConnectRelations)) },
+    });
+  });
+
+/** Insert a join row; a duplicate (already present) is not an error, like $addToSet. */
+const addEdge = async (create) => {
+  try {
+    await create();
+    return true;
+  } catch (error) {
+    if (isDuplicate(error)) return false;
+    throw error;
+  }
 };
 
 const emitConnectCacheUpdate = (io, profileId, list, action, targetProfileId) => {
@@ -53,12 +89,12 @@ exports.postConnectReq = async (req, res, next) => {
     if (!relationTypes.length) {
       return res.status(400).json({ message: "At least one relationship type is required" });
     }
-    if (!profile || !mongoose.Types.ObjectId.isValid(profile)) {
+    if (!profile || !isValidId(profile)) {
       return res.status(400).json({ message: "Invalid or missing profile id" });
     }
     let io = req.app.get("io");
 
-    let myProfile = await Profile.findById(req.profile._id);
+    let myProfile = await loadGraphProfile(req.profile._id);
     if (!myProfile) {
       return res.status(401).json({ message: "Unauthorized" });
     }
@@ -76,7 +112,17 @@ exports.postConnectReq = async (req, res, next) => {
       });
     }
 
-    let connectProfile = await Profile.findById(profile).populate("user");
+    let connectProfile = await findProfileWithGraph(
+      { id: String(profile) },
+      { userSelect: { id: true, firstName: true, surname: true, email: true } },
+    );
+    if (connectProfile) {
+      const pushFields = await prisma.profile.findUnique({
+        where: { id: connectProfile.id },
+        select: { browserIds: true },
+      });
+      connectProfile.browserIds = jsonArray(pushFields?.browserIds);
+    }
 
     if (!connectProfile) {
       return res.status(404).json({ message: "Profile not found" });
@@ -96,39 +142,25 @@ exports.postConnectReq = async (req, res, next) => {
       });
     }
 
-    const updated = await Profile.findOneAndUpdate(
-      {
-        _id: connectProfile._id,
-        connectReqs: { $ne: myProfile._id },
-      },
-      {
-        $addToSet: { connectReqs: myProfile._id },
-        $pull: { pendingConnectRelations: { requester: myProfile._id } },
-      },
-      { new: true, select: "_id connectReqs" },
+    // The unique (profile, requester) row is the atomic "not already requested" guard.
+    const requestAdded = await addEdge(() =>
+      prisma.connectRequest.create({
+        data: { profile: connectProfile.id, requester: String(myProfile._id) },
+      }),
     );
-
-    if (!updated) {
-      const currentRequest = await Profile.exists({
-        _id: connectProfile._id,
-        connectReqs: myProfile._id,
+    if (!requestAdded) {
+      return res.json({
+        message: "Already Requested",
+        alreadyRequested: true,
       });
-      if (currentRequest) {
-        return res.json({
-          message: "Already Requested",
-          alreadyRequested: true,
-        });
-      }
-      return res.status(500).json({ message: "Failed to send connect request" });
     }
+    const updated = { _id: connectProfile.id };
 
-    if (!listHasId(updated.connectReqs, myProfile._id)) {
-      return res.status(500).json({ message: "Failed to send connect request" });
-    }
-    await Profile.updateOne(
-      { _id: connectProfile._id },
-      { $push: { pendingConnectRelations: { requester: myProfile._id, relationTypes } } },
-    );
+    // Replace any stale entry for this requester with the new relation types.
+    await editPendingRelations(connectProfile.id, (list) => [
+      ...withoutRequester(list, myProfile._id),
+      { requester: String(myProfile._id), relationTypes },
+    ]);
 
     const receiverId = asId(connectProfile._id);
     const senderId = asId(myProfile._id);
@@ -205,14 +237,13 @@ exports.postBlockConnect = async (req, res, next) => {
     let connectId = req.body.connectId || req.body.friendId;
     let profile = req.profile;
 
-    let updateProfile = await Profile.findOneAndUpdate(
-      { _id: profile._id },
-      {
-        $push: {
-          blockedUsers: connectId,
-        },
-      },
-    );
+    let updateProfile = null;
+    if (connectId && isValidId(connectId)) {
+      await addEdge(() =>
+        prisma.block.create({ data: { profile: String(profile._id), blocked: String(connectId) } }),
+      );
+      updateProfile = { _id: profile._id };
+    }
 
     if (updateProfile) {
       // Emit real-time block to both users (personal rooms + shared chat room)
@@ -255,25 +286,30 @@ exports.getBlockStatus = async (req, res, next) => {
       req.query.friendId ||
       req.body.friendId;
     const myId = req.profile?._id;
-    if (!connectId || !mongoose.Types.ObjectId.isValid(String(connectId))) {
+    if (!connectId || !isValidId(connectId)) {
       return res.status(400).json({ message: "Invalid or missing connectId" });
     }
     if (!myId) {
       return res.status(401).json({ message: "Authentication required" });
     }
 
-    const [me, connect] = await Promise.all([
-      Profile.findById(myId).select("blockedUsers"),
-      Profile.findById(connectId).select("blockedUsers"),
-    ]);
+    const connect = await prisma.profile.findUnique({
+      where: { id: String(connectId) },
+      select: { id: true },
+    });
 
     if (!connect) {
       return res.status(404).json({ message: "User not found" });
     }
 
+    const [iBlocked, blockedMe] = await Promise.all([
+      prisma.block.count({ where: { profile: String(myId), blocked: String(connectId) } }),
+      prisma.block.count({ where: { profile: String(connectId), blocked: String(myId) } }),
+    ]);
+
     return res.status(200).json({
-      iBlocked: listHasId(me?.blockedUsers, connectId),
-      blockedMe: listHasId(connect?.blockedUsers, myId),
+      iBlocked: iBlocked > 0,
+      blockedMe: blockedMe > 0,
     });
   } catch (error) {
     next(error);
@@ -285,14 +321,13 @@ exports.postUnblockConnect = async (req, res, next) => {
     let connectId = req.body.connectId || req.body.friendId;
     let profile = req.profile;
 
-    let updateProfile = await Profile.findOneAndUpdate(
-      { _id: profile._id },
-      {
-        $pull: {
-          blockedUsers: connectId,
-        },
-      },
-    );
+    let updateProfile = null;
+    if (connectId != null) {
+      await prisma.block.deleteMany({
+        where: { profile: String(profile._id), blocked: String(connectId) },
+      });
+      updateProfile = { _id: profile._id };
+    }
 
     if (updateProfile) {
       // Emit real-time unblock to both users (personal rooms + shared chat room)
@@ -323,17 +358,21 @@ exports.getConnectReq = async (req, res, next) => {
   try {
     let myProfile = req.profile;
     let myProfileReqsId = [
-      ...new Set((myProfile.connectReqs || []).map((id) => String(id))),
+      ...new Set((await graphIds.connectReqs(myProfile._id)).map((id) => String(id))),
     ];
-    let getConnectReqsInfo = await Profile.find({
-      _id: myProfileReqsId,
-    })
-      .populate({
-        path: "user",
-        select: ["firstName", "surname"],
-      })
-      .select("profilePic")
-      .sort({ createdAt: -1 });
+    let getConnectReqsInfo = populated(
+      await prisma.profile.findMany({
+        where: { id: { in: myProfileReqsId } },
+        select: {
+          id: true,
+          profilePic: true,
+          user: true,
+          userDoc: { select: { id: true, firstName: true, surname: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      "user",
+    );
     return res.status(200).json(getConnectReqsInfo);
   } catch (error) {
     next(error);
@@ -343,10 +382,24 @@ exports.getConnectReq = async (req, res, next) => {
 exports.getSentConnectReq = async (req, res, next) => {
   try {
     const myProfileId = req.profile._id;
-    const sentRequests = await Profile.find({ connectReqs: myProfileId })
-      .populate({ path: "user", select: ["firstName", "surname"] })
-      .select("profilePic isVerified fullName username connectReqs")
-      .sort({ createdAt: -1 });
+    const rows = await prisma.profile.findMany({
+      where: { connectReqs: { some: { requester: String(myProfileId) } } },
+      select: {
+        id: true,
+        profilePic: true,
+        isVerified: true,
+        fullName: true,
+        username: true,
+        user: true,
+        userDoc: { select: { id: true, firstName: true, surname: true } },
+        connectReqs: { select: { requester: true }, orderBy: { createdAt: "asc" } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    const sentRequests = populated(rows, "user").map((row) => ({
+      ...row,
+      connectReqs: row.connectReqs.map((item) => item.requester),
+    }));
     return res.status(200).json(sentRequests);
   } catch (error) {
     next(error);
@@ -359,43 +412,51 @@ exports.getProfileConnect = async (req, res, next) => {
     if (!profileId || profileId === "false") {
       return res.status(400).json({ message: "Profile ID is required" });
     }
-    if (!mongoose.Types.ObjectId.isValid(String(profileId))) {
+    if (!isValidId(profileId)) {
       return res.status(400).json({ message: "Invalid profile id" });
     }
     const isSingle = Boolean(req.query.single);
     if (isSingle) {
-      const connectData = await Profile.findOne({ _id: profileId });
-      return res.json(connectData);
+      const connectData = await prisma.profile.findUnique({
+        where: { id: String(profileId) },
+        omit: PRIVATE_OMIT,
+        include: GRAPH_INCLUDE,
+      });
+      return res.json(shapeProfile(connectData));
     }
 
-    const connectProfile = await Profile.findOne({
-      _id: profileId,
-    })
-      .select(["connects"])
-      .populate({
-        path: "connects",
-        select: [
-          "profilePic",
-          "fullName",
-          "displayName",
-          "nickname",
-          "username",
-          "banglaName",
-          "isActive",
-          "lastLocation",
-          "presentAddress",
-          "permanentAddress",
-        ],
-        populate: {
-          path: "user",
-          // gender lets the AI Agent tell "call my mom" from "call my dad".
-          select: ["firstName", "surname", "profile", "gender"],
+    const connectRows = await prisma.profileConnect.findMany({
+      where: { profile: String(profileId) },
+      orderBy: { createdAt: "asc" },
+      select: {
+        connectDoc: {
+          select: {
+            id: true,
+            profilePic: true,
+            fullName: true,
+            displayName: true,
+            nickname: true,
+            username: true,
+            banglaName: true,
+            isActive: true,
+            lastLocation: true,
+            presentAddress: true,
+            permanentAddress: true,
+            user: true,
+            // gender lets the AI Agent tell "call my mom" from "call my dad".
+            userDoc: { select: { id: true, firstName: true, surname: true, profile: true, gender: true } },
+          },
         },
-      });
+      },
+    });
+    const connectProfile = {
+      connects: connectRows.map((row) => populated(row.connectDoc, "user")).filter(Boolean),
+    };
 
-    const relationshipRows = await Relationship.find({
-      $or: [{ userA: profileId }, { userB: profileId }],
-    }).select("userA userB relationType");
+    const relationshipRows = await prisma.relationship.findMany({
+      where: { OR: [{ userA: String(profileId) }, { userB: String(profileId) }] },
+      select: { userA: true, userB: true, relationType: true },
+    });
     const relationshipMap = new Map();
     relationshipRows.forEach((row) => {
       const otherId = String(row.userA) === String(profileId) ? String(row.userB) : String(row.userA);
@@ -425,12 +486,17 @@ exports.getProfileSuggetions = async (req, res, next) => {
     let profile = req.profile;
     let myConnects = req.profile.connects || [];
 
-    let getConnectSuggetions = await Profile.find({
-      _id: {
-        $nin: myConnects,
-        $ne: profile._id,
-      },
-    }).populate("user");
+    const excluded = [...myConnects.map((id) => String(id?._id ?? id)), String(profile._id)];
+    let getConnectSuggetions = (
+      await prisma.profile.findMany({
+        where: { id: { notIn: excluded } },
+        omit: PRIVATE_OMIT,
+        include: {
+          ...GRAPH_INCLUDE,
+          userDoc: { omit: { password: true, resetPasswordToken: true, resetPasswordExpire: true } },
+        },
+      })
+    ).map(shapeProfile);
 
     res.json(getConnectSuggetions);
   } catch (error) {
@@ -445,15 +511,23 @@ exports.postConnectAccept = async (req, res, next) => {
 
     let myProfile = req.profile;
     let io = req.app.get("io");
-    if (!profile || !mongoose.Types.ObjectId.isValid(profile)) {
+    if (!profile || !isValidId(profile)) {
       return res.status(400).json({ message: "Invalid or missing profile id" });
     }
+    profile = String(profile);
 
-    const connectProfile = await Profile.findById(profile);
+    const connectProfile = await prisma.profile.findUnique({
+      where: { id: profile },
+      select: { id: true, browserIds: true },
+    });
     if (!connectProfile) {
       return res.status(404).json({ message: "Profile not found" });
     }
-    const pendingRelation = (myProfile.pendingConnectRelations || []).find((item) =>
+    const myRow = await prisma.profile.findUnique({
+      where: { id: String(myProfile._id) },
+      select: { pendingConnectRelations: true },
+    });
+    const pendingRelation = jsonArray(myRow?.pendingConnectRelations).find((item) =>
       idsMatch(item.requester, profile),
     );
     const relationTypes = requestedRelationTypes.length
@@ -463,36 +537,21 @@ exports.postConnectAccept = async (req, res, next) => {
       return res.status(400).json({ message: "At least one relationship type is required" });
     }
 
-    const acceptedRequest = await Profile.findOneAndUpdate(
-      {
-        _id: myProfile._id,
-        connectReqs: profile,
-      },
-      { $pull: { connectReqs: profile, pendingConnectRelations: { requester: profile } } },
-      { new: true, select: "_id" },
-    );
-    if (!acceptedRequest) {
+    const myId = String(myProfile._id);
+    // Deleting the request row is the atomic claim: only one accept can win it.
+    const { count: accepted } = await prisma.connectRequest.deleteMany({
+      where: { profile: myId, requester: profile },
+    });
+    if (!accepted) {
       return res.status(409).json({ message: "Connect request is no longer pending" });
     }
+    await editPendingRelations(myId, (list) => withoutRequester(list, profile));
 
-    let updateConnectProfile = await Profile.findOneAndUpdate(
-      { _id: profile },
-      {
-        $addToSet: {
-          connects: myProfile._id,
-        },
-      },
-      { new: true, select: "_id connects" },
-    );
-    let updateMyProfile = await Profile.findByIdAndUpdate(
-      { _id: myProfile._id },
-      {
-        $addToSet: {
-          connects: profile,
-        },
-      },
-      { new: true, select: "_id connects" },
-    );
+    await addEdge(() => prisma.profileConnect.create({ data: { profile, connect: myId } }));
+    await addEdge(() => prisma.profileConnect.create({ data: { profile: myId, connect: profile } }));
+    const connectsOnly = async (id) => ({ _id: id, connects: await graphIds.connects(id) });
+    let updateConnectProfile = await connectsOnly(profile);
+    let updateMyProfile = await connectsOnly(myId);
     if (!updateConnectProfile || !updateMyProfile) {
       return res.status(500).json({ message: "Failed to update both connection lists" });
     }
@@ -500,8 +559,8 @@ exports.postConnectAccept = async (req, res, next) => {
 
     // Get the connect's profile to access browser IDs
     const activeBrowserIds =
-      connectProfile?.browserIds
-        ?.filter((browser) => browser.isActive)
+      jsonArray(connectProfile?.browserIds)
+        .filter((browser) => browser.isActive)
         ?.map((browser) => browser.browserId) || [];
 
     let notificationData = {
@@ -560,17 +619,20 @@ exports.postConnectAccept = async (req, res, next) => {
 exports.getRequestStatus = async (req, res, next) => {
   try {
     const targetId = req.query.profileId || req.query.profile;
-    if (!targetId || !mongoose.Types.ObjectId.isValid(String(targetId))) {
+    if (!targetId || !isValidId(targetId)) {
       return res.status(400).json({ message: "Invalid or missing profile id" });
     }
-    const [me, target] = await Promise.all([
-      Profile.findById(req.profile._id).select("connects connectReqs"),
-      Profile.findById(targetId).select("connects connectReqs"),
+    const me = String(req.profile._id);
+    const target = String(targetId);
+    const [connected, outgoing, incoming] = await Promise.all([
+      prisma.profileConnect.count({ where: { profile: me, connect: target } }),
+      prisma.connectRequest.count({ where: { profile: target, requester: me } }),
+      prisma.connectRequest.count({ where: { profile: me, requester: target } }),
     ]);
     return res.json({
-      connected: listHasId(me?.connects, targetId),
-      outgoing: listHasId(target?.connectReqs, req.profile._id),
-      incoming: listHasId(me?.connectReqs, targetId),
+      connected: connected > 0,
+      outgoing: outgoing > 0,
+      incoming: incoming > 0,
     });
   } catch (error) {
     next(error);
@@ -580,15 +642,20 @@ exports.getRequestStatus = async (req, res, next) => {
 exports.getRelationships = async (req, res, next) => {
   try {
     const targetId = req.query.profileId || req.query.profile;
-    if (!targetId || !mongoose.Types.ObjectId.isValid(String(targetId))) {
+    if (!targetId || !isValidId(targetId)) {
       return res.status(400).json({ message: "Invalid or missing profile id" });
     }
-    const rows = await Relationship.find({
-      $or: [
-        { userA: req.profile._id, userB: targetId },
-        { userA: targetId, userB: req.profile._id },
-      ],
-    }).select("relationType createdAt");
+    const me = String(req.profile._id);
+    const target = String(targetId);
+    const rows = await prisma.relationship.findMany({
+      where: {
+        OR: [
+          { userA: me, userB: target },
+          { userA: target, userB: me },
+        ],
+      },
+      select: { id: true, relationType: true, createdAt: true },
+    });
     return res.json({ relationTypes: rows.map((row) => row.relationType), relationships: rows });
   } catch (error) {
     next(error);
@@ -599,20 +666,22 @@ exports.updateRelationships = async (req, res, next) => {
   try {
     const targetId = req.body.profileId || req.body.profile;
     const relationTypes = normalizeRelationTypes(req.body.relationTypes || req.body.relationType);
-    if (!targetId || !mongoose.Types.ObjectId.isValid(String(targetId))) {
+    if (!targetId || !isValidId(targetId)) {
       return res.status(400).json({ message: "Invalid or missing profile id" });
     }
     if (!relationTypes.length) {
       return res.status(400).json({ message: "At least one relationship type is required" });
     }
 
-    const profile = await Profile.findById(req.profile._id).select("connects");
-    if (!listHasId(profile?.connects, targetId)) {
+    const isConnected = await prisma.profileConnect.count({
+      where: { profile: String(req.profile._id), connect: String(targetId) },
+    });
+    if (!isConnected) {
       return res.status(403).json({ message: "Only connected profiles can edit this relationship" });
     }
 
     const [userA, userB] = [String(req.profile._id), String(targetId)].sort();
-    await Relationship.deleteMany({ userA, userB });
+    await prisma.relationship.deleteMany({ where: { userA, userB } });
     await saveRelationships(req.profile._id, targetId, relationTypes, req.profile._id);
     const io = req.app.get("io");
     emitRelationshipUpdate(io, req.profile._id, req.profile._id, targetId, "updated");
@@ -627,21 +696,14 @@ exports.postConnectDelete = async (req, res, next) => {
   try {
     let connectProfileId = req.body.profile;
     let myProfile = req.profile;
-    if (!connectProfileId || !mongoose.Types.ObjectId.isValid(connectProfileId)) {
+    if (!connectProfileId || !isValidId(connectProfileId)) {
       return res.status(400).json({ message: "Invalid or missing profile id" });
     }
 
-    let updateMyProfile = await Profile.findOneAndUpdate(
-      {
-        _id: myProfile._id,
-      },
-      {
-        $pull: {
-          connectReqs: connectProfileId,
-        },
-      },
-      { new: true },
-    );
+    await prisma.connectRequest.deleteMany({
+      where: { profile: String(myProfile._id), requester: String(connectProfileId) },
+    });
+    let updateMyProfile = await loadGraphProfile(myProfile._id);
 
     if (updateMyProfile) {
       const io = req.app.get("io");
@@ -660,21 +722,14 @@ exports.postRemoveConnectReq = async (req, res, next) => {
   try {
     let connectProfileId = req.body.profile;
     let myProfile = req.profile;
-    if (!connectProfileId || !mongoose.Types.ObjectId.isValid(connectProfileId)) {
+    if (!connectProfileId || !isValidId(connectProfileId)) {
       return res.status(400).json({ message: "Invalid or missing profile id" });
     }
 
-    let updateConnect = await Profile.findOneAndUpdate(
-      {
-        _id: connectProfileId,
-      },
-      {
-        $pull: {
-          connectReqs: myProfile._id,
-        },
-      },
-      { new: true },
-    );
+    await prisma.connectRequest.deleteMany({
+      where: { profile: String(connectProfileId), requester: String(myProfile._id) },
+    });
+    let updateConnect = await loadGraphProfile(connectProfileId);
     if (updateConnect) {
       const io = req.app.get("io");
       emitConnectCacheUpdate(io, connectProfileId, "suggestions", "refresh");
@@ -694,38 +749,31 @@ exports.postDisconnect = async (req, res, next) => {
     let myProfile = req.profile;
     let connectProfile =
       req.body.profile || req.body.profileId || req.query.profileId;
-    if (!connectProfile || !mongoose.Types.ObjectId.isValid(connectProfile)) {
+    if (!connectProfile || !isValidId(connectProfile)) {
       return res.status(400).json({ message: "Invalid or missing profile id" });
     }
+    connectProfile = String(connectProfile);
+    const myId = String(myProfile._id);
 
-    let updateMyProfile = await Profile.findOneAndUpdate(
-      {
-        _id: myProfile._id,
+    await prisma.profileConnect.deleteMany({
+      where: {
+        OR: [
+          { profile: myId, connect: connectProfile },
+          { profile: connectProfile, connect: myId },
+        ],
       },
-      {
-        $pull: {
-          connects: connectProfile,
-        },
-      },
-      { new: true },
-    );
-
-    let updateConnectProfile = await Profile.findByIdAndUpdate(
-      { _id: connectProfile },
-      {
-        $pull: {
-          connects: myProfile._id,
-        },
-      },
-      { new: true },
-    );
+    });
+    let updateMyProfile = await loadGraphProfile(myId);
+    let updateConnectProfile = await loadGraphProfile(connectProfile);
 
     if (updateMyProfile && updateConnectProfile) {
-      await Relationship.deleteMany({
-        $or: [
-          { userA: myProfile._id, userB: connectProfile },
-          { userA: connectProfile, userB: myProfile._id },
-        ],
+      await prisma.relationship.deleteMany({
+        where: {
+          OR: [
+            { userA: myId, userB: connectProfile },
+            { userA: connectProfile, userB: myId },
+          ],
+        },
       });
       const io = req.app.get("io");
       emitConnectCacheUpdate(io, myProfile._id, "suggestions", "refresh");

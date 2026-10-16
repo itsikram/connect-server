@@ -2,36 +2,56 @@
 
 const { debugLogger } = require("../utils/debugLogger");
 
-// Saved matches live in MongoDB (the host persists every action). The socket
+// Saved matches live in MySQL (the host persists every action). The socket
 // server only keeps live games in memory, so after a restart, or once every
 // player has gone, a paused/saved game is rebuilt from its stored snapshot.
 // Loaded lazily: the socket relay also runs without a database (tests, and
-// environments where mongoose can't load), and then simply skips saved games.
-let mongooseLib;
-const getMongoose = () => {
-  if (mongooseLib === undefined) {
+// environments where Prisma can't load), and then simply skips saved games.
+let dbLib;
+const getDb = () => {
+  if (dbLib === undefined) {
     try {
-      mongooseLib = require("mongoose");
+      dbLib = { ...require("../utils/db"), isMySQLReady: require("../config/prisma").isMySQLReady };
     } catch (_e) {
-      mongooseLib = null;
+      dbLib = null;
     }
   }
-  return mongooseLib;
+  return dbLib;
 };
-const isObjectId = (value) =>
-  Boolean(getMongoose()?.Types?.ObjectId?.isValid(String(value || "")));
+const isObjectId = (value) => Boolean(getDb()?.isValidId(String(value || "")));
 
-let LudoGameModel = null;
+/** ludogames access, or null when MySQL is not connected. */
 const getLudoGameModel = () => {
-  if (getMongoose()?.connection?.readyState !== 1) return null;
-  if (!LudoGameModel) {
-    try {
-      LudoGameModel = require("../models/LudoGame");
-    } catch (_e) {
-      return null;
-    }
-  }
-  return LudoGameModel;
+  const db = getDb();
+  if (!db || !db.isMySQLReady()) return null;
+  const { prisma, jsonArray, jsonObject } = db;
+  // Json columns back to the arrays / objects the snapshot code expects.
+  const shape = (row) =>
+    row && {
+      ...row,
+      players: jsonArray(row.players),
+      winners: jsonArray(row.winners),
+      pausedBy: row.pausedBy ? jsonObject(row.pausedBy) : null,
+    };
+  return {
+    findByGameId: (gameId) =>
+      prisma.ludoGame.findUnique({ where: { gameId: String(gameId) } }).then(shape),
+    updatePause: (gameId, data) =>
+      prisma.ludoGame.updateMany({ where: { gameId: String(gameId) }, data }),
+    findSavedForPlayer: (profileId, since) =>
+      prisma.ludoGame
+        .findMany({
+          where: {
+            playerProfileIds: { array_contains: String(profileId) },
+            gameEnded: false,
+            gameStarted: true,
+            lastUpdated: { gte: since },
+          },
+          orderBy: { lastUpdated: "desc" },
+          take: 20,
+        })
+        .then((rows) => rows.map(shape)),
+  };
 };
 
 const SAVED_GAME_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
@@ -93,8 +113,8 @@ const persistPauseState = (gameId, pause) => {
           name: pause.name,
         },
       }
-    : { paused: false, pausedAt: null, pausedBy: null };
-  Model.updateOne({ gameId }, { $set: update }).catch(() => {});
+    : { paused: false, pausedAt: null, pausedBy: getDb().Prisma.DbNull };
+  Model.updatePause(gameId, update).catch(() => {});
 };
 
 const games = new Map(); // gameId -> { createdAt: number, lastPlayers: object, onlinePlayers: Set<profileId>, offlinePlayers: Map<profileId, timestamp> }
@@ -380,7 +400,7 @@ function ludoSocket(io, socket, profileId) {
     const Model = getLudoGameModel();
     if (!Model) return Promise.resolve(false);
     return Promise.resolve()
-      .then(() => Model.findOne({ gameId }).lean())
+      .then(() => Model.findByGameId(gameId))
       .then((doc) => applySavedGameDoc(gameId, doc))
       .catch(() => false);
   };
@@ -1206,15 +1226,7 @@ function ludoSocket(io, socket, profileId) {
     }
     Promise.resolve()
       .then(() =>
-        Model.find({
-          "players.profileId": pid,
-          gameEnded: false,
-          gameStarted: true,
-          lastUpdated: { $gte: new Date(Date.now() - SAVED_GAME_MAX_AGE_MS) },
-        })
-          .sort({ lastUpdated: -1 })
-          .limit(20)
-          .lean(),
+        Model.findSavedForPlayer(pid, new Date(Date.now() - SAVED_GAME_MAX_AGE_MS)),
       )
       .then(addSavedGames)
       .catch(() => {})

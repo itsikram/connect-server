@@ -3,8 +3,7 @@
  * Handles connect location queries and analysis
  */
 
-const Profile = require("../../models/Profile");
-const Relationship = require("../../models/Relationship");
+const { prisma, populated, toId } = require("../../utils/db");
 const {
   translate,
   getTranslations,
@@ -179,29 +178,36 @@ async function getConnectsLocations(
   }
 
   // Fetch connects with their location data
-  const connectsData = await Profile.find({
-    _id: { $in: userProfile.connects },
-  })
-    .select([
-      "fullName",
-      "displayName",
-      "profilePic",
-      "lastLocation",
-      "presentAddress",
-      "permanentAddress",
-      "username",
-    ])
-    .populate({
-      path: "user",
-      select: ["firstName", "surname"],
-    });
+  const connectIds = userProfile.connects.map(toId).filter(Boolean);
+  const ownId = toId(userProfile);
+  const connectsData = populated(
+    await prisma.profile.findMany({
+      where: { id: { in: connectIds } },
+      select: {
+        id: true,
+        fullName: true,
+        displayName: true,
+        profilePic: true,
+        lastLocation: true,
+        presentAddress: true,
+        permanentAddress: true,
+        username: true,
+        user: true,
+        userDoc: { select: { id: true, firstName: true, surname: true } },
+      },
+    }),
+    "user",
+  );
 
-  const relationshipRows = await Relationship.find({
-    $or: [
-      { userA: userProfile._id, userB: { $in: userProfile.connects } },
-      { userB: userProfile._id, userA: { $in: userProfile.connects } },
-    ],
-  }).select("userA userB relationType");
+  const relationshipRows = await prisma.relationship.findMany({
+    where: {
+      OR: [
+        { userA: ownId, userB: { in: connectIds } },
+        { userB: ownId, userA: { in: connectIds } },
+      ],
+    },
+    select: { userA: true, userB: true, relationType: true },
+  });
   const relationshipMap = new Map();
   relationshipRows.forEach((row) => {
     const otherId = String(row.userA) === String(userProfile._id)

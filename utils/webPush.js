@@ -3,7 +3,7 @@
  * Set VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT in server env.
  */
 const webpush = require('web-push');
-const Profile = require('../models/Profile');
+const { prisma, jsonArray, editProfileJsonArray } = require('./db');
 
 const VAPID_PUBLIC = (process.env.VAPID_PUBLIC_KEY || '').trim();
 const VAPID_PRIVATE = (process.env.VAPID_PRIVATE_KEY || '').trim();
@@ -43,8 +43,11 @@ async function sendWebPushToProfile(profileId, payload = {}) {
     return { successCount: 0, failureCount: 0, skipped: true };
   }
 
-  const profile = await Profile.findById(profileId).select('webPushSubscriptions');
-  const subs = profile?.webPushSubscriptions || [];
+  const profile = await prisma.profile.findUnique({
+    where: { id: String(profileId) },
+    select: { webPushSubscriptions: true },
+  });
+  const subs = jsonArray(profile?.webPushSubscriptions);
   if (!subs.length) {
     return { successCount: 0, failureCount: 0 };
   }
@@ -112,9 +115,8 @@ async function sendWebPushToProfile(profileId, payload = {}) {
   );
 
   if (staleEndpoints.length) {
-    await Profile.updateOne(
-      { _id: profileId },
-      { $pull: { webPushSubscriptions: { endpoint: { $in: staleEndpoints } } } }
+    await editProfileJsonArray(profileId, 'webPushSubscriptions', (list) =>
+      list.filter((sub) => !staleEndpoints.includes(sub?.endpoint))
     );
   }
 

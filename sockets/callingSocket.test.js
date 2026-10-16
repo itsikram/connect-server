@@ -18,22 +18,21 @@ const stub = (relPath, exports) => {
     require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
 };
 
-const fakeQuery = (value) => {
-    const q = Promise.resolve(value);
-    q.select = () => fakeQuery(value);
-    q.populate = () => fakeQuery(value);
-    return q;
-};
-
-stub('../models/Profile', {
-    findById: (id) => fakeQuery({ _id: id, fullName: `User ${id}`, profilePic: '', user: {} }),
+const fakeProfile = (id) => ({ id, _id: id, fullName: `User ${id}`, profilePic: '', user: null });
+stub('../utils/db', {
+    populated: (row) => row,
+    prisma: {
+        profile: { findUnique: async ({ where }) => fakeProfile(where.id) },
+        message: {
+            create: async ({ data }) => {
+                const id = `m${savedMessages.length + 1}`;
+                const message = { ...data, id, _id: id, parent: null };
+                savedMessages.push(message);
+                return message;
+            },
+        },
+    },
 });
-function FakeMessage(doc) {
-    Object.assign(this, doc, { _id: `m${savedMessages.length + 1}` });
-}
-FakeMessage.prototype.save = async function save() { savedMessages.push(this); return this; };
-FakeMessage.findOne = ({ _id }) => fakeQuery(savedMessages.find((m) => m._id === _id));
-stub('../models/Message', FakeMessage);
 stub('../utils/pushNotifications', { sendPushToProfile: async (to, p) => pushes.push({ kind: 'fcm', to, p }) });
 stub('../utils/webPush', { sendWebPushToProfile: async (to, p) => pushes.push({ kind: 'web', to, p }) });
 stub('../utils/ringtone', { getIncomingCallAlertForProfile: async () => ({ id: 1, webSrc: '/r.mp3' }) });

@@ -1,4 +1,7 @@
-const Profile = require('../models/Profile');
+const { prisma } = require('./db');
+
+const findBumpProfile = (id) =>
+  prisma.profile.findUnique({ where: { id }, select: { id: true, fullName: true, profilePic: true } });
 const { sendPushToProfile } = require('./pushNotifications');
 const { sendWebPushToProfile } = require('./webPush');
 
@@ -37,8 +40,8 @@ async function sendBump(io, { connectProfile, myProfile }) {
   }
 
   const [connectProfileData, myProfileData] = await Promise.all([
-    Profile.findById(toId).select('fullName profilePic'),
-    Profile.findById(fromId).select('fullName profilePic'),
+    findBumpProfile(toId),
+    findBumpProfile(fromId),
   ]);
 
   if (!myProfileData) {
