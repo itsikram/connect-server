@@ -3,6 +3,15 @@ const isAuth = require('../middlewares/isAuth')
 const {addMessageReact,removeMessageReact,getMedia,getChatList,getChatHistory,getOldMessages,sendMessage,getNewMessages,getNewMessagesCount,getMessageReactions,markMessageAsSeen,deleteMessage,deleteConversation,sendBump} = require('../controllers/messageController')
 const uploadAttachment = require('../middlewares/photosUpload')
 
+// Message data changes constantly; never let browsers, PWAs or proxies cache it.
+Router.use((req, res, next) => {
+    res.set({
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+    });
+    next();
+});
 
 Router.post('/addReact',isAuth,addMessageReact);
 Router.get('/media',isAuth,getMedia);
