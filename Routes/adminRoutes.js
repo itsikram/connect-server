@@ -91,6 +91,15 @@ Router.put('/ai-settings', isAdminAuth, updateAdminAiSettings);
 Router.get('/ai-settings/models', isAdminAuth, listAdminCursorModels);
 Router.post('/ai-settings/test', isAdminAuth, testAdminAiProvider);
 
+const {
+  getAdminServerSettings,
+  updateAdminServerSettings,
+  checkAdminServers,
+} = require('../controllers/serverSettingsController');
+Router.get('/server-settings', isAdminAuth, getAdminServerSettings);
+Router.put('/server-settings', isAdminAuth, updateAdminServerSettings);
+Router.post('/server-settings/check', isAdminAuth, checkAdminServers);
+
 Router.get('/ai-auto-post/config', isAdminRole, aiAutoPostController.getConfig);
 Router.get('/ai-auto-post/author-profiles', isAdminRole, aiAutoPostController.searchAuthorProfiles);
 Router.put('/ai-auto-post/config', isAdminRole, aiAutoPostController.updateConfig);

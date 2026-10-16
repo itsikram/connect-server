@@ -771,6 +771,25 @@ model Connect {
   @@map("connects")
 }
 
+/// Singleton (singletonKey = "default"). Which live API/socket servers the web
+/// and Expo clients use; edited from the admin panel (Settings → Servers).
+/// servers is [{ url, label, enabled }].
+model ServerSettings {
+  id                  String   @id @default(cuid()) @db.VarChar(32)
+  singletonKey        String   @unique @default("default") @db.VarChar(32)
+  /// "multi" (fail over across every enabled server) or "single"
+  mode                String   @default("multi") @db.VarChar(16)
+  servers             Json?
+  singleServerUrl     String   @default("") @db.Text
+  /// "random" spreads new clients over the servers; "priority" prefers the first healthy one
+  strategy            String   @default("random") @db.VarChar(16)
+  downCooldownSeconds Int      @default(60)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@map("serversettings")
+}
+
 /// Singleton (singletonKey = "default").
 model ExpoControlAccess {
   id              String   @id @default(cuid()) @db.VarChar(32)

@@ -5,9 +5,12 @@ const fs = require("fs");
 
 dotenv.config();
 const {getData,updateData} = require('../controllers/connectController')
+const { getClientServerConfig } = require('../controllers/serverSettingsController')
 const phoneCall = require('../phoneCall')
 Router.get('/',getData)
 Router.put('/',updateData)
+// Live servers the web and Expo clients should use (set in admin → Settings → Servers).
+Router.get('/server-config', getClientServerConfig)
 
 // Serve iOS configuration profile with the MIME type Safari requires
 // so it appears under Settings → Profile Downloaded (not Files).
