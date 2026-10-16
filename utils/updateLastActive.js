@@ -2,7 +2,7 @@ const { prisma } = require('./db');
 
 /**
  * Updates the lastLogin timestamp for a user based on profileId
- * Also updates isActive status to true
+ * and Profile.lastActive (online status itself is owned by sockets/presence.js)
  * @param {String} profileId - The profile ID
  * @returns {Promise<void>}
  */
@@ -27,10 +27,9 @@ module.exports = async (profileId) => {
             data: { lastLogin: Date.now() },
         });
 
-        // Update isActive status to true
         await prisma.profile.update({
             where: { id: profile.id },
-            data: { isActive: true, lastActive: new Date() },
+            data: { lastActive: new Date() },
         });
     } catch (error) {
         // Silently fail to not interrupt main flow

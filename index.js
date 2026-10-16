@@ -848,6 +848,10 @@ attachPeerRelayRoute(app, io);
 // schema push can run on an empty database.
 app.use("/api/data-import", require("./Routes/dataImportRoutes"));
 
+// User uploads stored in Google Drive (MEDIA_STORAGE=gdrive). Needs no
+// database, so it stays reachable while MySQL is down.
+app.use("/api/media", require("./Routes/mediaRoutes"));
+
 app.use("/api", (req, res, next) => {
   if (isMySQLReady()) return next();
   return res.status(503).json({

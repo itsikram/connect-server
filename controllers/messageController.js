@@ -2,6 +2,7 @@ const { prisma, isValidId: isValidObjectId, populated } = require('../utils/db')
 const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
 const { notifyNewChatMessage } = require('../utils/chatNotifications')
 const { senderDisplayName } = require('../utils/messagePreview')
+const presence = require('../sockets/presence')
 
 // Reminder bookkeeping columns never leave the server (was .select('-unseenReminder...')).
 const REMINDER_OMIT = {
@@ -191,11 +192,11 @@ exports.getChatList = async(req,res,next) => {
         // Build profile contacts array
         const profileContacts = myProfile.connects.map(connectProfile => {
             const lastActive = connectProfile.lastActive ? new Date(connectProfile.lastActive) : null;
-            const isOnline = Boolean(connectProfile.isActive) ||
-                (lastActive && (now - lastActive) < 5 * 60 * 1000);
-            
+            const status = presence.statusFromProfile(connectProfile);
+            const isOnline = status.isActive;
+
             return {
-                person: connectProfile,
+                person: { ...connectProfile, isActive: isOnline },
                 messages: messageMap.get(connectProfile._id.toString()) ? [messageMap.get(connectProfile._id.toString())] : [],
                 isOnline: isOnline,
                 lastSeen: lastActive
@@ -440,7 +441,7 @@ exports.sendMessage = async (req, res, next) => {
 // Helper function to update last active time
 const updateLastActive = async (userId) => {
     try {
-        await prisma.profile.updateMany({ where: { id: String(userId) }, data: { lastActive: new Date(), isActive: true } });
+        await prisma.profile.updateMany({ where: { id: String(userId) }, data: { lastActive: new Date() } });
     } catch (error) {
         console.error('Error updating last active time:', error);
     }

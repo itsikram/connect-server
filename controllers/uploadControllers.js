@@ -1,5 +1,23 @@
 const streamifier = require('streamifier');
 const { withCloudinaryAccount } = require('../utils/cloudinary')
+const { isDriveStorageEnabled } = require('../utils/googleDrive')
+const { uploadUserMediaToDrive } = require('../utils/mediaStorage')
+
+const sendDriveUpload = async (req, res, options, extra = () => ({})) => {
+    try {
+        const result = await uploadUserMediaToDrive(req, req.file, options);
+        return res.status(200).json({ ...extra(result), ...result });
+    } catch (error) {
+        const full = error?.code === 'MEDIA_STORAGE_FULL';
+        console.error('[upload] Google Drive upload failed', error?.message || error);
+        if (!res.headersSent) {
+            return res.status(full ? 507 : 502).json({
+                error: full ? 'Media storage is full. Please try again later.' : 'Media upload failed',
+                code: full ? 'MEDIA_STORAGE_FULL' : 'MEDIA_UPLOAD_FAILED',
+            });
+        }
+    }
+};
 
 const getCloudinaryErrorResponse = (error) => {
     const message = String(error?.message || error || 'Cloudinary upload failed');
@@ -35,6 +53,10 @@ exports.uploadImage = async (req, res, next) => {
 
     if (!req.file.buffer || req.file.buffer.length === 0) {
         return res.status(400).json({ error: 'Uploaded file is empty' });
+    }
+
+    if (isDriveStorageEnabled()) {
+        return sendDriveUpload(req, res, { kind: 'image' });
     }
 
     try {
@@ -75,6 +97,15 @@ exports.uploadVideo = async (req, res, next) => {
 
     if (fileType !== 'video') {
         return res.status(400).json({ error: 'Uploaded file is not a video' });
+    }
+
+    if (isDriveStorageEnabled()) {
+        return sendDriveUpload(req, res, { kind: 'video' }, (result) => ({
+            success: true,
+            videoId: result.public_id,
+            filename: req.file.originalname,
+            size: req.file.size,
+        }));
     }
 
     // Create an upload stream and pipe the file buffer to Cloudinary
@@ -133,6 +164,10 @@ exports.uploadFile = async (req, res, next) => {
         const isAudio = mime.startsWith('audio/') ||
             /\.(m4a|mp3|wav|aac|flac|webm|ogg|oga|opus)$/i.test(originalName);
         const needsAudioTranscode = isAudio;
+
+        if (isDriveStorageEnabled()) {
+            return sendDriveUpload(req, res, { kind: isAudio ? 'audio' : 'file', transcodeAudio: needsAudioTranscode });
+        }
 
         // Cloudinary uses resource_type=video for audio files, but audio is
         // kept in the image account per the media-account policy.

@@ -1,4 +1,5 @@
 const { getAccountForCloudName, withCloudinaryAccount } = require('./cloudinary')
+const { parseDriveMediaUrl, deleteFromDrive } = require('./googleDrive')
 
 const isMissingCloudinaryAsset = (error) =>
     error?.http_code === 404 ||
@@ -50,12 +51,33 @@ const getCloudinaryAsset = (value) => {
     }
 }
 
+const deleteDriveResources = (driveAssets) => Promise.all([...driveAssets.values()].map(async (asset) => {
+    try {
+        return { ...asset, result: await deleteFromDrive(asset.account, asset.fileId) }
+    } catch (error) {
+        console.error('[media-cleanup] failed to delete Drive file', {
+            account: asset.account,
+            fileId: asset.fileId,
+            error: error?.message || error,
+        })
+        return { ...asset, error }
+    }
+}))
+
+// Also removes Google Drive uploads (/api/media/... URLs) despite the name
 const deleteCloudinaryResources = async (values) => {
     const assets = new Map()
+    const driveAssets = new Map()
     for (const value of values.flat(Infinity)) {
+        const driveAsset = parseDriveMediaUrl(value)
+        if (driveAsset) {
+            driveAssets.set(`${driveAsset.account}:${driveAsset.fileId}`, driveAsset)
+            continue
+        }
         const asset = getCloudinaryAsset(value)
         if (asset) assets.set(`${asset.cloudName}:${asset.resourceType}:${asset.publicId}`, asset)
     }
+    const driveResults = driveAssets.size ? deleteDriveResources(driveAssets) : Promise.resolve([])
 
     const results = await Promise.all([...assets.values()].map(async (asset) => {
         try {
@@ -81,7 +103,7 @@ const deleteCloudinaryResources = async (values) => {
         }
     }))
 
-    return results
+    return [...results, ...(await driveResults)]
 }
 
 module.exports = {

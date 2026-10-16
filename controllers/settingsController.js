@@ -2,6 +2,8 @@ const { prisma, pickModelFields } = require('../utils/db')
 const streamifier = require('streamifier')
 const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
 const { withCloudinaryAccount } = require('../utils/cloudinary')
+const { isDriveStorageEnabled } = require('../utils/googleDrive')
+const { uploadUserMediaToDrive } = require('../utils/mediaStorage')
 
 const defaultSettings = () => ({
     isShareEmotion: false,
@@ -99,7 +101,9 @@ exports.updateSetting = async (req, res, next) => {
         // Handle chatBackground file upload if present
         if (req.file) {
             try {
-                const uploadResult = await withCloudinaryAccount('image', (cloudinary) =>
+                const uploadResult = isDriveStorageEnabled()
+                    ? await uploadUserMediaToDrive(req, req.file, { kind: 'chat-background' })
+                    : await withCloudinaryAccount('image', (cloudinary) =>
                     new Promise((resolve, reject) => {
                         const uploadStream = cloudinary.uploader.upload_stream(
                             {

@@ -15,41 +15,9 @@ const findProfileByIdOrUser = (id, select) => {
   const key = toId(id);
   return prisma.profile.findFirst({ where: { OR: [{ id: key }, { user: key }] }, select });
 };
-const config = require('../config/config.json');
 const { getIncomingCallAlertForProfile } = require('./ringtone');
 const { messagePreview } = require('./messagePreview');
-
-/**
- * Push providers download the image themselves, so it must be an absolute
- * http(s) URL. Relative paths resolve against the web app; the generic default
- * avatar is dropped because it adds nothing to the notification.
- * @param {string} raw
- * @returns {string} absolute URL, or '' when there is no usable image
- */
-function resolvePushImageUrl(raw) {
-  const s = String(raw || '').trim();
-  if (!s || s === config?.defaultProfile) return '';
-  if (/^https?:\/\//i.test(s)) return s;
-  const base = process.env.CLIENT_URL || process.env.FRONTEND_URL;
-  if (!base || !s.startsWith('/')) return '';
-  try {
-    return new URL(s, base).toString();
-  } catch (_e) {
-    return '';
-  }
-}
-
-/** Profile picture of the notification's sender (data.senderId), if any. */
-async function lookupSenderImage(data = {}) {
-  const senderId = data.senderId || data.fromId;
-  if (!senderId) return '';
-  try {
-    const sender = await findProfileByIdOrUser(senderId, { profilePic: true });
-    return resolvePushImageUrl(sender?.profilePic);
-  } catch (_e) {
-    return '';
-  }
-}
+const { resolvePushImageUrl, lookupSenderImage } = require('./pushImage');
 
 function ensureFirebaseAdminInitialized() {
   if (admin.apps && admin.apps.length > 0) return;
@@ -203,14 +171,35 @@ function sanitizeFcmDataKeys(data) {
 }
 
 /**
- * iOS only renders an attachment through a Notification Service Extension;
- * `mutable-content` lets that extension run, otherwise the alert shows as text.
- * @param {string} imageUrl
+ * Notification from a person (has their avatar). Android gets it data-only:
+ * a `notification` payload is drawn by the OS while the app is backgrounded,
+ * which shows the app logo and the avatar as a big picture. Data-only always
+ * reaches ConnectFirebaseMessagingService, which shows the avatar as the large
+ * icon. iOS keeps a normal alert; `mutable-content` lets the Notification
+ * Service Extension attach the image.
+ * @param {{ tokens: string[], title: string, body: string, data: Record<string,string>, imageUrl: string, channelId: string, ttl?: number }} opts
  */
-function apnsImageConfig(imageUrl) {
+function avatarMulticastPayload({ tokens, title, body, data, imageUrl, channelId, ttl }) {
   return {
+    tokens,
+    data: { ...data, title, body, image: imageUrl, channelId },
+    android: {
+      priority: 'high',
+      directBootOk: true,
+      ...(ttl ? { ttl } : {}),
+    },
     apns: {
-      payload: { aps: { 'mutable-content': 1 } },
+      headers: {
+        'apns-priority': '10',
+        'apns-push-type': 'alert',
+      },
+      payload: {
+        aps: {
+          alert: { title, body },
+          sound: 'default',
+          'mutable-content': 1,
+        },
+      },
       fcmOptions: { imageUrl },
     },
   };
@@ -445,25 +434,32 @@ async function sendPushToTokens(tokens = [], notification = {}) {
    }
   }
 
-  const payload = {
-   notification: {
-     title: notification.title || 'Notification',
-     body: notificationBody,
-     ...(imageUrl ? { imageUrl } : {}),
-    },
-   data: stringData,
-   tokens: fcmTokens,
-   android: {
-     priority: 'high',
-     directBootOk: true,
-     notification: {
-       channelId: String(notification.channelId || EXPO_DEFAULT_ANDROID_CHANNEL_ID),
-       sound: 'default',
-       ...(imageUrl ? { imageUrl } : {}),
-     },
-   },
-   ...(imageUrl ? apnsImageConfig(imageUrl) : {}),
-  };
+  const fcmChannelId = String(notification.channelId || EXPO_DEFAULT_ANDROID_CHANNEL_ID);
+  const payload = imageUrl
+    ? avatarMulticastPayload({
+      tokens: fcmTokens,
+      title: titleStr,
+      body: bodyStr,
+      data: stringData,
+      imageUrl,
+      channelId: fcmChannelId,
+    })
+    : {
+      notification: {
+        title: titleStr,
+        body: bodyStr,
+      },
+      data: stringData,
+      tokens: fcmTokens,
+      android: {
+        priority: 'high',
+        directBootOk: true,
+        notification: {
+          channelId: fcmChannelId,
+          sound: 'default',
+        },
+      },
+    };
 
   try {
    const res = await admin.messaging().sendEachForMulticast(payload);
@@ -577,47 +573,54 @@ async function sendFcmChatMulticast(fcmTokens, { title, body, data, imageUrl }) 
     console.warn('[firebase] Skipping chat FCM send because Firebase Admin is not initialized for this process.');
     return { successCount: 0, failureCount: fcmTokens.length };
   }
+  const chatChannelId = 'messages_chat_peek_v3';
   try {
-    const res = await admin.messaging().sendEachForMulticast({
-      tokens: fcmTokens,
-      // Keep the notification at the top level as well as in the Android
-      // config. This is the canonical FCM display payload and lets Android
-      // render the notification when the app process was swiped away.
-      notification: {
+    const res = await admin.messaging().sendEachForMulticast(imageUrl
+      ? avatarMulticastPayload({
+        tokens: fcmTokens,
         title: title || 'Message',
         body: body || ' ',
-        ...(imageUrl ? { imageUrl } : {}),
-      },
-      data,
-      android: {
-        priority: 'high',
+        data,
+        imageUrl,
+        channelId: chatChannelId,
         ttl: 60 * 60 * 1000,
-        directBootOk: true,
+      })
+      : {
+        tokens: fcmTokens,
+        // Keep the notification at the top level as well as in the Android
+        // config. This is the canonical FCM display payload and lets Android
+        // render the notification when the app process was swiped away.
         notification: {
           title: title || 'Message',
           body: body || ' ',
-          channelId: 'messages_chat_peek_v3',
-          ...(imageUrl ? { imageUrl } : {}),
         },
-      },
-      apns: {
-        headers: {
-          'apns-priority': '10',
-          'apns-push-type': 'alert',
-        },
-        payload: {
-          aps: {
-            alert: {
-              title: title || 'Message',
-              body: body || ' ',
-            },
-            sound: 'default',
-            ...(imageUrl ? { 'mutable-content': 1 } : {}),
+        data,
+        android: {
+          priority: 'high',
+          ttl: 60 * 60 * 1000,
+          directBootOk: true,
+          notification: {
+            title: title || 'Message',
+            body: body || ' ',
+            channelId: chatChannelId,
           },
         },
-        ...(imageUrl ? { fcmOptions: { imageUrl } } : {}),
-      },
-    });
+        apns: {
+          headers: {
+            'apns-priority': '10',
+            'apns-push-type': 'alert',
+          },
+          payload: {
+            aps: {
+              alert: {
+                title: title || 'Message',
+                body: body || ' ',
+              },
+              sound: 'default',
+            },
+          },
+        },
+      });
     console.log('[FCM chat] Android notification + data, APNs alert multicast', {
       tokens: fcmTokens.length,
       successCount: res.successCount,

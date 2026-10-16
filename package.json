@@ -34,6 +34,7 @@
     "@deepgram/sdk": "^4.8.0",
     "@distube/ytdl-core": "^4.16.12",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@googleapis/drive": "^26.0.2",
     "@prisma/client": "^6.19.3",
     "agora-access-token": "^2.0.4",
     "axios": "^1.9.0",

@@ -83,8 +83,10 @@ let isAuth = async (req, res, next) => {
       });
     }
 
-    // Build the status/location update payload
-    const updateData = { isActive: true, lastActive: new Date() };
+    // Build the status/location update payload. isActive is owned by the
+    // realtime socket presence (sockets/presence.js); an HTTP request alone
+    // (e.g. a backgrounded app syncing) must not mark someone online.
+    const updateData = { lastActive: new Date() };
 
     const latitude = req.headers["x-latitude"] || req.body?.latitude;
     const longitude = req.headers["x-longitude"] || req.body?.longitude;

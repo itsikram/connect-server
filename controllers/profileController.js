@@ -1,4 +1,5 @@
 const { prisma, isValidId } = require("../utils/db");
+const presence = require("../sockets/presence");
 const {
   USER_PUBLIC_SELECT,
   USER_OWN_SELECT,
@@ -13,7 +14,6 @@ const { sendPushToProfile } = require("../utils/pushNotifications");
 const { deleteCloudinaryResources } = require("../utils/cloudinaryCleanup");
 
 const MONGO_ID_RE = /^[a-fA-F0-9]{24}$/;
-const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 const LITE_PROFILE_SELECT = {
   id: true,
   fullName: true,
@@ -72,14 +72,9 @@ const isOwnProfileRequest = (req, profileId) => {
   return Boolean(ownUsername && String(ownUsername) === String(profileId));
 };
 
-const computeIsActive = (profile) => {
-  if (!profile) return false;
-  if (profile.isActive) return true;
-  const lastActive = profile.lastActive
-    ? new Date(profile.lastActive).getTime()
-    : 0;
-  return Boolean(lastActive && Date.now() - lastActive < ONLINE_WINDOW_MS);
-};
+// Live socket presence first, then a fresh DB flag (see sockets/presence.js).
+const computeIsActive = (profile) =>
+  Boolean(profile) && presence.statusFromProfile(profile).isActive;
 
 const loadProfileDocument = async (
   profileId,

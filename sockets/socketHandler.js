@@ -3,12 +3,12 @@ const messageSocket = require('./messageSocket');
 const { notificationSocket } = require('../controllers/notificationController');
 const { prisma, isValidId } = require('../utils/db');
 const { isMySQLReady } = require('../config/prisma');
-const checkIsActive = require('../utils/checkIsActive');
 const updateLastActive = require('../utils/updateLastActive');
 const callingSocket = require('./callingSocket');
 const { sendBump } = require('../utils/sendBump');
 const ludoSocket = require('./ludoSocket');
 const chessSocket = require('./chessSocket');
+const presence = require('./presence');
 
 // Profile.connects (join table) -> connect profile ids.
 async function connectIdsOf(profileId) {
@@ -20,23 +20,11 @@ async function connectIdsOf(profileId) {
     return rows.map((row) => row.connect);
 }
 
-const findUserByProfile = (profileId) =>
-    isValidId(profileId)
-        ? prisma.user.findFirst({ where: { profile: String(profileId) }, select: { id: true, lastLogin: true } })
-        : null;
-
-const touchUserLastLogin = (profileId) =>
-    isValidId(profileId)
-        ? prisma.user.updateMany({ where: { profile: String(profileId) }, data: { lastLogin: Date.now() } })
-        : null;
-
 module.exports = function socketHandler(io) {
     // profileId -> socketId
     const onlineUsers = new Map();
     // profileId -> Set of socketIds (to track multiple connections per user)
     const profileSockets = new Map();
-    // profileId -> timeoutId (to track pending offline timeouts)
-    const offlineTimeouts = new Map();
 
     io.on('connection', async (socket) => {
         const rawProfileId =
@@ -66,12 +54,6 @@ module.exports = function socketHandler(io) {
                 roomSize: io.sockets.adapter.rooms.get(String(profileId))?.size || 0,
             });
             
-            // Cancel any pending offline timeout if user reconnects
-            if (offlineTimeouts.has(profileId)) {
-                clearTimeout(offlineTimeouts.get(profileId));
-                offlineTimeouts.delete(profileId);
-            }
-            
             // Track multiple socket connections per profile
             if (!profileSockets.has(profileId)) {
                 profileSockets.set(profileId, new Set());
@@ -100,51 +82,12 @@ module.exports = function socketHandler(io) {
                 console.error('Error initializing message/notification sockets:', err);
             }
 
-            // Presence bookkeeping runs in the background so it never delays
-            // (or, on early return, skips) the handler registration below.
-            (async () => {
-                // Socket.IO can accept a client before the initial database
-                // connection completes; do not query until it is ready.
-                if (!isMySQLReady() || !isValidId(profileId)) {
-                    console.warn('[realtime_socket_db_unavailable]', {
-                        socketId: socket.id,
-                        profileId: String(profileId),
-                        mysqlReady: isMySQLReady(),
-                    });
-                    return;
-                }
-
-                let profileConnects;
-                try {
-                    profileConnects = { connects: await connectIdsOf(profileId) };
-                } catch (err) {
-                    console.error('Error loading profile on socket connection:', err);
-                    return;
-                }
-
-                // Update user's lastLogin and isActive status on connection
-                try {
-                    await touchUserLastLogin(profileId);
-                    await prisma.profile.updateMany({
-                        where: { id: String(profileId) },
-                        data: { isActive: true, lastActive: new Date() },
-                    });
-                } catch (err) {
-                    console.error('Error updating user activity on connection:', err);
-                }
-
-                // Emit connect_online to all connects (regardless of browserId)
-                try {
-                    if (profileConnects && profileConnects.connects && profileConnects.connects.length > 0) {
-                        profileConnects.connects.forEach(connect => {
-                            io.to(String(connect)).emit('connect_online', { profileId });
-                        });
-                    }
-                } catch (err) {
-                    console.error('Error emitting connect_online:', err);
-                }
-            })();
-
+            // Realtime presence: per-socket tracking, instant broadcast to
+            // connects, initial status snapshot for this client.
+            presence.attachSocket(io, socket, profileId);
+        } else {
+            // Anonymous sockets may still subscribe to statuses.
+            presence.attachSocket(io, socket, null);
         }
 
         // View post tracking
@@ -180,40 +123,13 @@ module.exports = function socketHandler(io) {
         socket.on('is_active', async ({ profileId: targetProfileId, myId }) => {
             if (!targetProfileId || targetProfileId.length < 5) return;
             try {
-                // First check if user is currently connected via socket (most accurate)
-                const isCurrentlyOnline = onlineUsers.has(targetProfileId);
-                
-                let isActive = false;
-                let lastLogin = null;
-                
-                if (isCurrentlyOnline) {
-                    // User is currently connected, so they're definitely active
-                    isActive = true;
-                    // Get lastLogin from database for display purposes
-                    try {
-                        const user = await findUserByProfile(targetProfileId);
-                        if (user && user.lastLogin) {
-                            lastLogin = user.lastLogin;
-                        } else {
-                            // Fallback to current time if no lastLogin found
-                            lastLogin = Date.now();
-                        }
-                    } catch (err) {
-                        console.error('Error fetching lastLogin for online user:', err);
-                        lastLogin = Date.now();
-                    }
-                } else {
-                    // User is not connected, check database for last activity
-                    const result = await checkIsActive(targetProfileId);
-                    isActive = result.isActive;
-                    lastLogin = result.lastLogin;
-                }
-                
-                io.to(myId).emit('is_active', isActive, lastLogin, targetProfileId);
+                const statuses = await presence.getStatuses([targetProfileId]);
+                const status = statuses[String(targetProfileId)] || { isActive: false, lastSeen: null };
+                const lastSeen = status.lastSeen ? new Date(status.lastSeen).getTime() : null;
+                socket.emit('is_active', status.isActive, lastSeen, targetProfileId);
             } catch (err) {
                 console.error('Error checking active status:', err);
-                // Emit false status on error
-                io.to(myId).emit('is_active', false, Date.now(), targetProfileId);
+                socket.emit('is_active', false, null, targetProfileId);
             }
         });
 
@@ -284,101 +200,18 @@ module.exports = function socketHandler(io) {
                 reason: 'client_or_transport_disconnect',
             });
 
+            // Online/offline is handled by presence.attachSocket; only the
+            // call routing map is maintained here.
             if (profileId && profileId !== 'undefined') {
-                try {
-                    // Remove this socket from profile's socket set
-                    let hasOtherSockets = false;
-                    if (profileSockets.has(profileId)) {
-                        profileSockets.get(profileId).delete(socket.id);
-                        
-                        // If user still has other active sockets, don't set offline
-                        if (profileSockets.get(profileId).size > 0) {
-                            hasOtherSockets = true;
-                            console.log(`📱 Profile ${profileId} still has ${profileSockets.get(profileId).size} active socket(s), not setting offline`);
-                        } else {
-                            // No more sockets for this profile, clean up
-                            profileSockets.delete(profileId);
-                        }
-                    }
-                    
-                    // If user still has other active sockets, skip offline logic
-                    if (hasOtherSockets) {
-                        // Still online on another device (e.g. web + phone):
-                        // point at a remaining socket instead of dropping them.
-                        const [remainingSocketId] = profileSockets.get(profileId);
-                        onlineUsers.set(profileId, remainingSocketId);
-                        return;
-                    }
-                    
-                    // Update lastLogin on disconnect
-                    await touchUserLastLogin(profileId);
-                    
-                    // Cancel any existing timeout for this profile
-                    if (offlineTimeouts.has(profileId)) {
-                        clearTimeout(offlineTimeouts.get(profileId));
-                    }
-                    
-                    // Set a 5-minute timeout before marking offline
-                    const timeoutId = setTimeout(async () => {
-                        try {
-                            // Check if lastLogin is more than 5 minutes old
-                            const user = await findUserByProfile(profileId);
-                            if (!user) {
-                                console.error(`User not found for profile ${profileId}`);
-                                return;
-                            }
-                            
-                            const currentTime = Date.now();
-                            const fiveMinutes = 5 * 60 * 1000; // 5 minutes in milliseconds
-                            const timeSinceLastLogin = currentTime - (user.lastLogin || 0);
-                            
-                            // Only set offline if lastLogin is more than 5 minutes old
-                            if (timeSinceLastLogin >= fiveMinutes) {
-                                // Check again if user has reconnected (has active sockets)
-                                if (profileSockets.has(profileId) && profileSockets.get(profileId).size > 0) {
-                                    console.log(`⏰ Profile ${profileId} reconnected before timeout, skipping offline update`);
-                                    return;
-                                }
-                                
-                                await prisma.profile.updateMany({
-                                    where: { id: String(profileId) },
-                                    data: { isActive: false },
-                                });
-                                
-                                // Notify connects that user is offline
-                                let profileConnects = { connects: await connectIdsOf(profileId) };
-                                if (profileConnects && profileConnects.connects && profileConnects.connects.length > 0) {
-                                    profileConnects.connects.forEach(connect => {
-                                        console.log('connect_offline', String(connect), profileId);
-                                        io.to(String(connect)).emit('connect_offline', { profileId });
-                                    });
-                                }
-                                
-                                console.log(`⏰ Profile ${profileId} marked offline after 5 minutes (lastLogin was ${Math.round(timeSinceLastLogin / 1000 / 60)} minutes ago)`);
-                            } else {
-                                console.log(`⏰ Profile ${profileId} timeout expired but lastLogin is only ${Math.round(timeSinceLastLogin / 1000)} seconds old, keeping online`);
-                            }
-                            
-                            offlineTimeouts.delete(profileId);
-                        } catch (err) {
-                            console.error('Error in offline timeout handler:', err);
-                            offlineTimeouts.delete(profileId);
-                        }
-                    }, 5 * 60 * 1000); // 5 minutes
-                    
-                    offlineTimeouts.set(profileId, timeoutId);
-                    console.log(`⏰ Set 5-minute offline timeout for profile ${profileId}`);
-                    
-                    onlineUsers.delete(profileId);
-                } catch (err) {
-                    console.error('Error handling disconnect:', err);
-                    // Clean up on error
-                    if (profileSockets.has(profileId)) {
-                        profileSockets.get(profileId).delete(socket.id);
-                        if (profileSockets.get(profileId).size === 0) {
-                            profileSockets.delete(profileId);
-                        }
-                    }
+                const sockets = profileSockets.get(profileId);
+                if (sockets) {
+                    sockets.delete(socket.id);
+                    if (sockets.size === 0) profileSockets.delete(profileId);
+                }
+                if (profileSockets.has(profileId)) {
+                    const [remainingSocketId] = profileSockets.get(profileId);
+                    onlineUsers.set(profileId, remainingSocketId);
+                } else {
                     onlineUsers.delete(profileId);
                 }
             }

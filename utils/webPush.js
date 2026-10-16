@@ -4,6 +4,7 @@
  */
 const webpush = require('web-push');
 const { prisma, jsonArray, editProfileJsonArray } = require('./db');
+const { resolvePushImageUrl, lookupSenderImage } = require('./pushImage');
 
 const VAPID_PUBLIC = (process.env.VAPID_PUBLIC_KEY || '').trim();
 const VAPID_PRIVATE = (process.env.VAPID_PRIVATE_KEY || '').trim();
@@ -55,7 +56,12 @@ async function sendWebPushToProfile(profileId, payload = {}) {
   const title = payload.title || 'Connect';
   const body = payload.body || payload.text || 'You have a new notification';
   const link = payload.link || '/';
-  const icon = payload.icon || '/apple-touch-icon.png';
+  // Person-related alerts show that person's avatar instead of the app logo.
+  const icon =
+    resolvePushImageUrl(payload.icon) ||
+    (await lookupSenderImage(payload.data)) ||
+    payload.icon ||
+    '/apple-touch-icon.png';
   const tag = payload.tag || payload.type || 'connect';
 
   const notificationPayload = JSON.stringify({
