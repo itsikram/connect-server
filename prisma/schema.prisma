@@ -780,7 +780,8 @@ model ServerSettings {
   /// "multi" (fail over across every enabled server) or "single"
   mode                String   @default("multi") @db.VarChar(16)
   servers             Json?
-  singleServerUrl     String   @default("") @db.Text
+  /// VarChar, not Text: MySQL before 8.0.13 rejects a default on TEXT columns
+  singleServerUrl     String   @default("") @db.VarChar(512)
   /// "random" spreads new clients over the servers; "priority" prefers the first healthy one
   strategy            String   @default("random") @db.VarChar(16)
   downCooldownSeconds Int      @default(60)
