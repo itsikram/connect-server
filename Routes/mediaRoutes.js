@@ -29,8 +29,11 @@ const serveMedia = async (req, res) => {
             return res.status(upstream.status === 416 ? 416 : 404).end()
         }
 
+        // Newer Drive clients return a fetch Headers object instead of a plain object
+        const upstreamHeaders = upstream.headers || {}
+        const readHeader = (name) => typeof upstreamHeaders.get === 'function' ? upstreamHeaders.get(name) : upstreamHeaders[name]
         for (const header of PASS_HEADERS) {
-            const value = upstream.headers?.[header]
+            const value = readHeader(header)
             if (value) res.setHeader(header, value)
         }
         if (!res.getHeader('accept-ranges')) res.setHeader('Accept-Ranges', 'bytes')
