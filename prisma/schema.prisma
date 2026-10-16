@@ -1,6 +1,17 @@
-// Prisma schema for the MySQL database (connect-db).
-// MongoDB/Mongoose models in models/ are unchanged; move them here one at a
-// time, then run `npm run db:push` (or `npm run db:migrate`) and `npm run db:generate`.
+// Prisma schema for the MySQL database (connect-db). Replaces the Mongoose models.
+//
+// Conventions (keep them when adding models):
+// - `id` holds the old Mongo ObjectId hex string; config/prisma.js generates new
+//   ObjectId-style ids and adds a computed `_id` to every result, so API and
+//   socket payloads keep the Mongo shape.
+// - Reference columns keep the Mongo field name (`author`, `user`, `userId`) so
+//   unpopulated rows look as before. The relation for a populated reference is
+//   `<field>Doc`; utils/db.js `populated()` copies it back onto the field name.
+// - Arrays of references are join tables named after the Mongo array
+//   (`reacts`, `shares`, `followers`, ...). Embedded blobs that are only read
+//   with their parent are Json columns.
+// - relationMode = "prisma": no database FKs, so migrated Mongo data with
+//   dangling references still loads. Every reference column is indexed.
 
 generator client {
   provider      = "prisma-client-js"
@@ -9,6 +20,1345 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
-  url      = env("DATABASE_URL")
+  provider     = "mysql"
+  url          = env("DATABASE_URL")
+  relationMode = "prisma"
+}
+
+// ───────────────────────────── Accounts ─────────────────────────────
+
+model User {
+  id                      String    @id @default(cuid()) @db.VarChar(32)
+  firstName               String    @db.VarChar(191)
+  surname                 String    @db.VarChar(191)
+  nickname                String?   @db.VarChar(191)
+  username                String?   @db.VarChar(191)
+  email                   String    @db.VarChar(191)
+  password                String?   @db.VarChar(255)
+  faceLoginEnabled        Boolean   @default(false)
+  googleId                String?   @unique @db.VarChar(191)
+  DOB                     String?   @db.VarChar(64)
+  gender                  String?   @db.VarChar(64)
+  language                String    @default("eng") @db.VarChar(8)
+  lastLogin               Float?
+  profile                 String?   @db.VarChar(32)
+  resetPasswordToken      String?   @db.VarChar(255)
+  resetPasswordExpire     DateTime?
+  walletBalanceCoins      Int       @default(0)
+  creatorEarningsCoins    Int       @default(0)
+  payoutReservedCoins     Int       @default(0)
+  lastDailyCoinRewardDate String?   @db.VarChar(32)
+  subscriptionStatus      String    @default("none") @db.VarChar(32)
+  subscriptionTier        String    @default("none") @db.VarChar(32)
+  subscriptionExpiresAt   DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  profileDoc     Profile?        @relation("UserProfile", fields: [profile], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  profilesOwned  Profile[]       @relation("ProfileUser")
+  payoutRequests PayoutRequest[]
+  savedVideos    SavedVideo[]
+  transactions   Transaction[]
+
+  @@index([email])
+  @@index([profile])
+  @@map("users")
+}
+
+model Admin {
+  id                  String    @id @default(cuid()) @db.VarChar(32)
+  fullName            String    @db.VarChar(191)
+  email               String    @db.VarChar(191)
+  password            String    @db.VarChar(255)
+  role                String    @default("superAdmin") @db.VarChar(32)
+  resetPasswordToken  String?   @db.VarChar(255)
+  resetPasswordExpire DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([email])
+  @@map("admins")
+}
+
+model Profile {
+  id                      String    @id @default(cuid()) @db.VarChar(32)
+  username                String    @default("") @db.VarChar(64)
+  nickname                String    @default("") @db.VarChar(64)
+  fullName                String?   @db.VarChar(191)
+  displayName             String?   @db.VarChar(191)
+  banglaName              String    @default("") @db.VarChar(191)
+  coverPic                String?   @db.Text
+  profilePic              String?   @db.Text
+  bio                     String    @default("Hello World, I am a new User") @db.VarChar(255)
+  lastEmotion             String?   @db.VarChar(64)
+  lastEmotionText         String?   @db.Text
+  lastEmotionEmoji        String?   @db.VarChar(32)
+  lastEmotionConfidence   Float?
+  lastEmotionQuality      Float?
+  /// { latitude, longitude, timestamp, ... }
+  lastLocation            Json?
+  /// [{ requester, relationTypes: [String] }]
+  pendingConnectRelations Json?
+  workPlaces              Json?
+  schools                 Json?
+  presentAddress          String?   @db.Text
+  permanentAddress        String?   @db.Text
+  settings                Json?
+  appMenuOrder            Json?
+  isOfficial              Boolean   @default(false)
+  isVerified              Boolean   @default(false)
+  lastWeeklyRecapAt       DateTime?
+  isActive                Boolean   @default(false)
+  lastActive              DateTime?
+  deviceTokens            Json?
+  /// [{ browserId, userAgent, lastActive, isActive }]
+  browserIds              Json?
+  /// [{ endpoint, keys: { p256dh, auth }, userAgent, browserId, createdAt, lastUsedAt }]
+  webPushSubscriptions    Json?
+  user                    String?   @db.VarChar(32)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  userDoc User?  @relation("ProfileUser", fields: [user], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  userOf  User[] @relation("UserProfile")
+
+  // reference arrays (join tables)
+  connects        ProfileConnect[] @relation("ConnectOwner")
+  connectedBy     ProfileConnect[] @relation("ConnectTarget")
+  connectReqs     ConnectRequest[] @relation("ConnectRequestReceiver")
+  sentConnectReqs ConnectRequest[] @relation("ConnectRequestSender")
+  following       Follow[]         @relation("Follower")
+  followers       Follow[]         @relation("Followed")
+  blockedUsers    Block[]          @relation("Blocker")
+  blockedBy       Block[]          @relation("Blocked")
+
+  // back-relations
+  posts          Post[]        @relation("PostAuthor")
+  watches        Watch[]       @relation("WatchAuthor")
+  stories        Story[]       @relation("StoryAuthor")
+  comments       Comment[]     @relation("CommentAuthor")
+  cmntReplies    CmntReply[]   @relation("CmntReplyAuthor")
+  postReacts     PostReact[]
+  postShares     PostShare[]
+  postViews      PostViewer[]
+  postMentions   PostMention[]
+  watchReacts    WatchReact[]
+  watchShares    WatchShare[]
+  storyReacts    StoryReact[]
+  storySeen      StorySeen[]
+  reportsMade    Report[]      @relation("ReportBy")
+  reportsAgainst Report[]      @relation("ReportTargetProfile")
+  ludoHosted     LudoGame[]    @relation("LudoHost")
+
+  @@index([user])
+  @@index([banglaName])
+  @@index([isOfficial])
+  @@index([isVerified])
+  @@index([lastActive])
+  @@index([username])
+  @@map("profiles")
+}
+
+/// Profile.connects — one row per direction, as Mongo stored it on both profiles.
+model ProfileConnect {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  profile   String   @db.VarChar(32)
+  connect   String   @db.VarChar(32)
+  createdAt DateTime @default(now())
+
+  profileDoc Profile @relation("ConnectOwner", fields: [profile], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  connectDoc Profile @relation("ConnectTarget", fields: [connect], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([profile, connect])
+  @@index([connect])
+  @@map("profile_connects")
+}
+
+/// Profile.connectReqs — `profile` received a request from `requester`.
+model ConnectRequest {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  profile   String   @db.VarChar(32)
+  requester String   @db.VarChar(32)
+  createdAt DateTime @default(now())
+
+  profileDoc   Profile @relation("ConnectRequestReceiver", fields: [profile], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  requesterDoc Profile @relation("ConnectRequestSender", fields: [requester], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([profile, requester])
+  @@index([requester])
+  @@map("connect_requests")
+}
+
+/// Profile.following / Profile.followers — `follower` follows `following`.
+model Follow {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  follower  String   @db.VarChar(32)
+  following String   @db.VarChar(32)
+  createdAt DateTime @default(now())
+
+  followerDoc  Profile @relation("Follower", fields: [follower], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  followingDoc Profile @relation("Followed", fields: [following], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([follower, following])
+  @@index([following])
+  @@map("follows")
+}
+
+/// Profile.blockedUsers
+model Block {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  profile   String   @db.VarChar(32)
+  blocked   String   @db.VarChar(32)
+  createdAt DateTime @default(now())
+
+  profileDoc Profile @relation("Blocker", fields: [profile], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  blockedDoc Profile @relation("Blocked", fields: [blocked], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([profile, blocked])
+  @@index([blocked])
+  @@map("blocks")
+}
+
+model Relationship {
+  id           String   @id @default(cuid()) @db.VarChar(32)
+  userA        String   @db.VarChar(32)
+  userB        String   @db.VarChar(32)
+  relationType String   @db.VarChar(80)
+  createdBy    String   @db.VarChar(32)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userA, userB, relationType])
+  @@index([userB])
+  @@map("relationships")
+}
+
+model Setting {
+  id                          String   @id @default(cuid()) @db.VarChar(32)
+  username                    String?  @db.VarChar(191)
+  nickanme                    String?  @db.VarChar(191)
+  isShareEmotion              Boolean  @default(false)
+  isShareLocation             Boolean  @default(true)
+  showIsTyping                Boolean  @default(true)
+  ringtone                    Int      @default(1)
+  actionEmoji                 String?  @db.VarChar(64)
+  themeMode                   String   @default("dark") @db.VarChar(32)
+  language                    String   @default("eng") @db.VarChar(8)
+  postVisibility              String   @default("public") @db.VarChar(32)
+  connectRequestVisibility    String   @default("public") @db.VarChar(32)
+  timelinePostVisibility      String   @default("public") @db.VarChar(32)
+  connectRequestReceived      Boolean  @default(true)
+  connectRequestAccepted      Boolean  @default(true)
+  newMessageReceived          Boolean  @default(true)
+  newConnectPost              Boolean  @default(true)
+  newConnectStory             Boolean  @default(true)
+  newConnectWatch             Boolean  @default(true)
+  connectRequestReceivedEmail Boolean  @default(false)
+  connectRequestAcceptedEmail Boolean  @default(false)
+  newMessageReceivedEmail     Boolean  @default(false)
+  newConnectPostEmail         Boolean  @default(false)
+  newConnectStoryEmail        Boolean  @default(false)
+  newConnectWatchEmail        Boolean  @default(false)
+  chatBackground              String?  @db.Text
+  connectChatSettings         Json?
+  profile                     String?  @db.VarChar(32)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  @@index([profile])
+  @@map("settings")
+}
+
+model FaceEncoding {
+  id           String   @id @default(cuid()) @db.VarChar(32)
+  name         String   @db.VarChar(191)
+  email        String?  @unique @db.VarChar(191)
+  /// 128 floats
+  faceEncoding Json
+  profile      String?  @db.VarChar(32)
+  timestamp    DateTime @default(now())
+
+  @@index([profile])
+  @@map("faceencodings")
+}
+
+// ───────────────────────────── Social content ─────────────────────────────
+
+model Post {
+  id                   String    @id @default(cuid()) @db.VarChar(32)
+  caption              String?   @db.Text
+  hashtags             Json?
+  photos               String?   @db.Text
+  gallery              Json?
+  audience             Int       @default(3)
+  author               String?   @db.VarChar(32)
+  /// Shared post id (the Mongo schema said ref Profile, but it holds a Post id).
+  parentPost           String?   @db.VarChar(32)
+  faceExpression       String?   @db.VarChar(64)
+  location             String?   @db.Text
+  feelings             String?   @db.VarChar(191)
+  type                 String    @default("post") @db.VarChar(32)
+  source               String    @default("user") @db.VarChar(32)
+  // aiMetadata.* flattened so status / contentHash can be indexed
+  aiStatus             String    @default("pending") @db.VarChar(16)
+  aiCategories         Json?
+  aiEmbedding          Json?
+  aiEmbeddingModel     String?   @db.VarChar(128)
+  aiProvider           String?   @db.VarChar(64)
+  aiContentHash        String?   @db.VarChar(128)
+  aiSentiment          String?   @db.VarChar(64)
+  aiContentSafetyFlags Json?
+  aiProcessedAt        DateTime?
+  aiError              String?   @db.Text
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  authorDoc     Profile?      @relation("PostAuthor", fields: [author], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parentPostDoc Post?         @relation("PostShareOf", fields: [parentPost], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sharedAs      Post[]        @relation("PostShareOf")
+  mentions      PostMention[]
+  reacts        PostReact[]
+  comments      Comment[]     @relation("PostComments")
+  shares        PostShare[]
+  viewers       PostViewer[]
+  reports       Report[]      @relation("ReportTargetPost")
+
+  @@index([author, createdAt])
+  @@index([parentPost])
+  @@index([aiStatus])
+  @@index([aiContentHash])
+  @@index([createdAt])
+  @@map("posts")
+}
+
+model PostMention {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  post      String   @db.VarChar(32)
+  profile   String   @db.VarChar(32)
+  createdAt DateTime @default(now())
+
+  postDoc    Post    @relation(fields: [post], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profileDoc Profile @relation(fields: [profile], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([post, profile])
+  @@index([profile])
+  @@map("post_mentions")
+}
+
+/// Post.reacts — { profile, type }
+model PostReact {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  post      String   @db.VarChar(32)
+  profile   String   @db.VarChar(32)
+  type      String?  @db.VarChar(32)
+  createdAt DateTime @default(now())
+
+  postDoc    Post    @relation(fields: [post], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profileDoc Profile @relation(fields: [profile], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([post, profile])
+  @@index([profile])
+  @@map("post_reacts")
+}
+
+model PostShare {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  post      String   @db.VarChar(32)
+  profile   String   @db.VarChar(32)
+  createdAt DateTime @default(now())
+
+  postDoc    Post    @relation(fields: [post], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profileDoc Profile @relation(fields: [profile], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([post])
+  @@index([profile])
+  @@map("post_shares")
+}
+
+model PostViewer {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  post      String   @db.VarChar(32)
+  profile   String   @db.VarChar(32)
+  createdAt DateTime @default(now())
+
+  postDoc    Post    @relation(fields: [post], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profileDoc Profile @relation(fields: [profile], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([post, profile])
+  @@index([profile])
+  @@map("post_viewers")
+}
+
+model Watch {
+  id                   String    @id @default(cuid()) @db.VarChar(32)
+  caption              String?   @db.Text
+  thumbnail            String?   @db.Text
+  videoUrl             String?   @db.Text
+  youtubeId            String?   @db.VarChar(64)
+  feeling              String?   @db.VarChar(191)
+  audience             Int       @default(3)
+  author               String?   @db.VarChar(32)
+  type                 String    @default("watch") @db.VarChar(32)
+  aiStatus             String    @default("pending") @db.VarChar(16)
+  aiCategories         Json?
+  aiEmbedding          Json?
+  aiEmbeddingModel     String?   @db.VarChar(128)
+  aiProvider           String?   @db.VarChar(64)
+  aiContentHash        String?   @db.VarChar(128)
+  aiSentiment          String?   @db.VarChar(64)
+  aiContentSafetyFlags Json?
+  aiProcessedAt        DateTime?
+  aiError              String?   @db.Text
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  authorDoc Profile?     @relation("WatchAuthor", fields: [author], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reacts    WatchReact[]
+  comments  Comment[]    @relation("WatchComments")
+  shares    WatchShare[]
+
+  @@index([author, createdAt])
+  @@index([youtubeId])
+  @@index([aiStatus])
+  @@index([aiContentHash])
+  @@index([createdAt])
+  @@map("watches")
+}
+
+model WatchReact {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  watch     String   @db.VarChar(32)
+  profile   String   @db.VarChar(32)
+  type      String?  @db.VarChar(32)
+  createdAt DateTime @default(now())
+
+  watchDoc   Watch   @relation(fields: [watch], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profileDoc Profile @relation(fields: [profile], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([watch, profile])
+  @@index([profile])
+  @@map("watch_reacts")
+}
+
+model WatchShare {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  watch     String   @db.VarChar(32)
+  profile   String   @db.VarChar(32)
+  createdAt DateTime @default(now())
+
+  watchDoc   Watch   @relation(fields: [watch], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profileDoc Profile @relation(fields: [profile], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([watch])
+  @@index([profile])
+  @@map("watch_shares")
+}
+
+model Story {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  image     String?  @db.Text
+  music     String?  @db.Text
+  bgColor   String?  @db.VarChar(64)
+  audience  Int      @default(3)
+  author    String?  @db.VarChar(32)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  authorDoc Profile?     @relation("StoryAuthor", fields: [author], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reacts    StoryReact[]
+  seenBy    StorySeen[]
+  comments  Comment[]    @relation("StoryComments")
+
+  @@index([author, createdAt])
+  @@index([createdAt])
+  @@map("stories")
+}
+
+model StoryReact {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  story     String   @db.VarChar(32)
+  profile   String   @db.VarChar(32)
+  type      String?  @db.VarChar(32)
+  createdAt DateTime @default(now())
+
+  storyDoc   Story   @relation(fields: [story], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profileDoc Profile @relation(fields: [profile], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([story, profile])
+  @@index([profile])
+  @@map("story_reacts")
+}
+
+model StorySeen {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  story     String   @db.VarChar(32)
+  profile   String   @db.VarChar(32)
+  createdAt DateTime @default(now())
+
+  storyDoc   Story   @relation(fields: [story], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  profileDoc Profile @relation(fields: [profile], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([story, profile])
+  @@index([profile])
+  @@map("story_seen")
+}
+
+/// A comment belongs to one of post / watch / story (Mongo kept the id in the
+/// parent's `comments` array; here the comment points at its parent).
+model Comment {
+  id         String   @id @default(cuid()) @db.VarChar(32)
+  body       String?  @db.Text
+  attachment String?  @db.Text
+  author     String?  @db.VarChar(32)
+  post       String?  @db.VarChar(32)
+  watch      String?  @db.VarChar(32)
+  story      String?  @db.VarChar(32)
+  reacts     Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  authorDoc Profile?    @relation("CommentAuthor", fields: [author], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  postDoc   Post?       @relation("PostComments", fields: [post], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  watchDoc  Watch?      @relation("WatchComments", fields: [watch], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  storyDoc  Story?      @relation("StoryComments", fields: [story], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  replies   CmntReply[]
+
+  @@index([author])
+  @@index([post, createdAt])
+  @@index([watch, createdAt])
+  @@index([story, createdAt])
+  @@map("comments")
+}
+
+model CmntReply {
+  id         String   @id @default(cuid()) @db.VarChar(32)
+  body       String?  @db.Text
+  attachment String?  @db.Text
+  author     String?  @db.VarChar(32)
+  post       String?  @db.VarChar(32)
+  parent     String   @db.VarChar(32)
+  reacts     Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  authorDoc Profile? @relation("CmntReplyAuthor", fields: [author], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parentDoc Comment  @relation(fields: [parent], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([author])
+  @@index([parent, createdAt])
+  @@index([post])
+  @@map("cmntreplies")
+}
+
+model Report {
+  id            String   @id @default(cuid()) @db.VarChar(32)
+  type          String   @db.VarChar(16)
+  targetPost    String?  @db.VarChar(32)
+  targetProfile String?  @db.VarChar(32)
+  reportedBy    String   @db.VarChar(32)
+  reason        String   @db.VarChar(80)
+  details       String?  @db.Text
+  status        String   @default("open") @db.VarChar(16)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  targetPostDoc    Post?    @relation("ReportTargetPost", fields: [targetPost], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  targetProfileDoc Profile? @relation("ReportTargetProfile", fields: [targetProfile], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reportedByDoc    Profile  @relation("ReportBy", fields: [reportedBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([type, targetPost, reportedBy, status])
+  @@index([type, targetProfile, reportedBy, status])
+  @@index([targetPost])
+  @@index([targetProfile])
+  @@index([reportedBy])
+  @@map("reports")
+}
+
+// ───────────────────────────── Messaging & notifications ─────────────────────────────
+
+model Message {
+  id                               String    @id @default(cuid()) @db.VarChar(32)
+  room                             String?   @db.VarChar(191)
+  senderId                         String?   @db.VarChar(64)
+  receiverId                       String?   @db.VarChar(64)
+  message                          String?   @db.Text
+  messageType                      String    @default("text") @db.VarChar(16)
+  duration                         Float?
+  callType                         String?   @db.VarChar(16)
+  callEvent                        String?   @db.VarChar(16)
+  parent                           String?   @db.VarChar(32)
+  attachment                       String?   @db.Text
+  reacts                           Json?
+  tempId                           String?   @db.VarChar(191)
+  isSeen                           Boolean   @default(false)
+  unseenReminderEmailSentAt        DateTime?
+  unseenReminderEmailProcessingKey String?   @db.VarChar(191)
+  unseenReminderEmailProcessingAt  DateTime?
+  unseenReminderEmailLastError     String?   @db.Text
+  timestamp                        DateTime  @default(now())
+
+  parentDoc Message?  @relation("MessageReply", fields: [parent], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  replies   Message[] @relation("MessageReply")
+
+  @@index([senderId, receiverId, timestamp])
+  @@index([receiverId, timestamp])
+  @@index([senderId, timestamp])
+  @@index([receiverId, isSeen, timestamp])
+  @@index([senderId, tempId])
+  @@index([isSeen, messageType, unseenReminderEmailSentAt, unseenReminderEmailProcessingAt])
+  @@index([parent])
+  @@map("messages")
+}
+
+model Notification {
+  id         String   @id @default(cuid()) @db.VarChar(32)
+  receiverId String?  @db.VarChar(32)
+  text       String?  @db.Text
+  title      String?  @db.Text
+  icon       String?  @db.Text
+  link       String?  @db.Text
+  type       String?  @db.VarChar(64)
+  data       Json?
+  reacts     Json?
+  isSeen     Boolean  @default(false)
+  timestamp  DateTime @default(now())
+
+  @@index([receiverId, isSeen, timestamp])
+  @@index([receiverId, timestamp])
+  @@map("notifications")
+}
+
+// ───────────────────────────── AI ─────────────────────────────
+
+model AIChat {
+  id               String   @id @default(cuid()) @db.VarChar(32)
+  user             String   @unique @db.VarChar(32)
+  messages         Json?
+  sessionTimestamp DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("aichats")
+}
+
+model AIGeneratedPost {
+  id              String    @id @default(cuid()) @db.VarChar(32)
+  author          String    @db.VarChar(32)
+  post            String?   @db.VarChar(32)
+  category        String    @db.VarChar(191)
+  topic           String    @db.VarChar(191)
+  language        String    @db.VarChar(64)
+  contentType     String?   @db.VarChar(64)
+  caption         String    @db.Text
+  hashtags        Json?
+  imagePrompt     String?   @db.Text
+  imageUrl        String?   @db.Text
+  imageStatus     String    @default("pending") @db.VarChar(16)
+  imageError      String?   @db.Text
+  status          String    @default("draft") @db.VarChar(16)
+  error           String?   @db.Text
+  provider        String?   @db.VarChar(64)
+  model           String?   @db.VarChar(128)
+  /// { categories: [], topics: [] }
+  personalization Json?
+  generatedAt     DateTime  @default(now())
+  publishedAt     DateTime?
+  scheduledFor    DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([category])
+  @@index([language])
+  @@index([status])
+  @@index([generatedAt])
+  @@index([topic, generatedAt])
+  @@index([author])
+  @@map("aigeneratedposts")
+}
+
+/// Singleton (singletonKey = "default").
+model AIAutoPostConfig {
+  id                   String    @id @default(cuid()) @db.VarChar(32)
+  singletonKey         String    @unique @default("default") @db.VarChar(32)
+  enabled              Boolean   @default(false)
+  categories           Json?
+  customCategories     Json?
+  /// Profile ids
+  authorProfiles       Json?
+  topics               Json?
+  keywords             Json?
+  excludedTopics       Json?
+  contentThemes        Json?
+  customInstructions   String    @default("") @db.Text
+  language             String    @default("English") @db.VarChar(64)
+  customLanguage       String    @default("") @db.VarChar(64)
+  tone                 String    @default("natural") @db.VarChar(64)
+  contentTypes         Json?
+  useUserPreferences   Boolean   @default(true)
+  useEngagementSignals Boolean   @default(true)
+  useRecentTrends      Boolean   @default(true)
+  imageEnabled         Boolean   @default(true)
+  imageProvider        String    @default("configured") @db.VarChar(64)
+  imageStyle           String    @default("clean editorial illustration") @db.VarChar(191)
+  includeHashtags      Boolean   @default(true)
+  maxHashtags          Int       @default(4)
+  postsPerDay          Int       @default(1)
+  schedule             Json?
+  timezone             String    @default("UTC") @db.VarChar(80)
+  autoPublish          Boolean   @default(false)
+  paused               Boolean   @default(false)
+  maxAttemptsPerRun    Int       @default(2)
+  provider             String    @default("gemini") @db.VarChar(64)
+  model                String    @default("") @db.VarChar(128)
+  lastRunAt            DateTime?
+  updatedBy            String?   @db.VarChar(32)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@map("aiautopostconfigs")
+}
+
+/// Singleton (singletonKey = "default"). enabled / models / keys are
+/// { gemini, openai, cursor, grok, groq, ollama } objects.
+model AiSettings {
+  id              String   @id @default(cuid()) @db.VarChar(32)
+  singletonKey    String   @unique @default("default") @db.VarChar(32)
+  defaultProvider String   @default("gemini") @db.VarChar(32)
+  enabled         Json?
+  models          Json?
+  keys            Json?
+  cursorRepoUrl   String   @default("") @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("aisettings")
+}
+
+model UserInterestProfile {
+  id               String   @id @default(cuid()) @db.VarChar(32)
+  profile          String   @unique @db.VarChar(32)
+  /// Map<category, weight>
+  categories       Json?
+  embedding        Json?
+  interactionCount Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("userinterestprofiles")
+}
+
+// ───────────────────────────── Site / admin config ─────────────────────────────
+
+model Connect {
+  id                    String   @id @default(cuid()) @db.VarChar(32)
+  siteLogo              String?  @db.Text
+  siteTitle             String?  @db.VarChar(191)
+  siteUrl               String?  @db.Text
+  apkUrl                String?  @db.Text
+  ipaUrl                String?  @db.Text
+  siteDescription       String?  @db.Text
+  showAds               Boolean?
+  registerNewAccount    Boolean?
+  defaultTheme          String   @default("dark") @db.VarChar(32)
+  defaultLanguage       String   @default("en") @db.VarChar(16)
+  defaultTimezone       String   @default("UTC") @db.VarChar(80)
+  isMaintenanceMode     Boolean?
+  appVersion            String   @default("") @db.VarChar(64)
+  isNewVersionAvailable Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("connects")
+}
+
+/// Singleton (singletonKey = "default").
+model ExpoControlAccess {
+  id              String   @id @default(cuid()) @db.VarChar(32)
+  singletonKey    String   @unique @default("default") @db.VarChar(32)
+  accessKey       String   @default("") @db.VarChar(255)
+  /// User ids
+  authorizedUsers Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("expocontrolaccesses")
+}
+
+/// Singleton (singletonKey = "default"). Nested Mongo objects are Json.
+model MonetizationSettings {
+  id                String   @id @default(cuid()) @db.VarChar(32)
+  singletonKey      String   @unique @default("default") @db.VarChar(32)
+  /// Map<flag, Boolean>
+  featureFlags      Json?
+  /// { bkash, nagad }
+  paymentNumbers    Json?
+  /// { plus_basic: { priceBDT, durationDays, enabled }, plus_pro: {...} }
+  subscriptionTiers Json?
+  /// [{ coins, priceBDT, enabled }]
+  coinPacks         Json?
+  /// { platformFeePercent }
+  tipping           Json?
+  /// { coinToBDTRate, minimumCoins, actionRewardCoins }
+  payout            Json?
+  updatedByAdminId  String?  @db.VarChar(32)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("monetizationsettings")
+}
+
+/// Each top-level section of the Mongo document is a Json column.
+model Portfolio {
+  id             String   @id @default(cuid()) @db.VarChar(32)
+  profile        Json?
+  social         Json?
+  hero           Json?
+  homeAbout      Json?
+  skills         Json?
+  projects       Json?
+  homeExperience Json?
+  homeContact    Json?
+  aboutPage      Json?
+  resumePage     Json?
+  experiences    Json?
+  education      Json?
+  blogs          Json?
+  contactPage    Json?
+  seo            Json?
+  footerText     String   @default("") @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("portfolios")
+}
+
+// ───────────────────────────── Monetization ─────────────────────────────
+
+model Transaction {
+  id                String    @id @default(cuid()) @db.VarChar(32)
+  userId            String    @db.VarChar(32)
+  type              String    @db.VarChar(32)
+  subscriptionTier  String?   @db.VarChar(32)
+  coachingPlanId    String?   @db.VarChar(64)
+  amountBDT         Float
+  coinsAmount       Int?
+  status            String    @default("pending") @db.VarChar(16)
+  paymentMethod     String    @db.VarChar(16)
+  senderMsisdn      String    @db.VarChar(32)
+  transactionId     String    @db.VarChar(64)
+  screenshotUrl     String?   @db.Text
+  submittedAt       DateTime  @default(now())
+  reviewedAt        DateTime?
+  reviewedByAdminId String?   @db.VarChar(32)
+  rejectionReason   String?   @db.Text
+  /// [{ action, adminId, timestamp }]
+  auditLog          Json?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  userIdDoc User @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([transactionId, paymentMethod])
+  @@index([userId])
+  @@index([status, createdAt])
+  @@map("transactions")
+}
+
+model CoachingPurchase {
+  id            String   @id @default(cuid()) @db.VarChar(32)
+  userId        String   @db.VarChar(32)
+  transactionId String   @unique @db.VarChar(32)
+  planId        String   @db.VarChar(64)
+  unlockedAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+  @@map("coachingpurchases")
+}
+
+model CoinReward {
+  id          String   @id @default(cuid()) @db.VarChar(32)
+  userId      String   @db.VarChar(32)
+  actionKey   String   @db.VarChar(80)
+  referenceId String   @db.VarChar(120)
+  coins       Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, actionKey, referenceId])
+  @@map("coinrewards")
+}
+
+model PayoutRequest {
+  id                String    @id @default(cuid()) @db.VarChar(32)
+  userId            String    @db.VarChar(32)
+  method            String    @db.VarChar(32)
+  payoutAddress     String    @db.VarChar(120)
+  recipientName     String    @db.VarChar(120)
+  phoneNumber       String    @db.VarChar(30)
+  amountCoins       Int
+  amountBDT         Float
+  exchangeRate      Float
+  status            String    @default("pending") @db.VarChar(16)
+  rejectionReason   String?   @db.Text
+  reviewedAt        DateTime?
+  reviewedByAdminId String?   @db.VarChar(32)
+  /// [{ action, adminId, timestamp }]
+  auditLog          Json?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  userIdDoc User @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([status, createdAt])
+  @@index([userId, status])
+  @@map("payoutrequests")
+}
+
+model Tip {
+  id                 String   @id @default(cuid()) @db.VarChar(32)
+  senderId           String   @db.VarChar(32)
+  creatorId          String   @db.VarChar(32)
+  amountCoins        Int
+  platformFeeCoins   Int
+  creatorAmountCoins Int
+  status             String   @default("completed") @db.VarChar(16)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([senderId, createdAt])
+  @@index([creatorId, createdAt])
+  @@map("tips")
+}
+
+// ───────────────────────────── Productivity ─────────────────────────────
+
+model CalendarEvent {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  user      String   @db.VarChar(32)
+  title     String   @db.VarChar(200)
+  date      DateTime
+  time      String?  @db.VarChar(32)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([user])
+  @@index([date])
+  @@map("calendarevents")
+}
+
+model Flashcard {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  user      String   @db.VarChar(32)
+  deckName  String   @db.VarChar(100)
+  /// [{ _id, front, back, createdAt }]
+  cards     Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([user])
+  @@map("flashcards")
+}
+
+model Habit {
+  id            String   @id @default(cuid()) @db.VarChar(32)
+  user          String   @db.VarChar(32)
+  name          String   @db.VarChar(100)
+  color         String   @default("#22C55E") @db.VarChar(32)
+  streak        Int      @default(0)
+  longestStreak Int      @default(0)
+  /// Map<"YYYY-MM-DD", Boolean>
+  records       Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([user])
+  @@map("habits")
+}
+
+model Note {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  user      String   @db.VarChar(32)
+  title     String   @db.VarChar(200)
+  content   String   @default("") @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([user])
+  @@map("notes")
+}
+
+model Task {
+  id               String    @id @default(cuid()) @db.VarChar(32)
+  user             String    @db.VarChar(32)
+  text             String    @db.VarChar(500)
+  completed        Boolean   @default(false)
+  taskTime         DateTime?
+  /// { before30, before15, atTime }
+  notificationSent Json?
+  reminderTime     String?   @db.VarChar(8)
+  reminderTimezone String?   @db.VarChar(80)
+  lastReminderDate String?   @db.VarChar(32)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([user])
+  @@index([taskTime])
+  @@map("tasks")
+}
+
+model TimerSession {
+  id                String    @id @default(cuid()) @db.VarChar(32)
+  user              String    @db.VarChar(32)
+  completedSessions Int       @default(0)
+  lastSessionType   String    @default("focus") @db.VarChar(16)
+  lastSessionDate   DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([user])
+  @@map("timersessions")
+}
+
+model Reminder {
+  id             String    @id @default(cuid()) @db.VarChar(32)
+  user           String    @db.VarChar(32)
+  title          String    @db.VarChar(120)
+  type           String    @default("custom") @db.VarChar(16)
+  time           String    @db.VarChar(8)
+  timezone       String    @default("Asia/Dhaka") @db.VarChar(80)
+  /// weekdays 0-6
+  days           Json?
+  enabled        Boolean   @default(true)
+  message        String?   @db.VarChar(300)
+  notificationId String?   @db.VarChar(191)
+  autoGenerated  Boolean   @default(false)
+  autoKey        String?   @db.VarChar(120)
+  lastNotifiedAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([user, autoKey])
+  @@index([user])
+  @@map("reminders")
+}
+
+// ───────────────────────────── Fitness ─────────────────────────────
+
+model FitnessProfile {
+  id                  String   @id @default(cuid()) @db.VarChar(32)
+  user                String   @unique @db.VarChar(32)
+  sex                 String   @db.VarChar(16)
+  age                 Int
+  heightCm            Float
+  weightKg            Float
+  activityLevel       String   @default("moderate") @db.VarChar(32)
+  goal                String   @default("maintain") @db.VarChar(16)
+  pace                String   @default("standard") @db.VarChar(16)
+  startWeightKg       Float?
+  timezone            String   @default("Asia/Dhaka") @db.VarChar(80)
+  targetWeightKg      Float?
+  targetCalories      Float?
+  bmr                 Float?
+  tdee                Float?
+  /// { proteinG, carbsG, fatG }
+  macros              Json?
+  waterTargetMl       Float?
+  stepTarget          Float?
+  weeklyWorkoutTarget Float?
+  sleepTargetHours    Float?
+  bmi                 Float?
+  /// { date, calories, protein, weight }
+  targetNotifications Json?
+  dietaryPreferences  Json?
+  allergies           Json?
+  onboardingCompleted Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@map("fitnessprofiles")
+}
+
+model FitnessDailyLog {
+  id         String   @id @default(cuid()) @db.VarChar(32)
+  user       String   @db.VarChar(32)
+  date       DateTime
+  waterMl    Float    @default(0)
+  steps      Int      @default(0)
+  sleepHours Float    @default(0)
+  mood       Int?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([user, date])
+  @@map("fitnessdailylogs")
+}
+
+model Meal {
+  id              String    @id @default(cuid()) @db.VarChar(32)
+  user            String    @db.VarChar(32)
+  date            DateTime
+  mealType        String    @default("snack") @db.VarChar(16)
+  name            String    @db.VarChar(160)
+  servings        Float     @default(1)
+  calories        Float
+  proteinG        Float
+  carbsG          Float
+  fatG            Float
+  fiberG          Float     @default(0)
+  notes           String?   @db.Text
+  source          String    @default("manual") @db.VarChar(16)
+  imageUrl        String?   @db.Text
+  analysis        Json?
+  /// [{ name, quantity, unit, calories, proteinG, carbsG, fatG }]
+  foods           Json?
+  userConfirmedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([user, date])
+  @@index([date])
+  @@map("meals")
+}
+
+model WeightLog {
+  id             String   @id @default(cuid()) @db.VarChar(32)
+  user           String   @db.VarChar(32)
+  date           DateTime
+  weightKg       Float
+  bodyFatPercent Float?
+  note           String?  @db.VarChar(500)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([user, date])
+  @@map("weightlogs")
+}
+
+model WorkoutLog {
+  id             String   @id @default(cuid()) @db.VarChar(32)
+  user           String   @db.VarChar(32)
+  date           DateTime
+  name           String   @db.VarChar(120)
+  type           String   @default("other") @db.VarChar(32)
+  intensity      String   @default("moderate") @db.VarChar(16)
+  durationMin    Float
+  caloriesBurned Float    @default(0)
+  /// [{ name, sets, reps, weightKg }]
+  exercises      Json?
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([user, date])
+  @@index([date])
+  @@map("workoutlogs")
+}
+
+// ───────────────────────────── Recovery ─────────────────────────────
+
+model RecoveryProfile {
+  id                       String    @id @default(cuid()) @db.VarChar(32)
+  user                     String    @unique @db.VarChar(32)
+  /// [{ key, customName, primary, amountPerDay, ..., screener: {...} }]
+  substances               Json?
+  /// { importance, confidence }
+  readiness                Json?
+  reasonKeys               Json?
+  reasonsEnc               String    @default("") @db.Text
+  letterEnc                String    @default("") @db.Text
+  backgroundEnc            String    @default("") @db.Text
+  triggers                 Json?
+  riskHours                Json?
+  supportContactsEnc       String    @default("") @db.Text
+  planEnc                  String    @default("") @db.MediumText
+  planSource               String    @default("") @db.VarChar(16)
+  planGeneratedAt          DateTime?
+  points                   Int       @default(0)
+  /// [{ key, at }]
+  badges                   Json?
+  /// { dayKey, noteEnc }
+  daily                    Json?
+  chatSummaryEnc           String    @default("") @db.Text
+  chatMessagesSinceSummary Int       @default(0)
+  lastCrisisAt             DateTime?
+  /// { aiEnabled, discreet, riskNudges }
+  settings                 Json?
+  language                 String    @default("auto") @db.VarChar(8)
+  timezone                 String    @default("Asia/Dhaka") @db.VarChar(80)
+  currency                 String    @default("BDT") @db.VarChar(8)
+  onboardingCompleted      Boolean   @default(false)
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  @@map("recoveryprofiles")
+}
+
+model RecoveryCheckIn {
+  id            String   @id @default(cuid()) @db.VarChar(32)
+  user          String   @db.VarChar(32)
+  day           String   @db.VarChar(10)
+  /// [{ substance, amount }]
+  used          Json?
+  mood          Int
+  craving       Int
+  stress        Int?
+  sleepHours    Float?
+  halt          Json?
+  triggers      Json?
+  symptoms      Json?
+  noteEnc       String   @default("") @db.Text
+  reflectionEnc String   @default("") @db.Text
+  risk          String   @default("none") @db.VarChar(16)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([user, day])
+  @@map("recoverycheckins")
+}
+
+model RecoveryCraving {
+  id             String   @id @default(cuid()) @db.VarChar(32)
+  user           String   @db.VarChar(32)
+  clientId       String   @db.VarChar(64)
+  at             DateTime
+  substance      String?  @db.VarChar(32)
+  intensityStart Int
+  intensityEnd   Int?
+  trigger        String   @default("") @db.VarChar(32)
+  tools          Json?
+  durationSec    Int      @default(0)
+  outcome        String   @default("unsure") @db.VarChar(16)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([user, clientId])
+  @@index([user, at])
+  @@map("recoverycravings")
+}
+
+model RecoveryLapse {
+  id            String   @id @default(cuid()) @db.VarChar(32)
+  user          String   @db.VarChar(32)
+  at            DateTime
+  day           String   @db.VarChar(10)
+  substance     String   @db.VarChar(32)
+  amount        Float    @default(0)
+  trigger       String   @default("") @db.VarChar(32)
+  feelingBefore String   @default("") @db.VarChar(40)
+  contextEnc    String   @default("") @db.Text
+  debriefEnc    String   @default("") @db.Text
+  restart       String   @default("continue") @db.VarChar(16)
+  source        String   @default("lapse") @db.VarChar(16)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([user, at])
+  @@map("recoverylapses")
+}
+
+/// Mongo deleted these after 180 days (TTL index); utils/dbCleanupWorker.js does it now.
+model RecoveryChatMessage {
+  id            String   @id @default(cuid()) @db.VarChar(32)
+  user          String   @db.VarChar(32)
+  role          String   @db.VarChar(16)
+  mode          String   @default("coach") @db.VarChar(16)
+  textEnc       String   @db.Text
+  risk          String   @default("none") @db.VarChar(16)
+  riskType      String   @default("none") @db.VarChar(32)
+  suggestedTool String   @default("none") @db.VarChar(32)
+  createdAt     DateTime @default(now())
+
+  @@index([user, createdAt])
+  @@index([createdAt])
+  @@map("recoverychatmessages")
+}
+
+// ───────────────────────────── Games ─────────────────────────────
+
+model LudoGame {
+  id                  String    @id @default(cuid()) @db.VarChar(32)
+  gameId              String    @unique @db.VarChar(64)
+  host                String    @db.VarChar(32)
+  /// [{ id, name, color, avatar, cover, profileId, isActive, isOffline, offlineSince, isBot, pieces: [...] }]
+  players             Json?
+  /// players[].profileId, kept in sync on every write so games can be found by player
+  playerProfileIds    Json?
+  currentPlayer       Int       @default(0)
+  diceValue           Int       @default(0)
+  gameStarted         Boolean   @default(false)
+  gameEnded           Boolean   @default(false)
+  /// [{ id, name, color, avatar, profileId }]
+  winners             Json?
+  selectedPlayerCount Int       @default(4)
+  paused              Boolean   @default(false)
+  pausedAt            DateTime?
+  /// { profileId, name }
+  pausedBy            Json?
+  stateVersion        Int       @default(0)
+  lastUpdated         DateTime  @default(now())
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  hostDoc Profile @relation("LudoHost", fields: [host], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([host])
+  @@index([lastUpdated])
+  @@map("ludogames")
+}
+
+// ───────────────────────────── Video ─────────────────────────────
+
+model SavedVideo {
+  id           String   @id @default(cuid()) @db.VarChar(32)
+  userId       String   @db.VarChar(32)
+  videoId      String   @db.VarChar(191)
+  /// { _id, caption, author: {...}, thumbnail, videoURL, likes, ... }
+  metadata     Json?
+  sourceUrl    String   @default("") @db.Text
+  status       String   @default("active") @db.VarChar(16)
+  downloadedAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  userIdDoc User @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([userId, videoId])
+  @@map("savedvideos")
+}
+
+model VideoPlaylist {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  userId    String   @db.VarChar(32)
+  name      String   @db.VarChar(120)
+  /// [{ queueId, videoId, url, title, thumbnail, type, playCount }]
+  items     Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, name])
+  @@map("videoplaylists")
+}
+
+/// Id is the download job key, not an ObjectId. Mongo expired rows 2h after
+/// their last update (TTL index); utils/dbCleanupWorker.js does it now.
+model YtDownloadProgress {
+  id             String   @id @db.VarChar(191)
+  stage          String?  @db.VarChar(64)
+  status         String?  @db.VarChar(64)
+  pct            Float?
+  file_url       String?  @db.Text
+  title          String?  @db.Text
+  download_title String?  @db.Text
+  watch_posted   Boolean?
+  watch_caption  String?  @db.Text
+  error          String?  @db.Text
+  source         String?  @db.VarChar(64)
+  storage        String?  @db.VarChar(64)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([updatedAt])
+  @@map("ytdownloadprogresses")
 }
