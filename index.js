@@ -16,6 +16,7 @@ if (process.env.USE_PUBLIC_DNS !== "false") {
 const express = require("express");
 const PORT = process.env.PORT || 4000;
 const mongoose = require("mongoose");
+const { connectMySQL, isMySQLReady } = require("./config/prisma");
 const MONGODB_URI =
   process.env.NODE_ENV == "production"
     ? process.env.PROD_MONGODB_URI
@@ -672,12 +673,14 @@ app.get("/health", (req, res) => {
   res.status(mongoReady ? 200 : 503).json({
     ...getMetrics({ io }),
     database: mongoReady ? "connected" : "disconnected",
+    mysql: isMySQLReady() ? "connected" : "disconnected",
   });
 });
 app.get("/api/health", (req, res) => {
   res.status(mongoReady ? 200 : 503).json({
     ...getMetrics({ io }),
     database: mongoReady ? "connected" : "disconnected",
+    mysql: isMySQLReady() ? "connected" : "disconnected",
   });
 });
 
@@ -1065,6 +1068,8 @@ mongoose
       e.message || e,
     );
   });
+
+connectMySQL();
 
 // A rejected promise in a socket or timer handler (for example a query
 // issued while MongoDB is still connecting) must not take the whole API

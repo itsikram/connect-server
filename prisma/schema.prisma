@@ -1,0 +1,14 @@
+// Prisma schema for the MySQL database (connect-db).
+// MongoDB/Mongoose models in models/ are unchanged; move them here one at a
+// time, then run `npm run db:push` (or `npm run db:migrate`) and `npm run db:generate`.
+
+generator client {
+  provider      = "prisma-client-js"
+  // "native" covers local Windows; the rhel targets cover GoDaddy cPanel (CloudLinux).
+  binaryTargets = ["native", "rhel-openssl-1.1.x", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
