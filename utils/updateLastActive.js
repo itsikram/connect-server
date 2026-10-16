@@ -1,5 +1,4 @@
-const User = require('../models/User');
-const Profile = require('../models/Profile');
+const { prisma } = require('./db');
 
 /**
  * Updates the lastLogin timestamp for a user based on profileId
@@ -14,24 +13,25 @@ module.exports = async (profileId) => {
         }
 
         // Find the profile to get the user ID
-        const profile = await Profile.findById(profileId).select('user');
+        const profile = await prisma.profile.findUnique({
+            where: { id: String(profileId) },
+            select: { id: true, user: true },
+        });
         if (!profile || !profile.user) {
             return;
         }
 
         // Update lastLogin in User model
-        await User.findByIdAndUpdate(
-            profile.user,
-            { lastLogin: Date.now() },
-            { new: false }
-        );
+        await prisma.user.updateMany({
+            where: { id: profile.user },
+            data: { lastLogin: Date.now() },
+        });
 
         // Update isActive status to true
-        await Profile.findByIdAndUpdate(
-            profileId,
-            { isActive: true, lastActive: new Date() },
-            { new: false }
-        );
+        await prisma.profile.update({
+            where: { id: profile.id },
+            data: { isActive: true, lastActive: new Date() },
+        });
     } catch (error) {
         // Silently fail to not interrupt main flow
         console.error('Error updating last active time:', error);

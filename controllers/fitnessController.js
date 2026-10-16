@@ -1,10 +1,5 @@
 const axios = require("axios");
-const FitnessProfile = require("../models/FitnessProfile");
-const Meal = require("../models/Meal");
-const WeightLog = require("../models/WeightLog");
-const Reminder = require("../models/Reminder");
-const WorkoutLog = require("../models/WorkoutLog");
-const FitnessDailyLog = require("../models/FitnessDailyLog");
+const { prisma, newId, isValidId, jsonArray, jsonObject } = require("../utils/db");
 const {
   calculateNutrition,
   calculateHealthTargets,
@@ -24,7 +19,7 @@ const startOfDay = (value = new Date()) => {
   return date;
 };
 const endOfDay = (value = new Date()) => new Date(startOfDay(value).getTime() + 86400000);
-const owner = (req) => req.profile?._id;
+const owner = (req) => (req.profile?._id != null ? String(req.profile._id) : undefined);
 const badRequest = (res, message) => res.status(400).json({ success: false, message });
 const handleError = (res, error) => {
   if (error?.name === "ValidationError" || error?.name === "CastError") return badRequest(res, error.message);
@@ -49,6 +44,221 @@ const isValidTimezone = (value) => {
     return false;
   }
 };
+
+// ── Validation formerly done by the Mongoose schemas (enums, ranges, required) ──
+const WORKOUT_TYPES = ["walking", "running", "cycling", "strength", "hiit", "yoga", "swimming", "sports", "cardio", "other"];
+const HH_MM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const SCHEMAS = {
+  FitnessProfile: {
+    sex: { type: "string", enum: ["male", "female", "other"], required: true },
+    age: { type: "number", integer: true, min: 13, max: 100, required: true },
+    heightCm: { type: "number", min: 100, max: 250, required: true },
+    weightKg: { type: "number", min: 25, max: 350, required: true },
+    activityLevel: { type: "string", enum: ["sedentary", "light", "moderate", "very_active", "extra_active"] },
+    goal: { type: "string", enum: ["lose", "maintain", "gain"] },
+    pace: { type: "string", enum: ["relaxed", "standard", "aggressive"] },
+    startWeightKg: { type: "number", min: 25, max: 350 },
+    timezone: { type: "string", trim: true, maxlength: 80 },
+    targetWeightKg: { type: "number", min: 25, max: 350 },
+    dietaryPreferences: { type: "stringArray", default: () => [] },
+    allergies: { type: "stringArray", default: () => [] },
+    onboardingCompleted: { type: "boolean" },
+  },
+  Meal: {
+    date: { type: "date", required: true },
+    mealType: { type: "string", enum: ["breakfast", "lunch", "dinner", "snack"] },
+    name: { type: "string", required: true, trim: true, maxlength: 160 },
+    servings: { type: "number", min: 0.1, max: 20 },
+    calories: { type: "number", min: 0, max: 10000, required: true },
+    proteinG: { type: "number", min: 0, max: 500, required: true },
+    carbsG: { type: "number", min: 0, max: 1000, required: true },
+    fatG: { type: "number", min: 0, max: 500, required: true },
+    fiberG: { type: "number", min: 0, max: 300 },
+    notes: { type: "string", trim: true, maxlength: 1000 },
+    source: { type: "string", enum: ["manual", "gemini", "placeholder"] },
+    imageUrl: { type: "string", trim: true, maxlength: 2000 },
+    analysis: { type: "json" },
+    foods: {
+      type: "subdocs",
+      default: () => [],
+      of: {
+        name: { type: "string", trim: true, maxlength: 160 },
+        quantity: { type: "number", min: 0 },
+        unit: { type: "string", trim: true, maxlength: 30 },
+        calories: { type: "number", min: 0, max: 10000 },
+        proteinG: { type: "number", min: 0, max: 500 },
+        carbsG: { type: "number", min: 0, max: 1000 },
+        fatG: { type: "number", min: 0, max: 500 },
+      },
+    },
+    userConfirmedAt: { type: "date" },
+  },
+  WeightLog: {
+    date: { type: "date", required: true },
+    weightKg: { type: "number", min: 25, max: 350, required: true },
+    bodyFatPercent: { type: "number", min: 1, max: 80 },
+    note: { type: "string", trim: true, maxlength: 500 },
+  },
+  Reminder: {
+    title: { type: "string", required: true, trim: true, maxlength: 120 },
+    type: { type: "string", enum: ["meal", "water", "workout", "weight", "custom"] },
+    time: { type: "string", required: true, match: HH_MM },
+    timezone: { type: "string", trim: true, maxlength: 80 },
+    days: {
+      type: "numberArray",
+      default: () => [0, 1, 2, 3, 4, 5, 6],
+      validate: (days) => days.every((day) => Number.isInteger(day) && day >= 0 && day <= 6),
+      validateMessage: "days must contain weekdays from 0 to 6",
+    },
+    enabled: { type: "boolean" },
+    message: { type: "string", trim: true, maxlength: 300 },
+    notificationId: { type: "string", trim: true },
+    autoKey: { type: "string", trim: true },
+  },
+  WorkoutLog: {
+    date: { type: "date", required: true },
+    name: { type: "string", required: true, trim: true, maxlength: 120 },
+    type: { type: "string", enum: WORKOUT_TYPES },
+    intensity: { type: "string", enum: ["light", "moderate", "vigorous"] },
+    durationMin: { type: "number", min: 1, max: 600, required: true },
+    caloriesBurned: { type: "number", min: 0, max: 5000 },
+    exercises: {
+      type: "subdocs",
+      default: () => [],
+      of: {
+        name: { type: "string", trim: true, maxlength: 120, required: true },
+        sets: { type: "number", min: 0, max: 50 },
+        reps: { type: "number", min: 0, max: 500 },
+        weightKg: { type: "number", min: 0, max: 500 },
+      },
+    },
+    notes: { type: "string", trim: true, maxlength: 1000 },
+  },
+  FitnessDailyLog: {
+    date: { type: "date", required: true },
+    waterMl: { type: "number", min: 0, max: 10000 },
+    steps: { type: "number", integer: true, min: 0, max: 100000 },
+    sleepHours: { type: "number", min: 0, max: 24 },
+    mood: { type: "number", integer: true, min: 1, max: 5 },
+  },
+};
+
+const validationError = (model, path, message) =>
+  Object.assign(new Error(`${model} validation failed: ${path}: ${message}`), { name: "ValidationError" });
+const castError = (model, path, kind, value) =>
+  Object.assign(new Error(`Cast to ${kind} failed for value "${value}" (type ${typeof value}) at path "${path}" for model "${model}"`), { name: "CastError" });
+
+const castBoolean = (model, path, value) => {
+  if (typeof value === "boolean") return value;
+  if ([1, "1", "true", "yes"].includes(value)) return true;
+  if ([0, "0", "false", "no"].includes(value)) return false;
+  throw castError(model, path, "Boolean", value);
+};
+
+function castValue(model, path, spec, value) {
+  if (value === null || (value === "" && spec.type !== "string")) {
+    if (spec.required) throw validationError(model, path, `Path \`${path}\` is required.`);
+    return null;
+  }
+  switch (spec.type) {
+    case "number": {
+      let number = typeof value === "number" ? value : Number(value);
+      if (typeof value === "boolean" || !Number.isFinite(number)) throw castError(model, path, "Number", value);
+      if (spec.integer) number = Math.round(number);
+      if (spec.min !== undefined && number < spec.min) throw validationError(model, path, `Path \`${path}\` (${number}) is less than minimum allowed value (${spec.min}).`);
+      if (spec.max !== undefined && number > spec.max) throw validationError(model, path, `Path \`${path}\` (${number}) is more than maximum allowed value (${spec.max}).`);
+      return number;
+    }
+    case "string": {
+      if (typeof value === "object") throw castError(model, path, "string", value);
+      let text = String(value);
+      if (spec.trim) text = text.trim();
+      if (spec.required && !text) throw validationError(model, path, `Path \`${path}\` is required.`);
+      if (spec.enum && !spec.enum.includes(text)) throw validationError(model, path, `\`${text}\` is not a valid enum value for path \`${path}\`.`);
+      if (spec.maxlength !== undefined && text.length > spec.maxlength) throw validationError(model, path, `Path \`${path}\` (\`${text}\`) is longer than the maximum allowed length (${spec.maxlength}).`);
+      if (spec.match && !spec.match.test(text)) throw validationError(model, path, `Path \`${path}\` is invalid (${text}).`);
+      return text;
+    }
+    case "boolean":
+      return castBoolean(model, path, value);
+    case "date": {
+      const date = value instanceof Date ? value : new Date(value);
+      if (Number.isNaN(date.getTime())) throw castError(model, path, "date", value);
+      return date;
+    }
+    case "numberArray":
+    case "stringArray": {
+      const list = (Array.isArray(value) ? value : [value]).map((item, index) => {
+        if (spec.type === "stringArray") return String(item);
+        const number = Number(item);
+        if (item === null || item === "" || !Number.isFinite(number)) throw castError(model, `${path}.${index}`, "[Number]", item);
+        return number;
+      });
+      if (spec.validate && !spec.validate(list)) throw validationError(model, path, spec.validateMessage);
+      return list;
+    }
+    case "subdocs": {
+      const list = Array.isArray(value) ? value : [value];
+      return list.map((item, index) => {
+        if (!item || typeof item !== "object") throw castError(model, `${path}.${index}`, "Embedded", item);
+        // Mongoose gave every array subdocument its own _id.
+        const subId = item._id != null && isValidId(String(item._id)) ? String(item._id) : newId();
+        return { _id: subId, ...castFields(model, spec.of, item, { partial: false, prefix: `${path}.${index}.`, strict: true }) };
+      });
+    }
+    default:
+      return value;
+  }
+}
+
+/**
+ * Cast + validate like a Mongoose document (partial = update validators: only
+ * the supplied paths are checked). Unknown keys pass through unless strict.
+ */
+function castFields(model, specs, data, { partial = false, prefix = "", strict = false } = {}) {
+  const out = {};
+  if (!strict) {
+    Object.keys(data).forEach((key) => {
+      if (!(key in specs) && data[key] !== undefined) out[key] = data[key];
+    });
+  }
+  for (const [key, spec] of Object.entries(specs)) {
+    const value = data[key];
+    if (value === undefined) {
+      if (partial) continue;
+      if (spec.required) throw validationError(model, `${prefix}${key}`, `Path \`${prefix}${key}\` is required.`);
+      if (spec.default) out[key] = spec.default();
+      continue;
+    }
+    out[key] = castValue(model, `${prefix}${key}`, spec, value);
+  }
+  return out;
+}
+
+const validateDoc = (model, data, options) => castFields(model, SCHEMAS[model], data, options);
+
+// Invalid ids used to raise a Mongoose CastError (400) before reaching the DB.
+const requireId = (model, id) => {
+  if (!isValidId(String(id ?? ""))) throw castError(model, "_id", "ObjectId", id);
+  return String(id);
+};
+
+const DEFAULT_TARGET_NOTIFICATIONS = { calories: false, protein: false, weight: false };
+const shapeProfile = (profile) => profile && {
+  ...profile,
+  targetNotifications: { ...DEFAULT_TARGET_NOTIFICATIONS, ...jsonObject(profile.targetNotifications) },
+  dietaryPreferences: jsonArray(profile.dietaryPreferences),
+  allergies: jsonArray(profile.allergies),
+};
+const shapeReminder = (reminder) => reminder && {
+  ...reminder,
+  days: Array.isArray(reminder.days) ? reminder.days : [0, 1, 2, 3, 4, 5, 6],
+};
+const shapeMeal = (meal) => meal && { ...meal, foods: jsonArray(meal.foods) };
+const shapeWorkout = (workout) => workout && { ...workout, exercises: jsonArray(workout.exercises) };
+const findProfile = async (user) => shapeProfile(await prisma.fitnessProfile.findUnique({ where: { user: String(user) } }));
+const latestWeightLog = (user) => prisma.weightLog.findFirst({ where: { user: String(user) }, orderBy: { date: "desc" } });
+const dayRange = (date) => ({ gte: startOfDay(date), lt: endOfDay(date) });
 
 const buildAutoReminders = (profile) => {
   const calories = Math.round(Number(profile.targetCalories) || 0);
@@ -116,19 +326,24 @@ const buildAutoReminders = (profile) => {
 
 const ensureAutoReminders = async (userId, profile) => {
   const reminders = buildAutoReminders(profile);
-  await Promise.all(reminders.map((reminder) => Reminder.findOneAndUpdate(
-    { user: userId, autoKey: reminder.autoKey },
-    { ...reminder, user: userId, autoGenerated: true, enabled: true },
-    { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true },
-  )));
+  await Promise.all(reminders.map((reminder) => {
+    const data = { ...validateDoc("Reminder", reminder, { partial: true }), autoGenerated: true, enabled: true };
+    return prisma.reminder.upsert({
+      where: { user_autoKey: { user: String(userId), autoKey: reminder.autoKey } },
+      update: data,
+      create: { ...validateDoc("Reminder", reminder), ...data, user: String(userId) },
+    });
+  }));
 };
 
 const getDailyBurn = async (userId, date) => {
-  const totals = await WorkoutLog.aggregate([
-    { $match: { user: userId, date: { $gte: startOfDay(date), $lt: endOfDay(date) } } },
-    { $group: { _id: null, caloriesBurned: { $sum: "$caloriesBurned" }, durationMin: { $sum: "$durationMin" }, workouts: { $sum: 1 } } },
-  ]);
-  return totals[0] || { caloriesBurned: 0, durationMin: 0, workouts: 0 };
+  const totals = await prisma.workoutLog.aggregate({
+    where: { user: String(userId), date: dayRange(date) },
+    _sum: { caloriesBurned: true, durationMin: true },
+    _count: { _all: true },
+  });
+  if (!totals._count._all) return { caloriesBurned: 0, durationMin: 0, workouts: 0 };
+  return { _id: null, caloriesBurned: totals._sum.caloriesBurned || 0, durationMin: totals._sum.durationMin || 0, workouts: totals._count._all };
 };
 
 const derivedProfileFields = (profile) => {
@@ -165,15 +380,18 @@ const withTargets = (profile) => {
 };
 
 const getDailyTotals = async (userId, date) => {
-  const totals = await Meal.aggregate([
-    { $match: { user: userId, date: { $gte: startOfDay(date), $lt: endOfDay(date) } } },
-    { $group: { _id: null, calories: { $sum: "$calories" }, proteinG: { $sum: "$proteinG" }, carbsG: { $sum: "$carbsG" }, fatG: { $sum: "$fatG" }, fiberG: { $sum: "$fiberG" } } },
-  ]);
-  return totals[0] || { calories: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0 };
+  const totals = await prisma.meal.aggregate({
+    where: { user: String(userId), date: dayRange(date) },
+    _sum: { calories: true, proteinG: true, carbsG: true, fatG: true, fiberG: true },
+    _count: { _all: true },
+  });
+  if (!totals._count._all) return { calories: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0 };
+  const sum = totals._sum;
+  return { _id: null, calories: sum.calories || 0, proteinG: sum.proteinG || 0, carbsG: sum.carbsG || 0, fatG: sum.fatG || 0, fiberG: sum.fiberG || 0 };
 };
 
 const notifyHealthTargets = async (userId, date, totals) => {
-  const profile = await FitnessProfile.findOne({ user: userId });
+  const profile = await findProfile(userId);
   if (!profile) return;
 
   const dayKey = startOfDay(date).toISOString().slice(0, 10);
@@ -199,7 +417,7 @@ const notifyHealthTargets = async (userId, date, totals) => {
 
   const claimed = { ...previous };
   notifications.forEach(({ key }) => { claimed[key] = true; });
-  await FitnessProfile.updateOne({ _id: profile._id }, { $set: { targetNotifications: claimed } });
+  await prisma.fitnessProfile.update({ where: { id: profile.id }, data: { targetNotifications: claimed } });
   for (const notification of notifications) {
     try {
       await sendPushToProfile(userId, {
@@ -214,7 +432,7 @@ const notifyHealthTargets = async (userId, date, totals) => {
 };
 
 const notifyWeightTarget = async (userId, weightKg) => {
-  const profile = await FitnessProfile.findOne({ user: userId });
+  const profile = await findProfile(userId);
   if (!profile?.targetWeightKg || profile.targetNotifications?.weight) return;
   const reached = profile.goal === "gain"
     ? weightKg >= profile.targetWeightKg
@@ -222,7 +440,10 @@ const notifyWeightTarget = async (userId, weightKg) => {
       ? weightKg <= profile.targetWeightKg
       : false;
   if (!reached) return;
-  await FitnessProfile.updateOne({ _id: profile._id }, { $set: { "targetNotifications.weight": true } });
+  await prisma.fitnessProfile.update({
+    where: { id: profile.id },
+    data: { targetNotifications: { ...profile.targetNotifications, weight: true } },
+  });
   try {
     await sendPushToProfile(userId, {
       title: "Weight target reached",
@@ -248,7 +469,7 @@ const notifyAiFitnessUpdate = async (userId, title, body, target) => {
 
 const getProfile = async (req, res) => {
   try {
-    const profile = await FitnessProfile.findOne({ user: owner(req) }).lean();
+    const profile = await findProfile(owner(req));
     return res.json({ success: true, profile: withTargets(profile) });
   } catch (error) { return handleError(res, error); }
 };
@@ -269,22 +490,23 @@ const saveProfile = async (req, res) => {
     } catch (error) {
       return badRequest(res, error.message);
     }
-    const existing = await FitnessProfile.findOne({ user: owner(req) }).lean();
+    const existing = await prisma.fitnessProfile.findUnique({ where: { user: owner(req) } });
     // Goal progress is measured from the weight at which the current goal was set.
-    const goalChanged = !existing?.startWeightKg || existing.goal !== payload.goal || existing.targetWeightKg !== payload.targetWeightKg;
+    const goalChanged = !existing?.startWeightKg || existing.goal !== payload.goal || (existing.targetWeightKg ?? undefined) !== payload.targetWeightKg;
     const startWeightKg = goalChanged ? payload.weightKg : existing.startWeightKg;
-    const unset = payload.targetWeightKg === undefined ? { $unset: { targetWeightKg: 1 } } : {};
-    const profile = await FitnessProfile.findOneAndUpdate(
-      { user: owner(req) },
-      { $set: { ...payload, user: owner(req), ...derived, startWeightKg }, ...unset },
-      { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true },
-    );
+    const fields = validateDoc("FitnessProfile", { ...payload, startWeightKg }, { partial: Boolean(existing) });
+    const data = { ...fields, ...derived, targetWeightKg: fields.targetWeightKg ?? null };
+    const profile = shapeProfile(await prisma.fitnessProfile.upsert({
+      where: { user: owner(req) },
+      update: data,
+      create: { ...data, user: owner(req), targetNotifications: { ...DEFAULT_TARGET_NOTIFICATIONS } },
+    }));
     try {
       await ensureAutoReminders(owner(req), profile);
     } catch (error) {
       console.error("[fitness-reminder] automatic reminder setup failed:", error?.message || error);
     }
-    return res.json({ success: true, profile: withTargets(profile.toObject()) });
+    return res.json({ success: true, profile: withTargets(profile) });
   } catch (error) { return handleError(res, error); }
 };
 
@@ -292,12 +514,12 @@ const resetFitness = async (req, res) => {
   try {
     const user = owner(req);
     await Promise.all([
-      FitnessProfile.deleteOne({ user }),
-      Meal.deleteMany({ user }),
-      WeightLog.deleteMany({ user }),
-      Reminder.deleteMany({ user }),
-      WorkoutLog.deleteMany({ user }),
-      FitnessDailyLog.deleteMany({ user }),
+      prisma.fitnessProfile.deleteMany({ where: { user } }),
+      prisma.meal.deleteMany({ where: { user } }),
+      prisma.weightLog.deleteMany({ where: { user } }),
+      prisma.reminder.deleteMany({ where: { user } }),
+      prisma.workoutLog.deleteMany({ where: { user } }),
+      prisma.fitnessDailyLog.deleteMany({ where: { user } }),
     ]);
     return res.json({ success: true, message: "Fitness details were reset" });
   } catch (error) { return handleError(res, error); }
@@ -311,19 +533,19 @@ const dashboard = async (req, res) => {
     const weekStart = new Date(dayStart.getTime() - 6 * 86400000);
     const streakStart = new Date(dayStart.getTime() - 120 * 86400000);
     const [rawProfile, meals, totals, burn, latestWeight, reminders, daily, workouts, weekMeals, weekWorkouts, mealDays, workoutDays, habitDays] = await Promise.all([
-      FitnessProfile.findOne({ user }).lean(),
-      Meal.find({ user, date: { $gte: dayStart, $lt: endOfDay(date) } }).sort({ date: 1, createdAt: 1 }).lean(),
+      findProfile(user),
+      prisma.meal.findMany({ where: { user, date: { gte: dayStart, lt: endOfDay(date) } }, orderBy: [{ date: "asc" }, { createdAt: "asc" }] }).then((rows) => rows.map(shapeMeal)),
       getDailyTotals(user, date),
       getDailyBurn(user, date),
-      WeightLog.findOne({ user }).sort({ date: -1 }).lean(),
-      Reminder.find({ user, enabled: true }).sort({ time: 1 }).lean(),
-      FitnessDailyLog.findOne({ user, date: dayStart }).lean(),
-      WorkoutLog.find({ user, date: { $gte: dayStart, $lt: endOfDay(date) } }).sort({ date: -1 }).lean(),
-      Meal.find({ user, date: { $gte: weekStart, $lt: endOfDay(date) } }).select("date calories").lean(),
-      WorkoutLog.find({ user, date: { $gte: weekStart, $lt: endOfDay(date) } }).select("date durationMin caloriesBurned").lean(),
-      Meal.find({ user, date: { $gte: streakStart } }).select("date").lean(),
-      WorkoutLog.find({ user, date: { $gte: streakStart } }).select("date").lean(),
-      FitnessDailyLog.find({ user, date: { $gte: streakStart }, $or: [{ waterMl: { $gt: 0 } }, { steps: { $gt: 0 } }] }).select("date").lean(),
+      latestWeightLog(user),
+      prisma.reminder.findMany({ where: { user, enabled: true }, orderBy: { time: "asc" } }).then((rows) => rows.map(shapeReminder)),
+      prisma.fitnessDailyLog.findUnique({ where: { user_date: { user, date: dayStart } } }),
+      prisma.workoutLog.findMany({ where: { user, date: { gte: dayStart, lt: endOfDay(date) } }, orderBy: { date: "desc" } }).then((rows) => rows.map(shapeWorkout)),
+      prisma.meal.findMany({ where: { user, date: { gte: weekStart, lt: endOfDay(date) } }, select: { id: true, date: true, calories: true } }),
+      prisma.workoutLog.findMany({ where: { user, date: { gte: weekStart, lt: endOfDay(date) } }, select: { id: true, date: true, durationMin: true, caloriesBurned: true } }),
+      prisma.meal.findMany({ where: { user, date: { gte: streakStart } }, select: { date: true } }),
+      prisma.workoutLog.findMany({ where: { user, date: { gte: streakStart } }, select: { date: true } }),
+      prisma.fitnessDailyLog.findMany({ where: { user, date: { gte: streakStart }, OR: [{ waterMl: { gt: 0 } }, { steps: { gt: 0 } }] }, select: { date: true } }),
     ]);
     const profile = withTargets(rawProfile);
     if (!profile) return res.json({ success: true, date: dayStart, profile: null });
@@ -396,7 +618,7 @@ const dashboard = async (req, res) => {
 const listMeals = async (req, res) => {
   try {
     const date = req.query.date || new Date();
-    const meals = await Meal.find({ user: owner(req), date: { $gte: startOfDay(date), $lt: endOfDay(date) } }).sort({ createdAt: -1 }).lean();
+    const meals = (await prisma.meal.findMany({ where: { user: owner(req), date: dayRange(date) }, orderBy: { createdAt: "desc" } })).map(shapeMeal);
     return res.json({ success: true, meals, totals: await getDailyTotals(owner(req), date) });
   } catch (error) { return handleError(res, error); }
 };
@@ -404,27 +626,24 @@ const listMeals = async (req, res) => {
 // Distinct meals from the last 30 days so users can re-log favourites in one tap.
 const recentMeals = async (req, res) => {
   try {
-    const meals = await Meal.aggregate([
-      { $match: { user: owner(req), date: { $gte: new Date(Date.now() - 30 * 86400000) } } },
-      { $sort: { date: -1 } },
-      {
-        $group: {
-          _id: { $toLower: "$name" },
-          name: { $first: "$name" },
-          mealType: { $first: "$mealType" },
-          calories: { $first: "$calories" },
-          proteinG: { $first: "$proteinG" },
-          carbsG: { $first: "$carbsG" },
-          fatG: { $first: "$fatG" },
-          fiberG: { $first: "$fiberG" },
-          count: { $sum: 1 },
-          lastLogged: { $first: "$date" },
-        },
-      },
-      { $sort: { count: -1, lastLogged: -1 } },
-      { $limit: 10 },
-    ]);
-    return res.json({ success: true, meals: meals.map(({ _id, ...meal }) => meal) });
+    const rows = await prisma.meal.findMany({
+      where: { user: owner(req), date: { gte: new Date(Date.now() - 30 * 86400000) } },
+      orderBy: { date: "desc" },
+      select: { name: true, mealType: true, calories: true, proteinG: true, carbsG: true, fatG: true, fiberG: true, date: true },
+    });
+    // Group by lower-cased name, keeping the most recent entry's values.
+    const groups = new Map();
+    for (const row of rows) {
+      const key = String(row.name).toLowerCase();
+      const group = groups.get(key);
+      if (group) { group.count += 1; continue; }
+      const { date, ...values } = row;
+      groups.set(key, { ...values, count: 1, lastLogged: date });
+    }
+    const meals = [...groups.values()]
+      .sort((a, b) => b.count - a.count || b.lastLogged - a.lastLogged)
+      .slice(0, 10);
+    return res.json({ success: true, meals });
   } catch (error) { return handleError(res, error); }
 };
 
@@ -434,7 +653,8 @@ const createMeal = async (req, res) => {
     if (!name || !String(name).trim()) return badRequest(res, "Meal name is required");
     const mealDate = new Date(date || Date.now());
     if (Number.isNaN(mealDate.getTime())) return badRequest(res, "A valid meal date is required");
-    const meal = await Meal.create({ user: owner(req), date: mealDate, mealType, name, servings, calories, proteinG, carbsG, fatG, fiberG, notes, source, imageUrl, analysis, foods, userConfirmedAt: new Date() });
+    const data = validateDoc("Meal", { date: mealDate, mealType, name, servings, calories, proteinG, carbsG, fatG, fiberG, notes, source, imageUrl, analysis, foods, userConfirmedAt: new Date() });
+    const meal = shapeMeal(await prisma.meal.create({ data: { ...data, user: owner(req) } }));
     const totals = await getDailyTotals(owner(req), meal.date);
     try {
       await notifyHealthTargets(owner(req), meal.date, totals);
@@ -447,7 +667,7 @@ const createMeal = async (req, res) => {
 
 const getMeal = async (req, res) => {
   try {
-    const meal = await Meal.findOne({ _id: req.params.id, user: owner(req) }).lean();
+    const meal = shapeMeal(await prisma.meal.findFirst({ where: { id: requireId("Meal", req.params.id), user: owner(req) } }));
     if (!meal) return res.status(404).json({ success: false, message: "Meal not found" });
     return res.json({ success: true, meal });
   } catch (error) {
@@ -463,16 +683,20 @@ const updateMeal = async (req, res) => {
       update.date = new Date(update.date);
       if (Number.isNaN(update.date.getTime())) return badRequest(res, "A valid meal date is required");
     }
-    const meal = await Meal.findOneAndUpdate({ _id: req.params.id, user: owner(req) }, update, { new: true, runValidators: true });
-    if (!meal) return res.status(404).json({ success: false, message: "Meal not found" });
+    const id = requireId("Meal", req.params.id);
+    const data = validateDoc("Meal", update, { partial: true });
+    const { count } = await prisma.meal.updateMany({ where: { id, user: owner(req) }, data });
+    if (!count) return res.status(404).json({ success: false, message: "Meal not found" });
+    const meal = shapeMeal(await prisma.meal.findUnique({ where: { id } }));
     return res.json({ success: true, meal });
   } catch (error) { return handleError(res, error); }
 };
 
 const deleteMeal = async (req, res) => {
   try {
-    const meal = await Meal.findOneAndDelete({ _id: req.params.id, user: owner(req) });
+    const meal = await prisma.meal.findFirst({ where: { id: requireId("Meal", req.params.id), user: owner(req) } });
     if (!meal) return res.status(404).json({ success: false, message: "Meal not found" });
+    await prisma.meal.delete({ where: { id: meal.id } });
     return res.json({ success: true, totals: await getDailyTotals(owner(req), meal.date) });
   } catch (error) { return handleError(res, error); }
 };
@@ -531,25 +755,28 @@ const analyzeMeal = async (req, res) => {
 };
 
 const listWeights = async (req, res) => {
-  try { return res.json({ success: true, weights: await WeightLog.find({ user: owner(req) }).sort({ date: -1 }).limit(365).lean() }); }
+  try { return res.json({ success: true, weights: await prisma.weightLog.findMany({ where: { user: owner(req) }, orderBy: { date: "desc" }, take: 365 }) }); }
   catch (error) { return handleError(res, error); }
 };
 const addWeight = async (req, res) => {
   try {
     const logDate = startOfDay(req.body.date || new Date());
-    const weight = await WeightLog.findOneAndUpdate(
-      { user: owner(req), date: logDate },
-      { ...pick(req.body, ["weightKg", "bodyFatPercent", "note"]), user: owner(req), date: logDate },
-      { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true },
-    );
+    const fields = pick(req.body, ["weightKg", "bodyFatPercent", "note"]);
+    const existingWeight = await prisma.weightLog.findUnique({ where: { user_date: { user: owner(req), date: logDate } } });
+    const data = validateDoc("WeightLog", { ...fields, date: logDate }, { partial: Boolean(existingWeight) });
+    const weight = await prisma.weightLog.upsert({
+      where: { user_date: { user: owner(req), date: logDate } },
+      update: data,
+      create: { ...data, user: owner(req) },
+    });
     try {
       // Keep calorie and hydration targets in step with the newest weigh-in.
       const [profile, latest] = await Promise.all([
-        FitnessProfile.findOne({ user: owner(req) }).lean(),
-        WeightLog.findOne({ user: owner(req) }).sort({ date: -1 }).lean(),
+        findProfile(owner(req)),
+        latestWeightLog(owner(req)),
       ]);
-      if (profile && String(latest?._id) === String(weight._id)) {
-        await FitnessProfile.updateOne({ _id: profile._id }, { $set: { weightKg: weight.weightKg, ...derivedProfileFields({ ...profile, weightKg: weight.weightKg }) } });
+      if (profile && String(latest?.id) === String(weight.id)) {
+        await prisma.fitnessProfile.update({ where: { id: profile.id }, data: { weightKg: weight.weightKg, ...derivedProfileFields({ ...profile, weightKg: weight.weightKg }) } });
       }
     } catch (error) {
       console.error("[fitness] target refresh after weigh-in failed:", error?.message || error);
@@ -564,8 +791,8 @@ const addWeight = async (req, res) => {
 };
 const deleteWeight = async (req, res) => {
   try {
-    const weight = await WeightLog.findOneAndDelete({ _id: req.params.id, user: owner(req) });
-    if (!weight) return res.status(404).json({ success: false, message: "Weight entry not found" });
+    const { count } = await prisma.weightLog.deleteMany({ where: { id: requireId("WeightLog", req.params.id), user: owner(req) } });
+    if (!count) return res.status(404).json({ success: false, message: "Weight entry not found" });
     return res.json({ success: true });
   } catch (error) { return handleError(res, error); }
 };
@@ -573,7 +800,7 @@ const deleteWeight = async (req, res) => {
 const getDaily = async (req, res) => {
   try {
     const date = startOfDay(req.query.date || new Date());
-    const daily = await FitnessDailyLog.findOne({ user: owner(req), date }).lean();
+    const daily = await prisma.fitnessDailyLog.findUnique({ where: { user_date: { user: owner(req), date } } });
     return res.json({ success: true, daily: daily || { date, waterMl: 0, steps: 0, sleepHours: 0 } });
   } catch (error) { return handleError(res, error); }
 };
@@ -593,14 +820,17 @@ const updateDaily = async (req, res) => {
     }
     const addWaterMl = Number(req.body.addWaterMl) || 0;
     if (Math.abs(addWaterMl) > 3000) return badRequest(res, "addWaterMl is too large");
-    const daily = await FitnessDailyLog.findOneAndUpdate(
-      { user: owner(req), date },
-      { $set: { ...set, user: owner(req), date } },
-      { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true },
-    );
+    const data = validateDoc("FitnessDailyLog", { ...set, date }, { partial: true });
+    let daily = await prisma.fitnessDailyLog.upsert({
+      where: { user_date: { user: owner(req), date } },
+      update: data,
+      create: { ...data, user: owner(req), date },
+    });
     if (addWaterMl) {
-      daily.waterMl = Math.min(10000, Math.max(0, (daily.waterMl || 0) + addWaterMl));
-      await daily.save();
+      daily = await prisma.fitnessDailyLog.update({
+        where: { id: daily.id },
+        data: { waterMl: Math.min(10000, Math.max(0, (daily.waterMl || 0) + addWaterMl)) },
+      });
     }
     return res.json({ success: true, daily });
   } catch (error) { return handleError(res, error); }
@@ -615,7 +845,7 @@ const workoutPayload = async (req, body) => {
     if (Number.isNaN(payload.date.getTime())) throw Object.assign(new Error("A valid workout date is required"), { name: "ValidationError" });
   }
   if (payload.caloriesBurned === undefined || payload.caloriesBurned === "" || payload.caloriesBurned === null) {
-    const profile = await FitnessProfile.findOne({ user: owner(req) }).select("weightKg").lean();
+    const profile = await prisma.fitnessProfile.findUnique({ where: { user: owner(req) }, select: { weightKg: true } });
     payload.caloriesBurned = estimateWorkoutCalories({ ...payload, weightKg: profile?.weightKg });
   }
   return payload;
@@ -625,7 +855,7 @@ const listWorkouts = async (req, res) => {
   try {
     const days = Math.min(365, Math.max(1, Number(req.query.days) || 30));
     const since = startOfDay(new Date(Date.now() - (days - 1) * 86400000));
-    const workouts = await WorkoutLog.find({ user: owner(req), date: { $gte: since } }).sort({ date: -1 }).limit(200).lean();
+    const workouts = (await prisma.workoutLog.findMany({ where: { user: owner(req), date: { gte: since } }, orderBy: { date: "desc" }, take: 200 })).map(shapeWorkout);
     return res.json({ success: true, workouts });
   } catch (error) { return handleError(res, error); }
 };
@@ -634,24 +864,26 @@ const createWorkout = async (req, res) => {
   try {
     const payload = await workoutPayload(req, { date: new Date(), ...req.body });
     if (!payload.name || !String(payload.name).trim()) return badRequest(res, "Workout name is required");
-    const workout = await WorkoutLog.create({ ...payload, user: owner(req) });
+    const workout = shapeWorkout(await prisma.workoutLog.create({ data: { ...validateDoc("WorkoutLog", payload), user: owner(req) } }));
     return res.status(201).json({ success: true, workout, burn: await getDailyBurn(owner(req), workout.date) });
   } catch (error) { return handleError(res, error); }
 };
 
 const updateWorkout = async (req, res) => {
   try {
+    const id = requireId("WorkoutLog", req.params.id);
     const payload = await workoutPayload(req, req.body);
-    const workout = await WorkoutLog.findOneAndUpdate({ _id: req.params.id, user: owner(req) }, payload, { new: true, runValidators: true });
-    if (!workout) return res.status(404).json({ success: false, message: "Workout not found" });
+    const { count } = await prisma.workoutLog.updateMany({ where: { id, user: owner(req) }, data: validateDoc("WorkoutLog", payload, { partial: true }) });
+    if (!count) return res.status(404).json({ success: false, message: "Workout not found" });
+    const workout = shapeWorkout(await prisma.workoutLog.findUnique({ where: { id } }));
     return res.json({ success: true, workout });
   } catch (error) { return handleError(res, error); }
 };
 
 const deleteWorkout = async (req, res) => {
   try {
-    const workout = await WorkoutLog.findOneAndDelete({ _id: req.params.id, user: owner(req) });
-    if (!workout) return res.status(404).json({ success: false, message: "Workout not found" });
+    const { count } = await prisma.workoutLog.deleteMany({ where: { id: requireId("WorkoutLog", req.params.id), user: owner(req) } });
+    if (!count) return res.status(404).json({ success: false, message: "Workout not found" });
     return res.json({ success: true });
   } catch (error) { return handleError(res, error); }
 };
@@ -663,39 +895,35 @@ const progress = async (req, res) => {
       : "monthly";
     const days = { daily: 1, weekly: 7, monthly: 30, quarterly: 90 }[period];
     const since = startOfDay(new Date(Date.now() - (days - 1) * 86400000));
-    // Bucket by the server timezone so keys match startOfDay()-based habit and weight days.
-    const serverTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    // Bucket by the server timezone (dayKey) so keys match startOfDay()-based habit and weight days.
+    const bucketByDay = (rows, init, add) => {
+      const buckets = new Map();
+      rows.forEach((row) => {
+        const key = dayKey(row.date);
+        if (!buckets.has(key)) buckets.set(key, { _id: key, ...init() });
+        add(buckets.get(key), row);
+      });
+      return [...buckets.values()].sort((a, b) => (a._id < b._id ? -1 : a._id > b._id ? 1 : 0));
+    };
     const dayKeys = Array.from({ length: days }, (_, index) => dayKey(new Date(since.getTime() + index * 86400000 + 43200000)));
     const [rawProfile, workouts, habits, weights, meals] = await Promise.all([
-      FitnessProfile.findOne({ user: owner(req) }).lean(),
-      WorkoutLog.aggregate([
-        { $match: { user: owner(req), date: { $gte: since } } },
-        {
-          $group: {
-            _id: { $dateToString: { format: "%Y-%m-%d", date: "$date", timezone: serverTimezone } },
-            durationMin: { $sum: "$durationMin" },
-            caloriesBurned: { $sum: "$caloriesBurned" },
-            workouts: { $sum: 1 },
-          },
-        },
-        { $sort: { _id: 1 } },
-      ]),
-      FitnessDailyLog.find({ user: owner(req), date: { $gte: since } }).sort({ date: 1 }).select("date waterMl steps sleepHours").lean(),
-      WeightLog.find({ user: owner(req), date: { $gte: since } }).sort({ date: 1 }).lean(),
-      Meal.aggregate([
-        { $match: { user: owner(req), date: { $gte: since } } },
-        {
-          $group: {
-            _id: { $dateToString: { format: "%Y-%m-%d", date: "$date", timezone: serverTimezone } },
-            calories: { $sum: "$calories" },
-            proteinG: { $sum: "$proteinG" },
-            carbsG: { $sum: "$carbsG" },
-            fatG: { $sum: "$fatG" },
-            meals: { $sum: 1 },
-          },
-        },
-        { $sort: { _id: 1 } },
-      ]),
+      findProfile(owner(req)),
+      prisma.workoutLog.findMany({ where: { user: owner(req), date: { gte: since } }, select: { date: true, durationMin: true, caloriesBurned: true } })
+        .then((rows) => bucketByDay(rows, () => ({ durationMin: 0, caloriesBurned: 0, workouts: 0 }), (bucket, row) => {
+          bucket.durationMin += row.durationMin || 0;
+          bucket.caloriesBurned += row.caloriesBurned || 0;
+          bucket.workouts += 1;
+        })),
+      prisma.fitnessDailyLog.findMany({ where: { user: owner(req), date: { gte: since } }, orderBy: { date: "asc" }, select: { _id: true, date: true, waterMl: true, steps: true, sleepHours: true } }),
+      prisma.weightLog.findMany({ where: { user: owner(req), date: { gte: since } }, orderBy: { date: "asc" } }),
+      prisma.meal.findMany({ where: { user: owner(req), date: { gte: since } }, select: { date: true, calories: true, proteinG: true, carbsG: true, fatG: true } })
+        .then((rows) => bucketByDay(rows, () => ({ calories: 0, proteinG: 0, carbsG: 0, fatG: 0, meals: 0 }), (bucket, row) => {
+          bucket.calories += row.calories || 0;
+          bucket.proteinG += row.proteinG || 0;
+          bucket.carbsG += row.carbsG || 0;
+          bucket.fatG += row.fatG || 0;
+          bucket.meals += 1;
+        })),
     ]);
     const totalCalories = meals.reduce((sum, item) => sum + item.calories, 0);
     const profile = withTargets(rawProfile);
@@ -748,20 +976,23 @@ const progress = async (req, res) => {
   } catch (error) { return handleError(res, error); }
 };
 
+const todaysMealSummaries = (user) => prisma.meal.findMany({
+  where: { user, date: dayRange(new Date()) },
+  orderBy: { date: "desc" },
+  select: { id: true, name: true, mealType: true, calories: true, proteinG: true, carbsG: true, fatG: true, fiberG: true, date: true },
+});
+
 const coach = async (req, res) => {
   const question = String(req.body?.question || "").trim();
   if (!question || question.length > 500) return badRequest(res, "A question up to 500 characters is required");
   try {
     const [rawProfile, totals, meals, burn, daily, latestWeight] = await Promise.all([
-      FitnessProfile.findOne({ user: owner(req) }).lean(),
+      findProfile(owner(req)),
       getDailyTotals(owner(req), new Date()),
-      Meal.find({ user: owner(req), date: { $gte: startOfDay(new Date()), $lt: endOfDay(new Date()) } })
-        .sort({ date: -1 })
-        .select("name mealType calories proteinG carbsG fatG fiberG date")
-        .lean(),
+      todaysMealSummaries(owner(req)),
       getDailyBurn(owner(req), new Date()),
-      FitnessDailyLog.findOne({ user: owner(req), date: startOfDay(new Date()) }).lean(),
-      WeightLog.findOne({ user: owner(req) }).sort({ date: -1 }).lean(),
+      prisma.fitnessDailyLog.findUnique({ where: { user_date: { user: owner(req), date: startOfDay(new Date()) } } }),
+      latestWeightLog(owner(req)),
     ]);
     if (!rawProfile) return badRequest(res, "Complete your fitness profile first");
     const profile = withTargets(rawProfile);
@@ -837,12 +1068,9 @@ const recommendations = async (req, res) => {
     const themeIndex = [...refreshToken].reduce((sum, character) => sum + character.charCodeAt(0), 0) % themes.length;
     const varietyInstruction = themes[themeIndex];
     const [profile, totals, meals] = await Promise.all([
-      FitnessProfile.findOne({ user: owner(req) }).lean(),
+      findProfile(owner(req)),
       getDailyTotals(owner(req), new Date()),
-      Meal.find({ user: owner(req), date: { $gte: startOfDay(new Date()), $lt: endOfDay(new Date()) } })
-        .sort({ date: -1 })
-        .select("name mealType calories proteinG carbsG fatG fiberG date")
-        .lean(),
+      todaysMealSummaries(owner(req)),
     ]);
     if (!profile) return badRequest(res, "Complete your fitness profile first");
 
@@ -918,7 +1146,7 @@ const recommendations = async (req, res) => {
 };
 
 const listReminders = async (req, res) => {
-  try { return res.json({ success: true, reminders: await Reminder.find({ user: owner(req) }).sort({ time: 1 }).lean() }); }
+  try { return res.json({ success: true, reminders: (await prisma.reminder.findMany({ where: { user: owner(req) }, orderBy: { time: "asc" } })).map(shapeReminder) }); }
   catch (error) { return handleError(res, error); }
 };
 const createReminder = async (req, res) => {
@@ -926,11 +1154,13 @@ const createReminder = async (req, res) => {
     if (req.body.timezone !== undefined && !isValidTimezone(req.body.timezone)) {
       return badRequest(res, "Invalid timezone");
     }
-    const reminder = await Reminder.create({
-      ...pick(req.body, ["title", "type", "time", "days", "enabled", "message", "notificationId", "timezone"]),
-      user: owner(req),
-      autoGenerated: false,
-    });
+    const reminder = shapeReminder(await prisma.reminder.create({
+      data: {
+        ...validateDoc("Reminder", pick(req.body, ["title", "type", "time", "days", "enabled", "message", "notificationId", "timezone"])),
+        user: owner(req),
+        autoGenerated: false,
+      },
+    }));
     return res.status(201).json({ success: true, reminder });
   }
   catch (error) { return handleError(res, error); }
@@ -941,15 +1171,17 @@ const updateReminder = async (req, res) => {
     if (update.timezone !== undefined && !isValidTimezone(update.timezone)) {
       return badRequest(res, "Invalid timezone");
     }
-    const reminder = await Reminder.findOneAndUpdate({ _id: req.params.id, user: owner(req) }, update, { new: true, runValidators: true });
-    if (!reminder) return res.status(404).json({ success: false, message: "Reminder not found" });
+    const id = requireId("Reminder", req.params.id);
+    const { count } = await prisma.reminder.updateMany({ where: { id, user: owner(req) }, data: validateDoc("Reminder", update, { partial: true }) });
+    if (!count) return res.status(404).json({ success: false, message: "Reminder not found" });
+    const reminder = shapeReminder(await prisma.reminder.findUnique({ where: { id } }));
     return res.json({ success: true, reminder });
   } catch (error) { return handleError(res, error); }
 };
 const deleteReminder = async (req, res) => {
   try {
-    const reminder = await Reminder.findOneAndDelete({ _id: req.params.id, user: owner(req) });
-    if (!reminder) return res.status(404).json({ success: false, message: "Reminder not found" });
+    const { count } = await prisma.reminder.deleteMany({ where: { id: requireId("Reminder", req.params.id), user: owner(req) } });
+    if (!count) return res.status(404).json({ success: false, message: "Reminder not found" });
     return res.json({ success: true });
   } catch (error) { return handleError(res, error); }
 };
@@ -960,4 +1192,6 @@ module.exports = {
   listWeights, addWeight, deleteWeight, progress,
   getDaily, updateDaily, listWorkouts, createWorkout, updateWorkout, deleteWorkout,
   listReminders, createReminder, updateReminder, deleteReminder,
+  // Exposed for tests (replaces the Mongoose schema validators).
+  validateDoc,
 };

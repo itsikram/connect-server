@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const Admin = require('../models/Admin');
+const { prisma } = require('../utils/db');
 
 const SECRET_KEY = process.env.JWT_SECRET_KEY;
 
@@ -23,7 +23,10 @@ const isAdminAuth = async (req, res, next) => {
       return res.status(401).json({ message: 'Admin authentication required' });
     }
 
-    const admin = await Admin.findById(decoded.admin_id).select('-password');
+    const admin = await prisma.admin.findUnique({
+      where: { id: String(decoded.admin_id) },
+      omit: { password: true },
+    });
     if (!admin) {
       return res.status(401).json({ message: 'Admin account not found' });
     }

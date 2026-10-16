@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const Profile = require('../models/Profile');
+const { loadAuthProfile } = require('./isAuth');
 
 const SECRET_KEY = process.env.JWT_SECRET_KEY;
 
@@ -12,7 +12,7 @@ const optionalAuth = async (req, res, next) => {
         }
 
         const { user_id } = jwt.verify(token, SECRET_KEY);
-        const profileData = await Profile.findOne({ user: user_id }).populate('user');
+        const profileData = await loadAuthProfile(user_id);
         if (profileData) {
             req.profile = profileData;
         }

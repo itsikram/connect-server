@@ -1,4 +1,4 @@
-const TimerSession = require('../models/TimerSession');
+const { prisma } = require('../utils/db');
 
 // Get timer session for authenticated user
 exports.getTimerSession = async (req, res, next) => {
@@ -11,15 +11,13 @@ exports.getTimerSession = async (req, res, next) => {
             });
         }
 
-        let session = await TimerSession.findOne({ user: profileId });
+        let session = await prisma.timerSession.findFirst({ where: { user: String(profileId) } });
 
         if (!session) {
             // Create new session if doesn't exist
-            session = new TimerSession({
-                user: profileId,
-                completedSessions: 0
+            session = await prisma.timerSession.create({
+                data: { user: String(profileId), completedSessions: 0 }
             });
-            await session.save();
         }
 
         return res.status(200).json({
@@ -49,24 +47,23 @@ exports.updateTimerSession = async (req, res, next) => {
             });
         }
 
-        let session = await TimerSession.findOne({ user: profileId });
+        let session = await prisma.timerSession.findFirst({ where: { user: String(profileId) } });
 
         if (!session) {
-            session = new TimerSession({
-                user: profileId,
-                completedSessions: 0
+            session = await prisma.timerSession.create({
+                data: { user: String(profileId), completedSessions: 0 }
             });
         }
 
-        // Only increment for focus sessions
-        if (sessionType === 'focus') {
-            session.completedSessions += 1;
-        }
-
-        session.lastSessionType = sessionType || 'focus';
-        session.lastSessionDate = new Date();
-
-        const updatedSession = await session.save();
+        const updatedSession = await prisma.timerSession.update({
+            where: { id: session.id },
+            data: {
+                // Only increment for focus sessions
+                ...(sessionType === 'focus' ? { completedSessions: { increment: 1 } } : {}),
+                lastSessionType: sessionType || 'focus',
+                lastSessionDate: new Date()
+            }
+        });
 
         return res.status(200).json({
             success: true,

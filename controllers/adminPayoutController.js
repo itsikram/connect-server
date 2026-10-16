@@ -1,60 +1,89 @@
-const PayoutRequest = require("../models/PayoutRequest");
-const User = require("../models/User");
+const { prisma, populated, jsonArray, isValidId } = require("../utils/db");
 
 const statuses = new Set(["pending", "approved", "rejected"]);
 const adminId = (req) => String(req.admin?._id || "");
+const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 
 exports.listPayouts = async (req, res, next) => {
   const status = req.query.status || "pending";
   if (!statuses.has(status)) return res.status(400).json({ success: false, message: "Invalid payout status." });
   try {
-    const payouts = await PayoutRequest.find({ status }).sort({ createdAt: -1 })
-      .populate("userId", "firstName surname email username creatorEarningsCoins payoutReservedCoins").lean();
-    return res.json({ success: true, payouts });
+    const payouts = await prisma.payoutRequest.findMany({
+      where: { status },
+      orderBy: { createdAt: "desc" },
+      include: {
+        userIdDoc: {
+          select: {
+            id: true, firstName: true, surname: true, email: true, username: true,
+            creatorEarningsCoins: true, payoutReservedCoins: true,
+          },
+        },
+      },
+    });
+    return res.json({ success: true, payouts: populated(payouts, "userId") });
   } catch (error) { return next(error); }
 };
 
+// Moves a pending payout to `status` and adjusts the owner's coins in one transaction.
+async function review(req, status, userWhere, userData, extra = {}) {
+  if (!isValidId(req.params.id)) throw httpError(404, "Pending payout not found.");
+  return prisma.$transaction(async (tx) => {
+    const payout = await tx.payoutRequest.findFirst({ where: { id: req.params.id, status: "pending" } });
+    if (!payout) throw httpError(404, "Pending payout not found.");
+    const coins = await tx.user.updateMany({ where: userWhere(payout), data: userData(payout) });
+    if (!coins.count) throw httpError(409, "Reserved payout coins are unavailable.");
+    const reviewedAt = new Date();
+    const claimed = await tx.payoutRequest.updateMany({
+      where: { id: payout.id, status: "pending" },
+      data: {
+        status,
+        ...extra,
+        reviewedAt,
+        reviewedByAdminId: adminId(req),
+        auditLog: [...jsonArray(payout.auditLog), { action: status, adminId: adminId(req), timestamp: reviewedAt }],
+      },
+    });
+    if (!claimed.count) throw httpError(404, "Pending payout not found.");
+    return tx.payoutRequest.findUnique({ where: { id: payout.id } });
+  });
+}
+
+const sendError = (res, next, error) =>
+  error.statusCode ? res.status(error.statusCode).json({ success: false, message: error.message }) : next(error);
+
 exports.approvePayout = async (req, res, next) => {
   try {
-    const payout = await PayoutRequest.findOne({ _id: req.params.id, status: "pending" });
-    if (!payout) return res.status(404).json({ success: false, message: "Pending payout not found." });
-    const result = await User.updateOne(
-      {
-        _id: payout.userId,
-        payoutReservedCoins: { $gte: payout.amountCoins },
-        creatorEarningsCoins: { $gte: payout.amountCoins },
-      },
-      { $inc: { creatorEarningsCoins: -payout.amountCoins, payoutReservedCoins: -payout.amountCoins } },
+    const payout = await review(
+      req,
+      "approved",
+      (p) => ({
+        id: p.userId,
+        payoutReservedCoins: { gte: p.amountCoins },
+        creatorEarningsCoins: { gte: p.amountCoins },
+      }),
+      (p) => ({
+        creatorEarningsCoins: { decrement: p.amountCoins },
+        payoutReservedCoins: { decrement: p.amountCoins },
+      }),
     );
-    if (!result.modifiedCount) return res.status(409).json({ success: false, message: "Reserved payout coins are unavailable." });
-    const reviewedAt = new Date();
-    payout.status = "approved";
-    payout.reviewedAt = reviewedAt;
-    payout.reviewedByAdminId = adminId(req);
-    payout.auditLog.push({ action: "approved", adminId: adminId(req), timestamp: reviewedAt });
-    await payout.save();
     return res.json({ success: true, payout });
-  } catch (error) { return next(error); }
+  } catch (error) { return sendError(res, next, error); }
 };
 
 exports.rejectPayout = async (req, res, next) => {
   const reason = typeof req.body?.rejectionReason === "string" ? req.body.rejectionReason.trim() : "";
   if (!reason) return res.status(400).json({ success: false, message: "rejectionReason is required." });
   try {
-    const payout = await PayoutRequest.findOne({ _id: req.params.id, status: "pending" });
-    if (!payout) return res.status(404).json({ success: false, message: "Pending payout not found." });
-    const restored = await User.updateOne(
-      { _id: payout.userId, payoutReservedCoins: { $gte: payout.amountCoins } },
-      { $inc: { payoutReservedCoins: -payout.amountCoins, creatorEarningsCoins: payout.amountCoins } },
+    const payout = await review(
+      req,
+      "rejected",
+      (p) => ({ id: p.userId, payoutReservedCoins: { gte: p.amountCoins } }),
+      (p) => ({
+        payoutReservedCoins: { decrement: p.amountCoins },
+        creatorEarningsCoins: { increment: p.amountCoins },
+      }),
+      { rejectionReason: reason },
     );
-    if (!restored.modifiedCount) return res.status(409).json({ success: false, message: "Reserved payout coins are unavailable." });
-    const reviewedAt = new Date();
-    payout.status = "rejected";
-    payout.rejectionReason = reason;
-    payout.reviewedAt = reviewedAt;
-    payout.reviewedByAdminId = adminId(req);
-    payout.auditLog.push({ action: "rejected", adminId: adminId(req), timestamp: reviewedAt });
-    await payout.save();
     return res.json({ success: true, payout });
-  } catch (error) { return next(error); }
+  } catch (error) { return sendError(res, next, error); }
 };

@@ -1,4 +1,4 @@
-const MonetizationSettings = require("../models/MonetizationSettings");
+const { prisma } = require("../utils/db");
 const {
   DEFAULT_FEATURE_FLAGS,
   FEATURE_FLAG_NAMES,
@@ -25,7 +25,7 @@ const settingsDefaults = () => ({
 });
 
 const serialize = (settings) => {
-  const raw = settings?.toObject ? settings.toObject() : settings;
+  const raw = settings;
   const defaults = settingsDefaults();
   const rawFlags = raw?.featureFlags instanceof Map
     ? Object.fromEntries(raw.featureFlags.entries())
@@ -43,11 +43,11 @@ const serialize = (settings) => {
 };
 
 const getOrCreate = async () =>
-  MonetizationSettings.findOneAndUpdate(
-    { singletonKey: "default" },
-    { $setOnInsert: settingsDefaults() },
-    { new: true, upsert: true, setDefaultsOnInsert: true },
-  );
+  prisma.monetizationSettings.upsert({
+    where: { singletonKey: "default" },
+    create: settingsDefaults(),
+    update: {},
+  });
 
 const validatePayload = (payload) => {
   const flags = payload.featureFlags;
@@ -142,11 +142,10 @@ const updateMonetizationSettings = async (req, res, next) => {
       payout: nextSettings.payout,
       updatedByAdminId: nextSettings.updatedByAdminId,
     };
-    const saved = await MonetizationSettings.findOneAndUpdate(
-      { singletonKey: "default" },
-      { $set: settingsToSave },
-      { new: true, runValidators: true },
-    );
+    const saved = await prisma.monetizationSettings.update({
+      where: { singletonKey: "default" },
+      data: settingsToSave,
+    });
     return res.json({ success: true, settings: serialize(saved) });
   } catch (error) {
     return next(error);
@@ -155,7 +154,7 @@ const updateMonetizationSettings = async (req, res, next) => {
 
 const getPublicMonetizationConfig = async (_req, res) => {
   try {
-    const settings = await MonetizationSettings.findOne({ singletonKey: "default" }).lean();
+    const settings = await prisma.monetizationSettings.findUnique({ where: { singletonKey: "default" } });
     const serialized = serialize(settings);
     return res.json({
       featureFlags: serialized.featureFlags,

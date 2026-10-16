@@ -1,4 +1,22 @@
-const Task = require("../models/Task");
+const { prisma } = require("./db");
+
+const CHECKPOINT_KEYS = new Set(["before30", "before15", "atTime"]);
+
+// Atomically flips notificationSent.<key> to true; true when this call claimed it.
+async function claimCheckpoint(task, key) {
+  if (!CHECKPOINT_KEYS.has(key)) return false;
+  const path = `$.${key}`;
+  const count = await prisma.$executeRawUnsafe(
+    "UPDATE `tasks` SET `notificationSent` = JSON_SET(COALESCE(`notificationSent`, JSON_OBJECT()), ?, true), `updatedAt` = NOW(3) " +
+      "WHERE `id` = ? AND `completed` = 0 AND `taskTime` = ? " +
+      "AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(`notificationSent`, ?)), 'false') <> 'true'",
+    path,
+    task.id,
+    task.taskTime,
+    path,
+  );
+  return count > 0;
+}
 const { sendPushToProfile } = require("./pushNotifications");
 const { sendWebPushToProfile } = require("./webPush");
 
@@ -23,13 +41,25 @@ async function runTaskReminderTick(now = new Date()) {
   if (isRunning) return;
   isRunning = true;
   try {
-    const candidates = await Task.find({
-      completed: false,
-      $or: [
-        { taskTime: { $type: "date" } },
-        { reminderTime: { $type: "string" }, reminderTimezone: { $type: "string" } },
-      ],
-    }).select("_id user text taskTime notificationSent reminderTime reminderTimezone lastReminderDate");
+    const candidates = await prisma.task.findMany({
+      where: {
+        completed: false,
+        OR: [
+          { taskTime: { not: null } },
+          { reminderTime: { not: null }, reminderTimezone: { not: null } },
+        ],
+      },
+      select: {
+        id: true,
+        user: true,
+        text: true,
+        taskTime: true,
+        notificationSent: true,
+        reminderTime: true,
+        reminderTimezone: true,
+        lastReminderDate: true,
+      },
+    });
 
     for (const task of candidates) {
       if (task.taskTime) {
@@ -47,18 +77,14 @@ async function runTaskReminderTick(now = new Date()) {
               ? elapsedMs >= -15 * 60 * 1000 && elapsedMs < 0
               : elapsedMs >= 0;
           if (!isDue || task.notificationSent?.[checkpoint.key]) continue;
-          const claimed = await Task.findOneAndUpdate(
-            { _id: task._id, completed: false, taskTime: task.taskTime, [`notificationSent.${checkpoint.key}`]: { $ne: true } },
-            { $set: { [`notificationSent.${checkpoint.key}`]: true } },
-            { new: true },
-          );
+          const claimed = await claimCheckpoint(task, checkpoint.key);
           if (!claimed) continue;
           const payload = {
             title: checkpoint.title,
             body: checkpoint.body,
-            data: { type: "task_reminder", taskId: String(task._id), checkpoint: checkpoint.key },
+            data: { type: "task_reminder", taskId: String(task.id), checkpoint: checkpoint.key },
             link: "/tasks",
-            tag: `task-reminder-${task._id}-${checkpoint.key}`,
+            tag: `task-reminder-${task.id}-${checkpoint.key}`,
           };
           await Promise.all([sendPushToProfile(task.user, payload), sendWebPushToProfile(task.user, payload)]);
         }
@@ -75,25 +101,24 @@ async function runTaskReminderTick(now = new Date()) {
       const localTime = `${local.hour}:${local.minute}`;
       if (task.reminderTime !== localTime || task.lastReminderDate === localDate) continue;
 
-      const claimed = await Task.findOneAndUpdate(
-        {
-          _id: task._id,
+      const { count: claimed } = await prisma.task.updateMany({
+        where: {
+          id: task.id,
           completed: false,
           reminderTime: task.reminderTime,
           reminderTimezone: task.reminderTimezone,
-          lastReminderDate: { $ne: localDate },
+          OR: [{ lastReminderDate: null }, { lastReminderDate: { not: localDate } }],
         },
-        { $set: { lastReminderDate: localDate } },
-        { new: true },
-      );
+        data: { lastReminderDate: localDate },
+      });
       if (!claimed) continue;
 
       const payload = {
         title: "Task reminder",
         body: `Reminder: ${task.text}`,
-        data: { type: "task_reminder", taskId: String(task._id) },
+        data: { type: "task_reminder", taskId: String(task.id) },
         link: "/tasks",
-        tag: `task-reminder-${task._id}`,
+        tag: `task-reminder-${task.id}`,
       };
       await Promise.all([
         sendPushToProfile(task.user, payload),

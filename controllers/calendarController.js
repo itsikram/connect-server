@@ -1,4 +1,7 @@
-const CalendarEvent = require('../models/CalendarEvent');
+const { prisma } = require('../utils/db');
+
+const findOwnEvent = (id, profileId) =>
+    prisma.calendarEvent.findFirst({ where: { id: String(id), user: String(profileId) } });
 
 // Get all events for authenticated user
 exports.getAllEvents = async (req, res, next) => {
@@ -11,8 +14,10 @@ exports.getAllEvents = async (req, res, next) => {
             });
         }
 
-        const events = await CalendarEvent.find({ user: profileId })
-            .sort({ date: 1, time: 1 });
+        const events = await prisma.calendarEvent.findMany({
+            where: { user: String(profileId) },
+            orderBy: [{ date: 'asc' }, { time: 'asc' }]
+        });
 
         return res.status(200).json({
             success: true,
@@ -53,10 +58,13 @@ exports.getEventsByDate = async (req, res, next) => {
         const endDate = new Date(date);
         endDate.setHours(23, 59, 59, 999);
 
-        const events = await CalendarEvent.find({
-            user: profileId,
-            date: { $gte: startDate, $lte: endDate }
-        }).sort({ time: 1 });
+        const events = await prisma.calendarEvent.findMany({
+            where: {
+                user: String(profileId),
+                date: { gte: startDate, lte: endDate }
+            },
+            orderBy: { time: 'asc' }
+        });
 
         return res.status(200).json({
             success: true,
@@ -99,14 +107,14 @@ exports.createEvent = async (req, res, next) => {
             });
         }
 
-        const event = new CalendarEvent({
-            user: profileId,
-            title: title.trim(),
-            date: new Date(date),
-            time: time || ''
+        const savedEvent = await prisma.calendarEvent.create({
+            data: {
+                user: String(profileId),
+                title: title.trim(),
+                date: new Date(date),
+                time: time || ''
+            }
         });
-
-        const savedEvent = await event.save();
 
         return res.status(201).json({
             success: true,
@@ -137,7 +145,7 @@ exports.updateEvent = async (req, res, next) => {
             });
         }
 
-        const event = await CalendarEvent.findOne({ _id: id, user: profileId });
+        const event = await findOwnEvent(id, profileId);
 
         if (!event) {
             return res.status(404).json({
@@ -156,7 +164,10 @@ exports.updateEvent = async (req, res, next) => {
             event.time = time;
         }
 
-        const updatedEvent = await event.save();
+        const updatedEvent = await prisma.calendarEvent.update({
+            where: { id: event.id },
+            data: { title: event.title, date: event.date, time: event.time }
+        });
 
         return res.status(200).json({
             success: true,
@@ -186,7 +197,7 @@ exports.deleteEvent = async (req, res, next) => {
             });
         }
 
-        const event = await CalendarEvent.findOne({ _id: id, user: profileId });
+        const event = await findOwnEvent(id, profileId);
 
         if (!event) {
             return res.status(404).json({
@@ -195,7 +206,7 @@ exports.deleteEvent = async (req, res, next) => {
             });
         }
 
-        await CalendarEvent.deleteOne({ _id: id, user: profileId });
+        await prisma.calendarEvent.delete({ where: { id: event.id } });
 
         return res.status(200).json({
             success: true,

@@ -1,4 +1,4 @@
-const Reminder = require("../models/Reminder");
+const { prisma } = require("./db");
 const { sendPushToProfile } = require("./pushNotifications");
 
 const INTERVAL_MS = 60 * 1000;
@@ -28,9 +28,10 @@ async function runFitnessReminderTick() {
   isRunning = true;
   try {
     const now = new Date();
-    const reminders = await Reminder.find({ enabled: true })
-      .select("_id user title message time days timezone lastNotifiedAt")
-      .lean();
+    const reminders = await prisma.reminder.findMany({
+      where: { enabled: true },
+      select: { id: true, user: true, title: true, message: true, time: true, days: true, timezone: true, lastNotifiedAt: true },
+    });
 
     for (const reminder of reminders) {
       let local;
@@ -42,25 +43,24 @@ async function runFitnessReminderTick() {
       }
       const day = weekdayNumber[local.weekday];
       const time = `${local.hour}:${local.minute}`;
-      if (reminder.time !== time || !(reminder.days || [0, 1, 2, 3, 4, 5, 6]).includes(day)) continue;
+      if (reminder.time !== time || !(Array.isArray(reminder.days) ? reminder.days : [0, 1, 2, 3, 4, 5, 6]).includes(day)) continue;
       // Use the user's local date/time as the idempotency slot. This avoids
       // duplicate sends while allowing reminders in different timezones.
       const slot = new Date(`${local.year}-${local.month}-${local.day}T${time}:00.000Z`);
       if (reminder.lastNotifiedAt && reminder.lastNotifiedAt >= slot) continue;
-      const claimed = await Reminder.findOneAndUpdate(
-        {
-          _id: reminder._id,
-          $or: [{ lastNotifiedAt: null }, { lastNotifiedAt: { $lt: slot } }],
+      const { count: claimed } = await prisma.reminder.updateMany({
+        where: {
+          id: reminder.id,
+          OR: [{ lastNotifiedAt: null }, { lastNotifiedAt: { lt: slot } }],
         },
-        { $set: { lastNotifiedAt: slot } },
-        { new: true },
-      );
+        data: { lastNotifiedAt: slot },
+      });
       if (!claimed) continue;
 
       await sendPushToProfile(reminder.user, {
         title: reminder.title || "Fitness reminder",
         body: reminder.message || `Time to log ${reminder.title || "your fitness activity"}.`,
-        data: { type: "fitness_reminder", reminderId: String(reminder._id) },
+        data: { type: "fitness_reminder", reminderId: String(reminder.id) },
       });
     }
   } catch (error) {

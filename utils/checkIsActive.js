@@ -1,26 +1,28 @@
-const Profile = require('../models/Profile')
-const User = require('../models/User')
-const mongoose = require('mongoose')
+const { prisma, isValidId } = require('./db')
+
 module.exports = async (profileId, userId = null) => {
     let isActive = false
 
-    let profile;
     let userLastLogin;
 
-
-    if (mongoose.isValidObjectId(userId)) {
-
-        let user = await User.findById(userId);
+    if (isValidId(userId)) {
+        let user = await prisma.user.findUnique({
+            where: { id: String(userId) },
+            select: { id: true, lastLogin: true },
+        });
 
         if (user?.lastLogin) {
             userLastLogin = user.lastLogin;
         }
 
-    } else if (mongoose.isValidObjectId(profileId)) {
-        profile = await Profile.findById(profileId).populate('user');
+    } else if (isValidId(profileId)) {
+        const profile = await prisma.profile.findUnique({
+            where: { id: String(profileId) },
+            select: { id: true, userDoc: { select: { id: true, lastLogin: true } } },
+        });
 
-        if (profile?.user?.lastLogin) {
-            userLastLogin = profile.user.lastLogin;
+        if (profile?.userDoc?.lastLogin) {
+            userLastLogin = profile.userDoc.lastLogin;
         }
     }
 

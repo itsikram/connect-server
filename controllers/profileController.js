@@ -1,8 +1,12 @@
-const Profile = require("../models/Profile");
-const Post = require("../models/Post");
-const Story = require("../models/Story");
-const mongoose = require("mongoose");
-const User = require("../models/User");
+const { prisma, isValidId } = require("../utils/db");
+const {
+  USER_PUBLIC_SELECT,
+  USER_OWN_SELECT,
+  GRAPH_INCLUDE,
+  shapeProfile,
+  findProfileWithGraph,
+  graphIds,
+} = require("../utils/profileGraph");
 const { asId, listHasId } = require("../utils/ids");
 const { saveNotification } = require("./notificationController");
 const { sendPushToProfile } = require("../utils/pushNotifications");
@@ -10,14 +14,53 @@ const { deleteCloudinaryResources } = require("../utils/cloudinaryCleanup");
 
 const MONGO_ID_RE = /^[a-fA-F0-9]{24}$/;
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
-const PROFILE_PRIVATE_EXCLUDE =
-  "-deviceTokens -browserIds -webPushSubscriptions";
-const CONNECT_PUBLIC_FIELDS =
-  "_id fullName displayName username nickname profilePic bio isOfficial isVerified isActive lastActive lastLocation user";
-const USER_PUBLIC_FIELDS = "firstName surname";
-const USER_OWN_FIELDS = "firstName surname email faceLoginEnabled";
-const LITE_PROFILE_FIELDS =
-  "_id fullName displayName username nickname profilePic coverPic bio isOfficial isVerified isActive lastActive lastLocation blockedUsers connects connectReqs following followers appMenuOrder user";
+const LITE_PROFILE_SELECT = {
+  id: true,
+  fullName: true,
+  displayName: true,
+  username: true,
+  nickname: true,
+  profilePic: true,
+  coverPic: true,
+  bio: true,
+  isOfficial: true,
+  isVerified: true,
+  isActive: true,
+  lastActive: true,
+  lastLocation: true,
+  appMenuOrder: true,
+  user: true,
+  ...GRAPH_INCLUDE,
+};
+
+// Profile with `user` populated (own fields) and graph arrays, as returned by
+// the old findByIdAndUpdate(..., { new: true }).populate("user").
+const loadOwnProfile = (profileId) =>
+  findProfileWithGraph({ id: String(profileId) }, { userSelect: USER_OWN_SELECT });
+
+// Plain profile with graph arrays, as returned by an unpopulated findByIdAndUpdate.
+const loadPlainProfile = async (profileId) =>
+  shapeProfile(
+    await prisma.profile.findUnique({
+      where: { id: String(profileId) },
+      include: GRAPH_INCLUDE,
+    }),
+  );
+
+// Keep only real Profile columns from a client payload (Mongoose ignored the rest).
+const { Prisma } = require("@prisma/client");
+const PROFILE_WRITABLE = new Set(
+  Object.keys(Prisma.ProfileScalarFieldEnum).filter(
+    (key) => !["id", "user", "createdAt", "updatedAt", "isOfficial", "isVerified"].includes(key),
+  ),
+);
+const profileData = (body = {}) => {
+  const data = {};
+  for (const [key, value] of Object.entries(body || {})) {
+    if (PROFILE_WRITABLE.has(key) && value !== undefined) data[key] = value;
+  }
+  return data;
+};
 
 const isMongoId = (value) => MONGO_ID_RE.test(String(value || ""));
 
@@ -44,35 +87,23 @@ const loadProfileDocument = async (
 ) => {
   if (!profileId) return null;
 
-  const query = isMongoId(profileId)
-    ? { _id: profileId }
-    : { username: profileId };
+  const where = isMongoId(profileId)
+    ? { id: String(profileId) }
+    : { username: String(profileId) };
 
-  const findQuery = Profile.findOne(query);
-  const userFields = includePrivateUserFields
-    ? USER_OWN_FIELDS
-    : USER_PUBLIC_FIELDS;
+  const userSelect = includePrivateUserFields
+    ? USER_OWN_SELECT
+    : USER_PUBLIC_SELECT;
 
   if (lite) {
-    findQuery.select(LITE_PROFILE_FIELDS).populate({
-      path: "user",
-      select: userFields,
+    const row = await prisma.profile.findFirst({
+      where,
+      select: { ...LITE_PROFILE_SELECT, userDoc: { select: userSelect } },
     });
-  } else {
-    findQuery
-      .select(PROFILE_PRIVATE_EXCLUDE)
-      .populate({
-        path: "connects",
-        select: CONNECT_PUBLIC_FIELDS,
-        populate: { path: "user", select: USER_PUBLIC_FIELDS },
-      })
-      .populate({
-        path: "user",
-        select: userFields,
-      });
+    return shapeProfile(row);
   }
 
-  return findQuery;
+  return findProfileWithGraph(where, { userSelect, populateConnects: true });
 };
 
 exports.prefileHasStory = async function (req, res, next) {
@@ -85,10 +116,13 @@ exports.prefileHasStory = async function (req, res, next) {
       return res.status(400).json({ message: "profileId is required", hasStory: "no" });
     }
     
-    if (mongoose.isValidObjectId(profileId)) {
-      let hasStory = await Story.exists({
-        author: profileId,
-        createdAt: { $gte: twentyFourHoursAgo },
+    if (isValidId(profileId)) {
+      let hasStory = await prisma.story.findFirst({
+        where: {
+          author: String(profileId),
+          createdAt: { gte: twentyFourHoursAgo },
+        },
+        select: { id: true },
       });
       if (hasStory == null) {
         return res.status(200).json({ message: "Story Not Available", hasStory: "no" });
@@ -106,12 +140,14 @@ exports.prefileHasStory = async function (req, res, next) {
 exports.getProfileImages = async function (req, res, next) {
   let { profileId } = req.query;
   try {
-    if (!mongoose.isValidObjectId(profileId)) return;
-    let profileImages = await Post.find({
-      author: profileId,
-      photos: {
-        $ne: "null",
+    if (!isValidId(profileId)) return;
+    // Mongo's { $ne: "null" } also matched documents without photos.
+    let profileImages = await prisma.post.findMany({
+      where: {
+        author: String(profileId),
+        OR: [{ photos: null }, { photos: { not: "null" } }],
       },
+      orderBy: { id: "asc" },
     });
 
     if (profileImages) {
@@ -178,13 +214,14 @@ exports.updateCoverPost = async (req, res, next) => {
   let profileId = req.body.profile;
   let coverPicUrl = req.body.coverPicUrl;
   try {
-  const previous = await Profile.findById(profileId).select('coverPic')
-  let updateProfile = await Profile.findOneAndUpdate(
-      { _id: profileId },
-      {
-        coverPic: coverPicUrl,
-      },
-    );
+  const previous = isValidId(profileId)
+    ? await prisma.profile.findUnique({ where: { id: String(profileId) }, select: { id: true, coverPic: true } })
+    : null
+  // findOneAndUpdate without { new: true } answered with the document before the update.
+  let updateProfile = previous ? await loadPlainProfile(profileId) : null;
+  if (previous) {
+    await prisma.profile.update({ where: { id: previous.id }, data: { coverPic: coverPicUrl } });
+  }
     if (previous?.coverPic && previous.coverPic !== coverPicUrl) {
       await deleteCloudinaryResources([previous.coverPic]);
     }
@@ -201,22 +238,20 @@ exports.updateProfilePic = async (req, res, next) => {
   let type = req.body.type || "post";
 
   try {
-    let post = new Post({
-      type,
-      caption,
-      photos: profilePicUrl,
-      author: profileId,
+    let savedPost = await prisma.post.create({
+      data: {
+        type,
+        caption,
+        photos: profilePicUrl,
+        author: String(profileId),
+      },
     });
 
-    let savedPost = await post.save();
-
-    let updatedProfile = await Profile.findByIdAndUpdate(
-      { _id: profileId },
-      {
-        profilePic: profilePicUrl,
-      },
-      { new: true },
-    );
+    await prisma.profile.update({
+      where: { id: String(profileId) },
+      data: { profilePic: profilePicUrl },
+    });
+    let updatedProfile = await loadPlainProfile(profileId);
 
     if (savedPost && updatedProfile) {
       return res.json(updatedProfile);
@@ -229,15 +264,11 @@ exports.updateProfilePic = async (req, res, next) => {
 exports.updateBioPost = async (req, res, next) => {
   try {
     let bio = req.body.bio;
-    let updateProfile = await Profile.findByIdAndUpdate(
-      {
-        _id: req.profile._id,
-      },
-      {
-        bio,
-      },
-      { new: true },
-    );
+    await prisma.profile.update({
+      where: { id: String(req.profile._id) },
+      data: { bio },
+    });
+    let updateProfile = await loadPlainProfile(req.profile._id);
 
     if (updateProfile) {
       res.json(updateProfile);
@@ -265,25 +296,20 @@ exports.updateProfile = async (req, res, next) => {
     if (req.body.firstName && req.body.surname) {
       reqData.fullName = req.body.firstName + " " + req.body.surname;
 
-      let updatedUser = await User.findOneAndUpdate(
-        { _id: req.profile.user },
-        {
+      await prisma.user.updateMany({
+        where: { id: String(asId(req.profile.user) || req.profile.user) },
+        data: {
           firstName: req.body.firstName,
           surname: req.body.surname,
         },
-        { new: true },
-      );
+      });
     }
 
-    let updateProfile = await Profile.findByIdAndUpdate(
-      {
-        _id: req.profile._id,
-      },
-      {
-        ...reqData,
-      },
-      { new: true },
-    ).populate({ path: "user", select: USER_OWN_FIELDS });
+    await prisma.profile.update({
+      where: { id: String(req.profile._id) },
+      data: profileData(reqData),
+    });
+    let updateProfile = await loadOwnProfile(req.profile._id);
 
     if (updateProfile) {
       res.json(updateProfile);
@@ -303,11 +329,11 @@ exports.updateBanglaName = async (req, res, next) => {
       return res.status(400).json({ message: "Bengali name cannot be empty" });
     }
 
-    const updatedProfile = await Profile.findByIdAndUpdate(
-      { _id: profileId },
-      { banglaName: banglaName.trim() },
-      { new: true },
-    ).populate({ path: "user", select: USER_OWN_FIELDS });
+    const exists = await prisma.profile.updateMany({
+      where: { id: String(profileId) },
+      data: { banglaName: banglaName.trim() },
+    });
+    const updatedProfile = exists.count ? await loadOwnProfile(profileId) : null;
 
     if (updatedProfile) {
       return res.status(200).json({
@@ -353,9 +379,8 @@ exports.getNearbyProfiles = async (req, res, next) => {
     let userConnects = [];
     if (profileId) {
       try {
-        const currentUser = await Profile.findById(profileId).select("connects");
-        if (currentUser && currentUser.connects) {
-          userConnects = currentUser.connects.map((fid) => String(fid));
+        if (isValidId(profileId)) {
+          userConnects = (await graphIds.connects(profileId)).map((fid) => String(fid));
         }
       } catch (err) {
         console.warn("Error fetching current user connects:", err);
@@ -363,10 +388,17 @@ exports.getNearbyProfiles = async (req, res, next) => {
     }
 
     // Find all profiles with valid locations
-    const allProfiles = await Profile.find({
-      "lastLocation.latitude": { $exists: true, $ne: null, $ne: 0 },
-      "lastLocation.longitude": { $exists: true, $ne: null, $ne: 0 },
-    }).select("_id fullName displayName profilePic username bio lastLocation");
+    // lastLocation is a Json column: load the rows that have one and keep
+    // those with non-zero numeric coordinates.
+    const allProfiles = (
+      await prisma.profile.findMany({
+        where: { lastLocation: { not: Prisma.AnyNull } },
+        select: { id: true, fullName: true, displayName: true, profilePic: true, username: true, bio: true, lastLocation: true },
+      })
+    ).filter((p) => {
+      const loc = p.lastLocation;
+      return loc && loc.latitude != null && loc.latitude !== 0 && loc.longitude != null && loc.longitude !== 0;
+    });
 
     // Calculate distance for each profile and filter by radius
     const nearbyProfiles = [];
@@ -459,9 +491,10 @@ exports.getOnlineStatus = async (req, res, next) => {
       return res.status(400).json({ isActive: false, lastSeen: null, statuses: {} });
     }
 
-    const profiles = await Profile.find({ _id: { $in: uniqueIds } })
-      .select("_id isActive lastActive")
-      .lean();
+    const profiles = await prisma.profile.findMany({
+      where: { id: { in: uniqueIds } },
+      select: { id: true, isActive: true, lastActive: true },
+    });
 
     const statuses = {};
     profiles.forEach((profile) => {
@@ -671,20 +704,22 @@ exports.followProfile = async (req, res, next) => {
       return res.status(400).json({ message: "Cannot follow yourself" });
     }
 
-    const target = await Profile.findById(targetId).select("_id fullName");
+    const target = await prisma.profile.findUnique({ where: { id: targetId }, select: { id: true, fullName: true } });
     if (!target) return res.status(404).json({ message: "Profile not found" });
 
-    const me = await Profile.findByIdAndUpdate(
-      myId,
-      { $addToSet: { following: targetId } },
-      { new: true },
-    ).select("following fullName profilePic");
+    const me = await prisma.profile.findUnique({
+      where: { id: myId },
+      select: { id: true, fullName: true, profilePic: true },
+    });
 
     if (!me) return res.status(401).json({ message: "Unauthorized" });
 
-    await Profile.findByIdAndUpdate(targetId, {
-      $addToSet: { followers: myId },
+    // One Follow row replaces both following/followers $addToSet writes.
+    await prisma.follow.createMany({
+      data: [{ follower: myId, following: targetId }],
+      skipDuplicates: true,
     });
+    me.following = await graphIds.following(myId);
 
     const io = req.app.get("io");
     if (io && typeof io.to === "function") {
@@ -723,15 +758,9 @@ exports.unfollowProfile = async (req, res, next) => {
     if (!myId) return res.status(401).json({ message: "Unauthorized" });
     if (!targetId) return res.status(400).json({ message: "Invalid profile id" });
 
-    const me = await Profile.findByIdAndUpdate(
-      myId,
-      { $pull: { following: targetId } },
-      { new: true },
-    ).select("following");
-
-    await Profile.findByIdAndUpdate(targetId, {
-      $pull: { followers: myId },
-    });
+    await prisma.follow.deleteMany({ where: { follower: myId, following: targetId } });
+    const meExists = await prisma.profile.findUnique({ where: { id: myId }, select: { id: true } });
+    const me = meExists ? { following: await graphIds.following(myId) } : null;
 
     return res.status(200).json({
       following: false,
@@ -749,7 +778,9 @@ exports.getFollowStatus = async (req, res, next) => {
     if (!myId) return res.status(401).json({ message: "Unauthorized" });
     if (!targetId) return res.status(400).json({ message: "Invalid profile id" });
 
-    const me = await Profile.findById(myId).select("following");
+    const meExists = await prisma.profile.findUnique({ where: { id: myId }, select: { id: true } });
+    const me = meExists ? { following: await graphIds.following(myId) } : null;
+
     return res.status(200).json({
       following: listHasId(me?.following, targetId),
       followingIds: me?.following || [],

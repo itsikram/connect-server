@@ -1,5 +1,4 @@
-const AIAutoPostConfig = require("../models/AIAutoPostConfig");
-const AIGeneratedPost = require("../models/AIGeneratedPost");
+const { prisma } = require("./db");
 const { getConfig, generateAutoPost } = require("../services/aiAutoPostService");
 
 let interval = null;
@@ -31,14 +30,13 @@ const startAiAutoPostWorker = () => {
       }
       if (!config.schedule.includes(hhmm)) return;
       const windowStart = new Date(Math.floor(Date.now() / 60000) * 60000);
-      const claimed = await AIAutoPostConfig.findOneAndUpdate(
-        { singletonKey: "default", lastRunAt: { $ne: windowStart } },
-        { $set: { lastRunAt: windowStart } },
-        { new: true },
-      );
-      if (!claimed) return;
+      const claimed = await prisma.aIAutoPostConfig.updateMany({
+        where: { singletonKey: "default", OR: [{ lastRunAt: null }, { lastRunAt: { not: windowStart } }] },
+        data: { lastRunAt: windowStart },
+      });
+      if (!claimed.count) return;
       const today = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const count = await AIGeneratedPost.countDocuments({ generatedAt: { $gte: today }, status: { $ne: "failed" } });
+      const count = await prisma.aIGeneratedPost.count({ where: { generatedAt: { gte: today }, status: { not: "failed" } } });
       if (count >= config.postsPerDay) return;
       await generateAutoPost({ config, publish: config.autoPublish });
     } catch (error) {

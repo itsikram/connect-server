@@ -1,14 +1,24 @@
-const User = require("../models/User");
+const { prisma, toId } = require("../utils/db");
 const DAILY_REWARD_COINS = 10;
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
 
 exports.getWallet = async (req, res, next) => {
   try {
-    const userId = req.profile?.user?._id || req.profile?.user || req.profile?._id;
-    const user = await User.findById(userId).select(
-      "walletBalanceCoins creatorEarningsCoins payoutReservedCoins subscriptionStatus subscriptionTier subscriptionExpiresAt lastDailyCoinRewardDate",
-    );
+    const userId = toId(req.profile?.user?._id || req.profile?.user || req.profile?._id);
+    const user = userId ? await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        walletBalanceCoins: true,
+        creatorEarningsCoins: true,
+        payoutReservedCoins: true,
+        subscriptionStatus: true,
+        subscriptionTier: true,
+        subscriptionExpiresAt: true,
+        lastDailyCoinRewardDate: true,
+      },
+    }) : null;
 
     if (!user) {
       return res.status(404).json({ message: "Wallet owner not found" });
@@ -18,10 +28,10 @@ exports.getWallet = async (req, res, next) => {
       user.subscriptionExpiresAt &&
       user.subscriptionExpiresAt <= new Date();
     if (hasExpired) {
-      await User.updateOne(
-        { _id: user._id, subscriptionStatus: "active" },
-        { $set: { subscriptionStatus: "expired", subscriptionTier: "none" } },
-      );
+      await prisma.user.updateMany({
+        where: { id: user.id, subscriptionStatus: "active" },
+        data: { subscriptionStatus: "expired", subscriptionTier: "none" },
+      });
     }
 
     const connectPlusActive = !hasExpired &&
@@ -50,24 +60,23 @@ exports.getWallet = async (req, res, next) => {
 
 exports.claimDailyReward = async (req, res, next) => {
   try {
-    const userId = req.profile?.user?._id || req.profile?.user || req.profile?._id;
+    const userId = toId(req.profile?.user?._id || req.profile?.user || req.profile?._id);
     const rewardDate = todayKey();
-    const result = await User.updateOne(
-      {
-        _id: userId,
-        $or: [
-          { lastDailyCoinRewardDate: { $exists: false } },
+    const result = await prisma.user.updateMany({
+      where: {
+        id: userId,
+        OR: [
           { lastDailyCoinRewardDate: null },
-          { lastDailyCoinRewardDate: { $ne: rewardDate } },
+          { lastDailyCoinRewardDate: { not: rewardDate } },
         ],
       },
-      {
-        $inc: { walletBalanceCoins: DAILY_REWARD_COINS },
-        $set: { lastDailyCoinRewardDate: rewardDate },
+      data: {
+        walletBalanceCoins: { increment: DAILY_REWARD_COINS },
+        lastDailyCoinRewardDate: rewardDate,
       },
-    );
+    });
 
-    if (!result.modifiedCount) {
+    if (!result.count) {
       return res.status(409).json({
         success: false,
         message: "Daily coin reward has already been claimed",

@@ -1,8 +1,32 @@
-const { mongoose } = require('mongoose');
-const Profile = require('../models/Profile');
-const Notification = require('../models/Notification');
+const { prisma, isValidId, jsonArray } = require('../utils/db');
 const config = require('../config/config.json');
 const { getVapidPublicKey, isWebPushReady, sendWebPushToProfile } = require('../utils/webPush');
+
+// Profile.browserIds / webPushSubscriptions are Json arrays: load, change, write back.
+async function loadProfile(profileId) {
+    if (!isValidId(profileId)) return null;
+    const row = await prisma.profile.findUnique({
+        where: { id: String(profileId) },
+        select: { id: true, _id: true, browserIds: true, webPushSubscriptions: true },
+    });
+    return row && {
+        ...row,
+        browserIds: jsonArray(row.browserIds),
+        webPushSubscriptions: jsonArray(row.webPushSubscriptions),
+    };
+}
+
+async function editProfileArray(profileId, field, change) {
+    const profile = await loadProfile(profileId);
+    if (!profile) return null;
+    const next = change(profile[field]);
+    await prisma.profile.update({ where: { id: profile.id }, data: { [field]: next } });
+    return next;
+}
+
+function createNotification(data) {
+    return prisma.notification.create({ data: { ...data, receiverId: String(data.receiverId) } });
+}
 
 // Public VAPID key for PushManager.subscribe (safe to expose)
 exports.getVapidPublicKeyHandler = async (req, res) => {
@@ -42,7 +66,7 @@ exports.subscribeWebPush = async (req, res) => {
             });
         }
 
-        const profileExists = await Profile.findById(profileId).select('_id');
+        const profileExists = await loadProfile(profileId);
         if (!profileExists) {
             return res.status(404).json({
                 success: false,
@@ -50,52 +74,32 @@ exports.subscribeWebPush = async (req, res) => {
             });
         }
 
-        // Drop older subs for this browser so one device does not get duplicate pushes
-        if (browserId) {
-            await Profile.updateOne(
-                { _id: profileId },
-                {
-                    $pull: {
-                        webPushSubscriptions: {
-                            browserId,
-                            endpoint: { $ne: endpoint },
-                        },
-                    },
-                }
-            );
-        }
-
-        // Upsert by endpoint
-        const updated = await Profile.updateOne(
-            { _id: profileId, 'webPushSubscriptions.endpoint': endpoint },
-            {
-                $set: {
-                    'webPushSubscriptions.$.keys.p256dh': p256dh,
-                    'webPushSubscriptions.$.keys.auth': auth,
-                    'webPushSubscriptions.$.userAgent': userAgent || '',
-                    'webPushSubscriptions.$.browserId': browserId || '',
-                    'webPushSubscriptions.$.lastUsedAt': new Date(),
-                },
+        await editProfileArray(profileId, 'webPushSubscriptions', (subs) => {
+            // Drop older subs for this browser so one device does not get duplicate pushes
+            const kept = browserId
+                ? subs.filter((s) => !(s && s.browserId === browserId && s.endpoint !== endpoint))
+                : subs;
+            // Upsert by endpoint
+            const existing = kept.find((s) => s && s.endpoint === endpoint);
+            if (existing) {
+                existing.keys = { ...(existing.keys || {}), p256dh, auth };
+                existing.userAgent = userAgent || '';
+                existing.browserId = browserId || '';
+                existing.lastUsedAt = new Date();
+                return kept;
             }
-        );
-
-        if (updated.matchedCount === 0) {
-            await Profile.updateOne(
-                { _id: profileId },
+            return [
+                ...kept,
                 {
-                    $push: {
-                        webPushSubscriptions: {
-                            endpoint,
-                            keys: { p256dh, auth },
-                            userAgent: userAgent || '',
-                            browserId: browserId || '',
-                            createdAt: new Date(),
-                            lastUsedAt: new Date(),
-                        },
-                    },
-                }
-            );
-        }
+                    endpoint,
+                    keys: { p256dh, auth },
+                    userAgent: userAgent || '',
+                    browserId: browserId || '',
+                    createdAt: new Date(),
+                    lastUsedAt: new Date(),
+                },
+            ];
+        });
 
         return res.json({
             success: true,
@@ -120,9 +124,8 @@ exports.unsubscribeWebPush = async (req, res) => {
             });
         }
 
-        await Profile.updateOne(
-            { _id: profileId },
-            { $pull: { webPushSubscriptions: { endpoint } } }
+        await editProfileArray(profileId, 'webPushSubscriptions', (subs) =>
+            subs.filter((s) => !(s && s.endpoint === endpoint))
         );
 
         return res.json({
@@ -150,7 +153,7 @@ exports.registerBrowserId = async (req, res, next) => {
         }
 
         // Check if profile exists
-        const profileExists = await Profile.findById(profileId);
+        const profileExists = await loadProfile(profileId);
         if (!profileExists) {
             return res.status(404).json({
                 success: false,
@@ -158,42 +161,18 @@ exports.registerBrowserId = async (req, res, next) => {
             });
         }
 
-        // Use atomic update to avoid version conflicts
-        // First, try to update existing browser ID
-        const updateResult = await Profile.updateOne(
-            {
-                _id: profileId,
-                'browserIds.browserId': browserId
-            },
-            {
-                $set: {
-                    'browserIds.$.lastActive': new Date(),
-                    'browserIds.$.isActive': true,
-                    'browserIds.$.userAgent': userAgent
-                }
+        // Update the existing browser entry, or add it when missing
+        const browsers = await editProfileArray(profileId, 'browserIds', (list) => {
+            const existing = list.find((b) => b && b.browserId === browserId);
+            if (existing) {
+                existing.lastActive = new Date();
+                existing.isActive = true;
+                existing.userAgent = userAgent;
+                return list;
             }
-        );
-
-        // If no document was updated, the browser ID doesn't exist, so add it
-        if (updateResult.matchedCount === 0) {
-            await Profile.updateOne(
-                { _id: profileId },
-                {
-                    $push: {
-                        browserIds: {
-                            browserId,
-                            userAgent,
-                            lastActive: new Date(),
-                            isActive: true
-                        }
-                    }
-                }
-            );
-        }
-
-        // Get updated profile to return total browsers count
-        const updatedProfile = await Profile.findById(profileId).select('browserIds');
-        const totalBrowsers = updatedProfile?.browserIds?.length || 0;
+            return [...list, { browserId, userAgent, lastActive: new Date(), isActive: true }];
+        });
+        const totalBrowsers = browsers?.length || 0;
 
         res.json({
             success: true,
@@ -228,7 +207,7 @@ exports.unregisterBrowserId = async (req, res, next) => {
         }
 
         // Check if profile exists
-        const profileExists = await Profile.findById(profileId);
+        const profileExists = await loadProfile(profileId);
         if (!profileExists) {
             return res.status(404).json({
                 success: false,
@@ -236,19 +215,10 @@ exports.unregisterBrowserId = async (req, res, next) => {
             });
         }
 
-        // Use atomic update to remove browser ID
-        await Profile.updateOne(
-            { _id: profileId },
-            {
-                $pull: {
-                    browserIds: { browserId: browserId }
-                }
-            }
+        const browsers = await editProfileArray(profileId, 'browserIds', (list) =>
+            list.filter((b) => !(b && b.browserId === browserId))
         );
-
-        // Get updated profile to return remaining browsers count
-        const updatedProfile = await Profile.findById(profileId).select('browserIds');
-        const remainingBrowsers = updatedProfile?.browserIds?.length || 0;
+        const remainingBrowsers = browsers?.length || 0;
 
         res.json({
             success: true,
@@ -283,7 +253,7 @@ exports.unregisterAllBrowsers = async (req, res, next) => {
         }
 
         // Check if profile exists
-        const profileExists = await Profile.findById(profileId);
+        const profileExists = await loadProfile(profileId);
         if (!profileExists) {
             return res.status(404).json({
                 success: false,
@@ -291,15 +261,7 @@ exports.unregisterAllBrowsers = async (req, res, next) => {
             });
         }
 
-        // Use atomic update to clear all browser IDs
-        await Profile.updateOne(
-            { _id: profileId },
-            {
-                $set: {
-                    browserIds: []
-                }
-            }
-        );
+        await prisma.profile.update({ where: { id: String(profileId) }, data: { browserIds: [] } });
 
         res.json({
             success: true,
@@ -332,7 +294,7 @@ exports.getBrowserIds = async (req, res, next) => {
             });
         }
 
-        const profile = await Profile.findById(profileId).select('browserIds');
+        const profile = await loadProfile(profileId);
         if (!profile) {
             return res.status(404).json({
                 success: false,
@@ -371,7 +333,7 @@ exports.sendNotificationToBrowsers = async (req, res, next) => {
         }
 
         // Find the profile
-        const profile = await Profile.findById(profileId);
+        const profile = await loadProfile(profileId);
         if (!profile) {
             return res.status(404).json({
                 success: false,
@@ -395,7 +357,7 @@ exports.sendNotificationToBrowsers = async (req, res, next) => {
         }
 
         // Create notification in database
-        const notification = new Notification({
+        const notification = await createNotification({
             receiverId: profileId,
             text: notificationData.text || 'New notification',
             title: notificationData.title || 'Connect',
@@ -407,8 +369,6 @@ exports.sendNotificationToBrowsers = async (req, res, next) => {
                 browserIds: validBrowserIds
             }
         });
-
-        await notification.save();
 
         // Emit to socket for real-time delivery
         const io = req.app.get('io');
@@ -449,7 +409,7 @@ exports.sendNotificationToAllBrowsers = async (req, res, next) => {
         }
 
         // Find the profile
-        const profile = await Profile.findById(profileId);
+        const profile = await loadProfile(profileId);
         if (!profile) {
             return res.status(404).json({
                 success: false,
@@ -470,7 +430,7 @@ exports.sendNotificationToAllBrowsers = async (req, res, next) => {
         }
 
         // Create notification in database
-        const notification = new Notification({
+        const notification = await createNotification({
             receiverId: profileId,
             text: notificationData.text || 'New notification',
             title: notificationData.title || 'Connect',
@@ -482,8 +442,6 @@ exports.sendNotificationToAllBrowsers = async (req, res, next) => {
                 browserIds: activeBrowserIds
             }
         });
-
-        await notification.save();
 
         // Emit to socket for real-time delivery
         const io = req.app.get('io');
@@ -524,7 +482,7 @@ exports.updateBrowserActivity = async (req, res, next) => {
         }
 
         // Check if profile exists
-        const profileExists = await Profile.findById(profileId);
+        const profileExists = await loadProfile(profileId);
         if (!profileExists) {
             return res.status(404).json({
                 success: false,
@@ -532,18 +490,10 @@ exports.updateBrowserActivity = async (req, res, next) => {
             });
         }
 
-        // Use atomic update to update browser activity
-        await Profile.updateOne(
-            {
-                _id: profileId,
-                'browserIds.browserId': browserId
-            },
-            {
-                $set: {
-                    'browserIds.$.lastActive': new Date(),
-                    'browserIds.$.isActive': true
-                }
-            }
+        await editProfileArray(profileId, 'browserIds', (list) =>
+            list.map((b) =>
+                b && b.browserId === browserId ? { ...b, lastActive: new Date(), isActive: true } : b
+            )
         );
 
         res.json({
@@ -583,7 +533,7 @@ exports.sendTestNotification = async (req, res, next) => {
         };
 
         // Find the profile
-        const profile = await Profile.findById(profileId);
+        const profile = await loadProfile(profileId);
         if (!profile) {
             return res.status(404).json({
                 success: false,
@@ -609,7 +559,7 @@ exports.sendTestNotification = async (req, res, next) => {
             }
 
             // Create notification in database
-            const notification = new Notification({
+            const notification = await createNotification({
                 receiverId: profileId,
                 text: notificationData.text,
                 title: notificationData.title,
@@ -621,8 +571,6 @@ exports.sendTestNotification = async (req, res, next) => {
                     browserIds: validBrowserIds
                 }
             });
-
-            await notification.save();
 
             // Emit to socket for real-time delivery
             const io = req.app.get('io');
@@ -652,7 +600,7 @@ exports.sendTestNotification = async (req, res, next) => {
                 .map(browser => browser.browserId);
 
             // Create notification in database
-            const notification = new Notification({
+            const notification = await createNotification({
                 receiverId: profileId,
                 text: notificationData.text,
                 title: notificationData.title,
@@ -664,8 +612,6 @@ exports.sendTestNotification = async (req, res, next) => {
                     browserIds: activeBrowserIds
                 }
             });
-
-            await notification.save();
 
             // Emit to socket for real-time delivery
             const io = req.app.get('io');

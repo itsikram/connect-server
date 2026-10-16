@@ -1,4 +1,12 @@
-const Transaction = require("../models/Transaction");
+const { prisma, toId, isDuplicate } = require("../utils/db");
+
+// Mongoose-like facade over prisma.transaction so the handler can still take
+// an injectable model (see paymentsController.test.js).
+const Transaction = {
+  findOne: (where) => ({ lean: () => prisma.transaction.findFirst({ where }) }),
+  countDocuments: (where) => prisma.transaction.count({ where }),
+  create: (data) => prisma.transaction.create({ data: { auditLog: [], ...data } }),
+};
 
 const PAYMENT_METHODS = new Set(["bkash", "nagad"]);
 const TRANSACTION_TYPES = new Set([
@@ -11,7 +19,7 @@ const TRANSACTION_TYPES = new Set([
 ]);
 const SUBSCRIPTION_TIERS = new Set(["plus_basic", "plus_pro"]);
 
-const getUserId = (req) => req.profile?.user?._id;
+const getUserId = (req) => toId(req.profile?.user?._id);
 
 const validateSubmission = (body = {}) => {
   const paymentMethod =
@@ -140,7 +148,7 @@ const createSubmitPaymentHandler = ({ TransactionModel = Transaction } = {}) =>
         transaction,
       });
     } catch (error) {
-      if (error?.code === 11000) {
+      if (isDuplicate(error) || error?.code === 11000) {
         return res.status(409).json({
           success: false,
           message: "This transaction ID has already been submitted for this payment method",

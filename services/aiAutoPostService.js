@@ -1,13 +1,23 @@
 const crypto = require("crypto");
-const Post = require("../models/Post");
-const Profile = require("../models/Profile");
-const UserInterestProfile = require("../models/UserInterestProfile");
-const AIAutoPostConfig = require("../models/AIAutoPostConfig");
-const AIGeneratedPost = require("../models/AIGeneratedPost");
+const { prisma, isValidId, jsonArray, jsonObject } = require("../utils/db");
 const { ensureOfficialAccount } = require("../utils/connectOfficialAccount");
 const { getProviderKey, loadAiSettings } = require("../utils/aiSettingsStore");
 const { generateImage } = require("./imageGenerationService");
-const { Types } = require("mongoose");
+
+// Post row for a published AI post (aiMetadata.* is flattened to ai* columns).
+const buildAiPostData = ({ caption, hashtags = [], imageUrl, author, category, provider, contentHash }) => ({
+  caption: `${caption}${hashtags.length ? `\n\n${hashtags.map((tag) => `#${tag}`).join(" ")}` : ""}`,
+  photos: imageUrl || null,
+  author: author ? String(author) : null,
+  audience: 1,
+  source: "ai-auto-post",
+  type: imageUrl ? "image" : "post",
+  aiStatus: "ready",
+  aiCategories: [category],
+  aiProvider: provider || null,
+  aiContentHash: contentHash || null,
+  aiProcessedAt: new Date(),
+});
 
 const DEFAULT_CATEGORIES = ["technology", "ai", "programming", "business", "education", "lifestyle"];
 const DEFAULT_TYPES = ["educational", "discussion", "funny", "tip", "industry-insight"];
@@ -24,7 +34,7 @@ const normalizeConfig = (input = {}) => ({
   customCategories: splitList(input.customCategories),
   authorProfiles: (Array.isArray(input.authorProfiles) ? input.authorProfiles : [])
     .map((id) => String(id))
-    .filter((id) => Types.ObjectId.isValid(id))
+    .filter((id) => isValidId(id))
     .slice(0, 50),
   topics: splitList(input.topics),
   keywords: splitList(input.keywords),
@@ -56,24 +66,35 @@ const normalizeConfig = (input = {}) => ({
 });
 
 const getConfig = async () => {
-  const existing = await AIAutoPostConfig.findOne({ singletonKey: "default" }).lean();
+  const existing = await prisma.aIAutoPostConfig.findUnique({ where: { singletonKey: "default" } });
   return normalizeConfig(existing || {});
 };
 
 const getPersonalizationContext = async (config) => {
   const context = { preferredCategories: [], preferredTopics: [], recentTopics: [], previousTopics: [] };
   if (config.useUserPreferences || config.useEngagementSignals) {
-    const interest = await UserInterestProfile.findOne().sort({ interactionCount: -1, updatedAt: -1 }).lean();
-    context.preferredCategories = Object.entries(interest?.categories || {})
+    const interest = await prisma.userInterestProfile.findFirst({
+      orderBy: [{ interactionCount: "desc" }, { updatedAt: "desc" }],
+      select: { categories: true },
+    });
+    context.preferredCategories = Object.entries(jsonObject(interest?.categories))
       .sort((a, b) => Number(b[1]) - Number(a[1])).slice(0, 8).map(([name]) => name);
   }
   if (config.useRecentTrends) {
-    const recent = await Post.find({ source: { $ne: "ai-auto-post" }, createdAt: { $gte: new Date(Date.now() - 14 * 86400000) } })
-      .select("caption aiMetadata.categories").sort({ createdAt: -1 }).limit(30).lean();
-    context.recentTopics = recent.flatMap((item) => item.aiMetadata?.categories || []).map(String).slice(0, 12);
+    const recent = await prisma.post.findMany({
+      where: { source: { not: "ai-auto-post" }, createdAt: { gte: new Date(Date.now() - 14 * 86400000) } },
+      select: { id: true, caption: true, aiCategories: true },
+      orderBy: { createdAt: "desc" },
+      take: 30,
+    });
+    context.recentTopics = recent.flatMap((item) => jsonArray(item.aiCategories)).map(String).slice(0, 12);
   }
-  context.previousTopics = await AIGeneratedPost.find({ status: { $ne: "deleted" } })
-    .sort({ generatedAt: -1 }).limit(30).select("topic").lean().then((items) => items.map((item) => item.topic));
+  context.previousTopics = await prisma.aIGeneratedPost.findMany({
+    where: { status: { not: "deleted" } },
+    orderBy: { generatedAt: "desc" },
+    take: 30,
+    select: { id: true, topic: true },
+  }).then((items) => items.map((item) => item.topic));
   return context;
 };
 
@@ -115,8 +136,10 @@ const parseJson = (text) => {
 
 const isDuplicate = async (caption, topic) => {
   const normalized = String(caption).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-  const recent = await AIGeneratedPost.find({ status: { $ne: "deleted" }, generatedAt: { $gte: new Date(Date.now() - 30 * 86400000) } })
-    .select("caption topic").lean();
+  const recent = await prisma.aIGeneratedPost.findMany({
+    where: { status: { not: "deleted" }, generatedAt: { gte: new Date(Date.now() - 30 * 86400000) } },
+    select: { id: true, caption: true, topic: true },
+  });
   return recent.some((item) => item.topic.toLowerCase() === topic.toLowerCase() ||
     item.caption.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim() === normalized);
 };
@@ -124,9 +147,7 @@ const isDuplicate = async (caption, topic) => {
 const generateAutoPost = async ({ config: rawConfig, publish = false, adminId = null } = {}) => {
   const config = normalizeConfig(rawConfig || await getConfig());
   const configuredAuthors = config.authorProfiles.length
-    ? await Profile.find({ _id: { $in: config.authorProfiles } })
-      .select("_id")
-      .lean()
+    ? await prisma.profile.findMany({ where: { id: { in: config.authorProfiles } }, select: { id: true } })
     : [];
   const authorPool = configuredAuthors.length ? configuredAuthors : [await ensureOfficialAccount()];
   const author = authorPool[Math.floor(Math.random() * authorPool.length)];
@@ -172,8 +193,9 @@ const generateAutoPost = async ({ config: rawConfig, publish = false, adminId = 
     }
   }
   const hashtags = config.includeHashtags ? generated.hashtags.slice(0, config.maxHashtags) : [];
-  const record = await AIGeneratedPost.create({
-    author: author._id,
+  const published = publish || config.autoPublish;
+  let record = await prisma.aIGeneratedPost.create({ data: {
+    author: String(author._id ?? author.id),
     category,
     topic: generated.topic,
     language: config.language === "Custom" ? config.customLanguage : config.language,
@@ -181,29 +203,30 @@ const generateAutoPost = async ({ config: rawConfig, publish = false, adminId = 
     caption: generated.caption,
     hashtags,
     imagePrompt: generated.imagePrompt,
-    imageUrl: image.imageUrl,
+    imageUrl: image.imageUrl || null,
     imageStatus: image.status,
-    imageError: image.error || undefined,
+    imageError: image.error || null,
     provider,
     model,
     personalization: { categories: context.preferredCategories, topics: context.previousTopics.slice(0, 8) },
-    status: publish || config.autoPublish ? "published" : "draft",
-    publishedAt: publish || config.autoPublish ? new Date() : undefined,
-  });
+    status: published ? "published" : "draft",
+    publishedAt: published ? new Date() : null,
+  } });
   if (record.status === "published") {
-    const post = await Post.create({
-      caption: `${generated.caption}${hashtags.length ? `\n\n${hashtags.map((tag) => `#${tag}`).join(" ")}` : ""}`,
-      photos: image.imageUrl || undefined,
-      author: author._id,
-      audience: 1,
-      source: "ai-auto-post",
-      type: image.imageUrl ? "image" : "post",
-      aiMetadata: { status: "ready", categories: [category], provider, contentHash: crypto.createHash("sha256").update(generated.caption).digest("hex"), processedAt: new Date() },
+    const post = await prisma.post.create({
+      data: buildAiPostData({
+        caption: generated.caption,
+        hashtags,
+        imageUrl: image.imageUrl,
+        author: record.author,
+        category,
+        provider,
+        contentHash: crypto.createHash("sha256").update(generated.caption).digest("hex"),
+      }),
     });
-    record.post = post._id;
-    await record.save();
+    record = await prisma.aIGeneratedPost.update({ where: { id: record.id }, data: { post: post.id } });
   }
-  return record.toObject();
+  return { ...record, hashtags: jsonArray(record.hashtags) };
 };
 
 module.exports = {
@@ -212,4 +235,5 @@ module.exports = {
   getPersonalizationContext,
   buildPostGenerationPrompt,
   generateAutoPost,
+  buildAiPostData,
 };

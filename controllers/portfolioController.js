@@ -1,4 +1,4 @@
-const Portfolio = require('../models/Portfolio');
+const { prisma } = require('../utils/db');
 const defaults = require('../data/portfolioDefaults');
 const sendEmailNotification = require('../utils/sendEmailNotification');
 
@@ -21,10 +21,23 @@ const ALLOWED_ROOT_KEYS = [
   'footerText',
 ];
 
+// Only schema columns go to Prisma (Mongoose silently dropped unknown keys).
+function pickPortfolio(source) {
+  const data = {};
+  for (const key of ALLOWED_ROOT_KEYS) {
+    if (source && source[key] !== undefined) {
+      data[key] = key === 'footerText' ? String(source[key] ?? '') : source[key];
+    }
+  }
+  return data;
+}
+
+const findPortfolio = () => prisma.portfolio.findFirst({ orderBy: { createdAt: 'asc' } });
+
 async function ensurePortfolio() {
-  let doc = await Portfolio.findOne();
+  let doc = await findPortfolio();
   if (!doc) {
-    doc = await Portfolio.create(defaults);
+    doc = await prisma.portfolio.create({ data: pickPortfolio(defaults) });
   }
   return doc;
 }
@@ -47,17 +60,13 @@ exports.updatePortfolio = async (req, res, next) => {
       }
     }
 
-    let doc = await Portfolio.findOne();
+    let doc = await findPortfolio();
     if (!doc) {
-      doc = await Portfolio.create({ ...defaults, ...payload });
+      doc = await prisma.portfolio.create({ data: pickPortfolio({ ...defaults, ...payload }) });
       return res.status(200).json(doc);
     }
 
-    for (const key of Object.keys(payload)) {
-      doc.set(key, payload[key]);
-      doc.markModified(key);
-    }
-    await doc.save();
+    doc = await prisma.portfolio.update({ where: { id: doc.id }, data: pickPortfolio(payload) });
     return res.status(200).json(doc);
   } catch (error) {
     next(error);
@@ -66,8 +75,10 @@ exports.updatePortfolio = async (req, res, next) => {
 
 exports.resetPortfolio = async (req, res, next) => {
   try {
-    await Portfolio.deleteMany({});
-    const doc = await Portfolio.create(defaults);
+    const doc = await prisma.$transaction(async (tx) => {
+      await tx.portfolio.deleteMany({});
+      return tx.portfolio.create({ data: pickPortfolio(defaults) });
+    });
     return res.status(200).json(doc);
   } catch (error) {
     next(error);
@@ -107,7 +118,7 @@ exports.sendContactMessage = async (req, res, next) => {
       });
     }
 
-    const portfolio = await Portfolio.findOne().lean();
+    const portfolio = await findPortfolio();
     const ownerEmail =
       (process.env.SMTP_TO || '').trim() ||
       portfolio?.profile?.email ||

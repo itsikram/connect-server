@@ -1,16 +1,27 @@
-const { isValidObjectId } = require("mongoose");
-const Message = require("../models/Message");
-const Profile = require("../models/Profile");
+const { prisma, isValidId: isValidObjectId, populated } = require("../utils/db");
 const checkIsActive = require("../utils/checkIsActive");
 const updateLastActive = require("../utils/updateLastActive");
 const axios = require("axios");
-const { listHasId } = require("../utils/ids");
 
 const { sendDataPushToProfile } = require("../utils/pushNotifications");
 const { notifyNewChatMessage } = require("../utils/chatNotifications");
 const { senderDisplayName } = require("../utils/messagePreview");
 const config = require("../config/config.json");
 
+const conversationWhere = (a, b) => ({
+  OR: [
+    { senderId: String(a), receiverId: String(b) },
+    { senderId: String(b), receiverId: String(a) },
+  ],
+});
+
+// Message rows with `parent` populated (Mongoose .populate("parent")).
+const findMessagesWithParent = async (args) =>
+  populated(await prisma.message.findMany({ ...args, include: { parentDoc: true } }), "parent");
+const findMessageWithParent = async (where) =>
+  populated(await prisma.message.findFirst({ where, include: { parentDoc: true } }), "parent");
+const findMessage = async (id) =>
+  (isValidObjectId(id) ? prisma.message.findUnique({ where: { id: String(id) } }) : null);
 
 module.exports = function messageSocket(io, socket, profileId) {
   // Room management for real-time messaging
@@ -26,21 +37,25 @@ module.exports = function messageSocket(io, socket, profileId) {
 
   socket.on("fetchMessages", async () => {
     let profileContacts = [];
-    let myProfile = await Profile.findOne({ _id: profileId }).populate(
-      "connects",
-    );
+    if (!isValidObjectId(profileId)) return;
+    const myProfileRow = await prisma.profile.findUnique({
+      where: { id: String(profileId) },
+      select: { id: true, connects: { select: { connectDoc: true } } },
+    });
 
-    if (!myProfile) return;
+    if (!myProfileRow) return;
+    const myProfile = {
+      connects: myProfileRow.connects.map((c) => c.connectDoc).filter(Boolean),
+    };
     if (myProfile?.connects !== null) {
       for (const connectProfile of myProfile.connects) {
         // Only fetch the most recent message from each connect
         // and mark it as 'fromInitialLoad' so frontend doesn't show notification
-        const messages = await Message.find({
-          senderId: connectProfile._id,
-          receiverId: profileId,
-        })
-          .limit(1)
-          .sort({ timestamp: -1 });
+        const messages = await prisma.message.findMany({
+          where: { senderId: connectProfile.id, receiverId: String(profileId) },
+          take: 1,
+          orderBy: { timestamp: "desc" },
+        });
 
         // Add flag to indicate these are from initial load (not real-time)
         const messagesWithFlag = messages.map((msg) => ({
@@ -63,15 +78,11 @@ module.exports = function messageSocket(io, socket, profileId) {
     const room = [user1, user2].sort().join("_"); // Ensures consistent room ID
     socket.join(room);
 
-    const messages = await Message.find({
-      $or: [
-        { senderId: user1, receiverId: user2 },
-        { senderId: user2, receiverId: user1 },
-      ],
-    })
-      .sort({ timestamp: -1 })
-      .limit(20)
-      .populate("parent");
+    const messages = await findMessagesWithParent({
+      where: conversationWhere(user1, user2),
+      orderBy: { timestamp: "desc" },
+      take: 20,
+    });
     socket.emit("previousMessages", messages.reverse());
     socket.emit("roomJoined", { room });
   });
@@ -83,25 +94,14 @@ module.exports = function messageSocket(io, socket, profileId) {
         .to(myId)
         .emit("loadMessages", { loadedMessages: [], hasNewMessage: false });
     }
-    const loadedMessages = await Message.find({
-      $or: [
-        { senderId: myId, receiverId: connectId },
-        { senderId: connectId, receiverId: myId },
-      ],
-    })
-      .skip(skip)
-      .limit(limit)
-      .sort({ timestamp: -1 })
-      .populate("parent");
-    let messagesLeft = await Message.find({
-      $or: [
-        { senderId: myId, receiverId: connectId },
-        { senderId: connectId, receiverId: myId },
-      ],
-    })
-      .skip(skip)
-      .limit(limit)
-      .sort({ timestamp: -1 });
+    const loadedMessages = await findMessagesWithParent({
+      where: conversationWhere(myId, connectId),
+      skip: Number(skip) || 0,
+      take: limit,
+      orderBy: { timestamp: "desc" },
+    });
+    // (Same skip as above, as before: true whenever this page had rows.)
+    let messagesLeft = loadedMessages;
     let hasNewMessage = messagesLeft.length < 1 ? false : true;
     let msgList = loadedMessages.reverse();
     // Note: loadMessages is for pagination, not for initial notifications
@@ -127,25 +127,23 @@ module.exports = function messageSocket(io, socket, profileId) {
 
         // Build query for messages between these users before the given timestamp
         const query = {
-          $or: [
-            { senderId: user1, receiverId: user2 },
-            { senderId: user2, receiverId: user1 },
-          ],
-          timestamp: { $lt: new Date(beforeTimestamp) },
+          ...conversationWhere(user1, user2),
+          timestamp: { lt: new Date(beforeTimestamp) },
         };
 
         // Calculate skip based on page
         const skip = (page - 1) * limit;
 
         // Fetch old messages
-        const oldMessages = await Message.find(query)
-          .sort({ timestamp: -1 })
-          .skip(skip)
-          .limit(limit)
-          .populate("parent");
+        const oldMessages = await findMessagesWithParent({
+          where: query,
+          orderBy: { timestamp: "desc" },
+          skip: Math.max(0, Number(skip) || 0),
+          take: Number(limit) || undefined,
+        });
 
         // Check if there are more messages available
-        const totalOldMessages = await Message.countDocuments(query);
+        const totalOldMessages = await prisma.message.count({ where: query });
         const hasMore = skip + limit < totalOldMessages;
 
         console.log("fetchOldMessages result:", {
@@ -171,11 +169,13 @@ module.exports = function messageSocket(io, socket, profileId) {
     try {
       if (!isValidObjectId(messageId)) return;
       // Only the sender may delete their own message.
-      const deleted = await Message.findOneAndDelete({
-        _id: messageId,
-        senderId: String(profileId),
+      const deleted = await prisma.message.findFirst({
+        where: { id: String(messageId), senderId: String(profileId) },
       });
-      if (deleted) {
+      const removed = deleted
+        ? await prisma.message.deleteMany({ where: { id: deleted.id } })
+        : { count: 0 };
+      if (deleted && removed.count) {
         io.to([
           deleted.room,
           String(deleted.senderId),
@@ -201,17 +201,17 @@ module.exports = function messageSocket(io, socket, profileId) {
   };
   const updateReaction = async (messageId, reactType, remove, ack) => {
     try {
-      const message = await Message.findById(messageId);
+      const message = await findMessage(messageId);
       if (!message || ![String(message.senderId), String(message.receiverId)].includes(String(profileId))) {
         if (typeof ack === "function") ack({ ok: false, error: "Message access denied" });
         return;
       }
       const reactions = normalizeReactions(message.reacts)
         .filter((reaction) => String(reaction.profile) !== String(profileId));
-      if (!remove) reactions.push({ profile: profileId, type: reactType || "👍" });
+      if (!remove) reactions.push({ profile: String(profileId), type: reactType || "👍" });
       message.reacts = reactions;
-      await message.save();
-      const payload = { message: message.toObject(), reactions };
+      await prisma.message.update({ where: { id: message.id }, data: { reacts: reactions } });
+      const payload = { message, reactions };
       io.to(message.room).emit("messageReactionUpdated", payload);
       // Also target both profile rooms so the reaction arrives when the other
       // participant has not joined the chat room yet.
@@ -258,7 +258,7 @@ module.exports = function messageSocket(io, socket, profileId) {
         let msgData = null;
         if (msgId) {
           try {
-            msgData = await Message.findById(msgId);
+            msgData = await findMessage(msgId);
           } catch (_e) {
             msgData = null;
           }
@@ -398,18 +398,17 @@ module.exports = function messageSocket(io, socket, profileId) {
       // Prevent messaging if either user has blocked the other
       try {
         if (senderId && receiverId && String(senderId) !== String(receiverId)) {
-          const [senderProfile, receiverProfile] = await Promise.all([
-            Profile.findById(senderId).select("blockedUsers"),
-            Profile.findById(receiverId).select("blockedUsers"),
-          ]);
-          const senderBlockedReceiver = listHasId(
-            senderProfile?.blockedUsers,
-            receiverId,
-          );
-          const receiverBlockedSender = listHasId(
-            receiverProfile?.blockedUsers,
-            senderId,
-          );
+          const blocks = await prisma.block.findMany({
+            where: {
+              OR: [
+                { profile: String(senderId), blocked: String(receiverId) },
+                { profile: String(receiverId), blocked: String(senderId) },
+              ],
+            },
+            select: { profile: true },
+          });
+          const senderBlockedReceiver = blocks.some((b) => b.profile === String(senderId));
+          const receiverBlockedSender = blocks.some((b) => b.profile === String(receiverId));
           if (senderBlockedReceiver || receiverBlockedSender) {
             const blockedPayload = {
               room: chatRoom,
@@ -440,7 +439,7 @@ module.exports = function messageSocket(io, socket, profileId) {
       // Idempotency: a retry / reconnect flush of the same optimistic message
       // (same tempId) must not create a second copy.
       if (tempId) {
-        const existing = await Message.findOne({ senderId, tempId }).populate("parent");
+        const existing = await findMessageWithParent({ senderId, tempId: String(tempId) });
         if (existing) {
           const existingMessage = serializeMessage(existing);
           reply({ ok: true, updatedMessage: existingMessage, tempId, duplicate: true });
@@ -454,29 +453,32 @@ module.exports = function messageSocket(io, socket, profileId) {
         }
       }
 
-      const newMessage = new Message({
-        room: chatRoom,
-        senderId,
-        receiverId: String(receiverId),
-        message,
-        attachment: attachment || undefined,
-        // Clients send `parent: false` when not replying.
-        ...(parent && isValidObjectId(parent) ? { parent } : {}),
-        messageType,
-        duration,
-        callType,
-        callEvent,
-        tempId,
+      const newMessage = await prisma.message.create({
+        data: {
+          room: chatRoom,
+          senderId,
+          receiverId: String(receiverId),
+          message: message == null ? undefined : String(message),
+          attachment: attachment || undefined,
+          // Clients send `parent: false` when not replying.
+          ...(parent && isValidObjectId(parent) ? { parent: String(parent) } : {}),
+          messageType,
+          duration: duration == null || Number.isNaN(Number(duration)) ? undefined : Number(duration),
+          callType,
+          callEvent,
+          tempId: tempId == null ? undefined : String(tempId),
+          reacts: [],
+        },
       });
-      await newMessage.save();
 
       // Update last active time for sending message
       await updateLastActive(senderId);
 
-      let updatedMessage = await Message.findOne({
-        _id: newMessage._id,
-      }).populate("parent");
-      let profileData = await Profile.findById(senderId).populate("user");
+      let updatedMessage = await findMessageWithParent({ id: newMessage.id });
+      let profileData = populated(
+        await prisma.profile.findUnique({ where: { id: senderId }, include: { userDoc: true } }),
+        "user",
+      );
       if (!profileData) {
         reply({ ok: false, error: "Sender profile not found" });
         return;
@@ -586,9 +588,14 @@ module.exports = function messageSocket(io, socket, profileId) {
         targets = [String(connectId)];
       } else {
         // broadcast to all connects
-        const me = await Profile.findById(profileId).select("connects");
-        if (me?.connects && me.connects.length > 0) {
-          targets = me.connects.map((id) => String(id));
+        const connects = isValidObjectId(profileId)
+          ? await prisma.profileConnect.findMany({
+              where: { profile: String(profileId) },
+              select: { connect: true },
+            })
+          : [];
+        if (connects.length > 0) {
+          targets = connects.map((row) => String(row.connect));
         }
       }
 
@@ -673,17 +680,21 @@ module.exports = function messageSocket(io, socket, profileId) {
         processingMs: Date.now() - receivedAt,
       });
 
-      const updateProfile = await Profile.findOneAndUpdate(
-        { _id: profileId },
-        {
-          lastEmotion: emotion,
-          lastEmotionText: emotionText || emotion,
-          lastEmotionEmoji: emoji,
-          lastEmotionConfidence: confidence,
-          lastEmotionQuality: quality,
-        },
-        { new: true },
-      );
+      const toNumber = (v) => (v == null || Number.isNaN(Number(v)) ? null : Number(v));
+      const updateProfile = isValidObjectId(profileId)
+        ? await prisma.profile
+            .update({
+              where: { id: String(profileId) },
+              data: {
+                lastEmotion: String(emotion),
+                lastEmotionText: String(emotionText || emotion),
+                lastEmotionEmoji: emoji == null ? null : String(emoji),
+                lastEmotionConfidence: toNumber(confidence),
+                lastEmotionQuality: toNumber(quality),
+              },
+            })
+            .catch(() => null)
+        : null;
       if (!updateProfile) {
         console.error("Failed to persist emotion profile:", profileId);
       } else {
@@ -751,11 +762,12 @@ module.exports = function messageSocket(io, socket, profileId) {
       const messageId = message?._id;
       if (!messageId || !isValidObjectId(messageId)) return;
       // Only the receiver can mark a message as seen.
-      const msg = await Message.findOneAndUpdate(
-        { _id: messageId, receiverId: String(profileId) },
-        { isSeen: true },
-        { new: true },
-      );
+      const { count } = await prisma.message.updateMany({
+        where: { id: String(messageId), receiverId: String(profileId) },
+        data: { isSeen: true },
+      });
+      if (!count) return;
+      const msg = await findMessage(messageId);
       if (!msg) return;
       // Deliver to both participants on every device, once per socket.
       io.to([msg.room, String(msg.senderId), String(msg.receiverId)].filter(Boolean))
@@ -769,9 +781,12 @@ module.exports = function messageSocket(io, socket, profileId) {
   socket.on("last_emotion", async ({ connectId, profileId }) => {
     if (!isValidObjectId(connectId) && !isValidObjectId(profileId)) return;
 
-    let profileData = await Profile.findOne({ _id: connectId }).select(
-      "lastEmotion",
-    );
+    let profileData = isValidObjectId(connectId)
+      ? await prisma.profile.findUnique({
+          where: { id: String(connectId) },
+          select: { id: true, _id: true, lastEmotion: true },
+        })
+      : null;
     if (profileData) {
       io.to(profileId).emit("last_emotion", profileData);
     }
@@ -783,9 +798,12 @@ module.exports = function messageSocket(io, socket, profileId) {
       if (!to || !channelName) return;
       let callerName = "Connect";
       try {
-        const myProfileData = await Profile.findById(profileId).select(
-          "fullName",
-        );
+        const myProfileData = isValidObjectId(profileId)
+          ? await prisma.profile.findUnique({
+              where: { id: String(profileId) },
+              select: { fullName: true },
+            })
+          : null;
         callerName = myProfileData?.fullName || "Connect";
       } catch (_e) {}
       const payload = {

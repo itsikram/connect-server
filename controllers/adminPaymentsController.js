@@ -1,10 +1,7 @@
-const Transaction = require("../models/Transaction");
-const User = require("../models/User");
-const CoachingPurchase = require("../models/CoachingPurchase");
+const { prisma, populated, jsonArray, isValidId } = require("../utils/db");
 
 const PAYMENT_STATUSES = new Set(["pending", "approved", "rejected"]);
 const SUBSCRIPTION_TIERS = new Set(["plus_basic", "plus_pro"]);
-const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const adminId = (req) => String(req.admin?._id || "");
 const reviewTimestamp = () => new Date();
@@ -20,19 +17,19 @@ const listPayments = async (req, res) => {
   }
 
   try {
-    const query = { status };
-    const safeSearch = escapeRegex(search);
+    const where = { status };
     if (search) {
-      query.$or = [
-        { transactionId: { $regex: safeSearch, $options: "i" } },
-        { senderMsisdn: { $regex: safeSearch, $options: "i" } },
+      where.OR = [
+        { transactionId: { contains: search } },
+        { senderMsisdn: { contains: search } },
       ];
     }
-    const transactions = await Transaction.find(query)
-      .sort({ submittedAt: -1 })
-      .populate("userId", "firstName surname email")
-      .lean();
-    return res.json({ success: true, transactions });
+    const transactions = await prisma.transaction.findMany({
+      where,
+      orderBy: { submittedAt: "desc" },
+      include: { userIdDoc: { select: { id: true, firstName: true, surname: true, email: true } } },
+    });
+    return res.json({ success: true, transactions: populated(transactions, "userId") });
   } catch (error) {
     console.error("Admin payment listing failed:", error);
     return res.status(500).json({
@@ -42,8 +39,8 @@ const listPayments = async (req, res) => {
   }
 };
 
-const approveSubscription = async (transaction) => {
-  const user = await User.findById(transaction.userId);
+const approveSubscription = async (transaction, db = prisma) => {
+  const user = await db.user.findUnique({ where: { id: String(transaction.userId) } });
   if (!user) {
     const error = new Error("Payment user not found");
     error.statusCode = 404;
@@ -62,21 +59,19 @@ const approveSubscription = async (transaction) => {
       ? user.subscriptionTier
       : "plus_basic";
 
-  await User.updateOne(
-    { _id: transaction.userId },
-    {
-      $set: {
-        subscriptionStatus: "active",
-        subscriptionTier: tier,
-        subscriptionExpiresAt: new Date(
-          currentExpiry.getTime() + 30 * 24 * 60 * 60 * 1000,
-        ),
-      },
+  await db.user.update({
+    where: { id: user.id },
+    data: {
+      subscriptionStatus: "active",
+      subscriptionTier: tier,
+      subscriptionExpiresAt: new Date(
+        currentExpiry.getTime() + 30 * 24 * 60 * 60 * 1000,
+      ),
     },
-  );
+  });
 };
 
-const approveWalletTopup = async (transaction) => {
+const approveWalletTopup = async (transaction, db = prisma) => {
   if (
     typeof transaction.coinsAmount !== "number" ||
     !Number.isFinite(transaction.coinsAmount) ||
@@ -87,45 +82,74 @@ const approveWalletTopup = async (transaction) => {
     throw error;
   }
 
-  await User.updateOne(
-    { _id: transaction.userId },
-    { $inc: { walletBalanceCoins: transaction.coinsAmount } },
-  );
+  await db.user.updateMany({
+    where: { id: String(transaction.userId) },
+    data: { walletBalanceCoins: { increment: transaction.coinsAmount } },
+  });
 };
 
-const approveCoachingPurchase = async (transaction) => {
+const approveCoachingPurchase = async (transaction, db = prisma) => {
   if (!transaction.coachingPlanId) {
     const error = new Error("Approved coaching payment is missing a coaching plan");
     error.statusCode = 422;
     throw error;
   }
 
-  await CoachingPurchase.create({
-    userId: transaction.userId,
-    transactionId: transaction._id,
-    planId: transaction.coachingPlanId,
-    unlockedAt: reviewTimestamp(),
+  await db.coachingPurchase.create({
+    data: {
+      userId: String(transaction.userId),
+      transactionId: String(transaction.id ?? transaction._id),
+      planId: transaction.coachingPlanId,
+      unlockedAt: reviewTimestamp(),
+    },
   });
 };
 
-const applyApprovalEffect = async (transaction) => {
+// `db` may be a Prisma transaction client so the effect commits with the approval.
+const applyApprovalEffect = async (transaction, db = prisma) => {
   switch (transaction.type) {
     case "subscription":
-      return approveSubscription(transaction);
+      return approveSubscription(transaction, db);
     case "wallet_topup":
-      return approveWalletTopup(transaction);
+      return approveWalletTopup(transaction, db);
     case "coaching_purchase":
-      return approveCoachingPurchase(transaction);
+      return approveCoachingPurchase(transaction, db);
     default:
       return undefined;
   }
 };
 
+// Atomically moves a pending payment to `status`; returns the updated row or null.
+const reviewPending = async (db, id, status, req, extra = {}) => {
+  if (!isValidId(id)) return null;
+  const pending = await db.transaction.findFirst({ where: { id, status: "pending" } });
+  if (!pending) return null;
+  const reviewedAt = reviewTimestamp();
+  const claimed = await db.transaction.updateMany({
+    where: { id: pending.id, status: "pending" },
+    data: {
+      status,
+      reviewedAt,
+      reviewedByAdminId: adminId(req),
+      ...extra,
+      auditLog: [
+        ...jsonArray(pending.auditLog),
+        { action: status, adminId: adminId(req), timestamp: reviewedAt },
+      ],
+    },
+  });
+  return claimed.count ? pending : null;
+};
+
 const approvePayment = async (req, res) => {
   try {
-    const transaction = await Transaction.findOne({
-      _id: req.params.id,
-      status: "pending",
+    // Claim + effect in one DB transaction: no double approval, and a failed
+    // effect leaves the payment pending.
+    const transaction = await prisma.$transaction(async (tx) => {
+      const pending = await reviewPending(tx, req.params.id, "approved", req);
+      if (!pending) return null;
+      await applyApprovalEffect(pending, tx);
+      return tx.transaction.findUnique({ where: { id: pending.id } });
     });
     if (!transaction) {
       return res.status(404).json({
@@ -133,19 +157,6 @@ const approvePayment = async (req, res) => {
         message: "Pending payment not found",
       });
     }
-
-    await applyApprovalEffect(transaction);
-
-    const reviewedAt = reviewTimestamp();
-    transaction.status = "approved";
-    transaction.reviewedAt = reviewedAt;
-    transaction.reviewedByAdminId = adminId(req);
-    transaction.auditLog.push({
-      action: "approved",
-      adminId: adminId(req),
-      timestamp: reviewedAt,
-    });
-    await transaction.save();
 
     return res.json({ success: true, transaction });
   } catch (error) {
@@ -176,28 +187,14 @@ const rejectPayment = async (req, res) => {
   }
 
   try {
-    const transaction = await Transaction.findOne({
-      _id: req.params.id,
-      status: "pending",
-    });
-    if (!transaction) {
+    const pending = await reviewPending(prisma, req.params.id, "rejected", req, { rejectionReason });
+    if (!pending) {
       return res.status(404).json({
         success: false,
         message: "Pending payment not found",
       });
     }
-
-    const reviewedAt = reviewTimestamp();
-    transaction.status = "rejected";
-    transaction.reviewedAt = reviewedAt;
-    transaction.reviewedByAdminId = adminId(req);
-    transaction.rejectionReason = rejectionReason;
-    transaction.auditLog.push({
-      action: "rejected",
-      adminId: adminId(req),
-      timestamp: reviewedAt,
-    });
-    await transaction.save();
+    const transaction = await prisma.transaction.findUnique({ where: { id: pending.id } });
 
     return res.json({ success: true, transaction });
   } catch (error) {

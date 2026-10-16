@@ -1,16 +1,34 @@
 // server/socketHandler.js
 const messageSocket = require('./messageSocket');
 const { notificationSocket } = require('../controllers/notificationController');
-const Profile = require('../models/Profile');
-const User = require('../models/User');
-const mongoose = require('mongoose');
-const Post = require('../models/Post');
+const { prisma, isValidId } = require('../utils/db');
+const { isMySQLReady } = require('../config/prisma');
 const checkIsActive = require('../utils/checkIsActive');
 const updateLastActive = require('../utils/updateLastActive');
 const callingSocket = require('./callingSocket');
 const { sendBump } = require('../utils/sendBump');
 const ludoSocket = require('./ludoSocket');
 const chessSocket = require('./chessSocket');
+
+// Profile.connects (join table) -> connect profile ids.
+async function connectIdsOf(profileId) {
+    if (!isValidId(profileId)) return [];
+    const rows = await prisma.profileConnect.findMany({
+        where: { profile: String(profileId) },
+        select: { connect: true },
+    });
+    return rows.map((row) => row.connect);
+}
+
+const findUserByProfile = (profileId) =>
+    isValidId(profileId)
+        ? prisma.user.findFirst({ where: { profile: String(profileId) }, select: { id: true, lastLogin: true } })
+        : null;
+
+const touchUserLastLogin = (profileId) =>
+    isValidId(profileId)
+        ? prisma.user.updateMany({ where: { profile: String(profileId) }, data: { lastLogin: Date.now() } })
+        : null;
 
 module.exports = function socketHandler(io) {
     // profileId -> socketId
@@ -85,21 +103,20 @@ module.exports = function socketHandler(io) {
             // Presence bookkeeping runs in the background so it never delays
             // (or, on early return, skips) the handler registration below.
             (async () => {
-                // Socket.IO can accept a client before the initial MongoDB
-                // connection completes. Mongoose buffering is disabled, so do
-                // not issue database queries until the connection is ready.
-                if (mongoose.connection.readyState !== 1) {
+                // Socket.IO can accept a client before the initial database
+                // connection completes; do not query until it is ready.
+                if (!isMySQLReady() || !isValidId(profileId)) {
                     console.warn('[realtime_socket_db_unavailable]', {
                         socketId: socket.id,
                         profileId: String(profileId),
-                        readyState: mongoose.connection.readyState,
+                        mysqlReady: isMySQLReady(),
                     });
                     return;
                 }
 
                 let profileConnects;
                 try {
-                    profileConnects = (await Profile.findById(profileId)) || null;
+                    profileConnects = { connects: await connectIdsOf(profileId) };
                 } catch (err) {
                     console.error('Error loading profile on socket connection:', err);
                     return;
@@ -107,16 +124,11 @@ module.exports = function socketHandler(io) {
 
                 // Update user's lastLogin and isActive status on connection
                 try {
-                    await User.findOneAndUpdate(
-                        { profile: profileId },
-                        { lastLogin: Date.now() },
-                        { new: true }
-                    );
-                    await Profile.findOneAndUpdate(
-                        { _id: profileId },
-                        { isActive: true, lastActive: new Date() },
-                        { new: true }
-                    );
+                    await touchUserLastLogin(profileId);
+                    await prisma.profile.updateMany({
+                        where: { id: String(profileId) },
+                        data: { isActive: true, lastActive: new Date() },
+                    });
                 } catch (err) {
                     console.error('Error updating user activity on connection:', err);
                 }
@@ -138,10 +150,15 @@ module.exports = function socketHandler(io) {
         // View post tracking
         socket.on('viewPost', async ({ visitorId, postId }) => {
             try {
-                await Post.findOneAndUpdate(
-                    { _id: postId, viewers: { $ne: visitorId } },
-                    { $push: { viewers: visitorId } }
-                );
+                if (isValidId(postId) && isValidId(visitorId)) {
+                    const postExists = await prisma.post.count({ where: { id: String(postId) } });
+                    if (postExists) {
+                        await prisma.postViewer.createMany({
+                            data: [{ post: String(postId), profile: String(visitorId) }],
+                            skipDuplicates: true,
+                        });
+                    }
+                }
                 // Update last active time for viewing posts
                 await updateLastActive(visitorId);
             } catch (err) {
@@ -174,7 +191,7 @@ module.exports = function socketHandler(io) {
                     isActive = true;
                     // Get lastLogin from database for display purposes
                     try {
-                        const user = await User.findOne({ profile: targetProfileId });
+                        const user = await findUserByProfile(targetProfileId);
                         if (user && user.lastLogin) {
                             lastLogin = user.lastLogin;
                         } else {
@@ -209,20 +226,21 @@ module.exports = function socketHandler(io) {
                 }
 
                 // Update profile location in database
-                const updatedProfile = await Profile.findByIdAndUpdate(
-                    { _id: senderProfileId },
-                    {
-                        lastLocation: {
-                            latitude: location.latitude,
-                            longitude: location.longitude,
-                            timestamp: location.timestamp || Date.now(),
-                            accuracy: location.accuracy,
-                        }
-                    },
-                    { new: true }
-                );
+                const updated = isValidId(senderProfileId)
+                    ? await prisma.profile.updateMany({
+                        where: { id: String(senderProfileId) },
+                        data: {
+                            lastLocation: {
+                                latitude: location.latitude,
+                                longitude: location.longitude,
+                                timestamp: location.timestamp || Date.now(),
+                                accuracy: location.accuracy,
+                            }
+                        },
+                    })
+                    : { count: 0 };
 
-                if (!updatedProfile) {
+                if (!updated.count) {
                     console.error('Profile not found for location update:', senderProfileId);
                     return;
                 }
@@ -231,7 +249,7 @@ module.exports = function socketHandler(io) {
                 await updateLastActive(senderProfileId);
 
                 // Get user's connects to broadcast location update
-                const profile = await Profile.findById(senderProfileId).select('connects');
+                const profile = { connects: await connectIdsOf(senderProfileId) };
                 if (profile && profile.connects && profile.connects.length > 0) {
                     console.log('📍 Broadcasting location update to', profile.connects.length, 'connects');
                     // Emit location update to all connects
@@ -293,11 +311,7 @@ module.exports = function socketHandler(io) {
                     }
                     
                     // Update lastLogin on disconnect
-                    await User.findOneAndUpdate(
-                        { profile: profileId },
-                        { lastLogin: Date.now() },
-                        { new: true }
-                    );
+                    await touchUserLastLogin(profileId);
                     
                     // Cancel any existing timeout for this profile
                     if (offlineTimeouts.has(profileId)) {
@@ -308,7 +322,7 @@ module.exports = function socketHandler(io) {
                     const timeoutId = setTimeout(async () => {
                         try {
                             // Check if lastLogin is more than 5 minutes old
-                            const user = await User.findOne({ profile: profileId });
+                            const user = await findUserByProfile(profileId);
                             if (!user) {
                                 console.error(`User not found for profile ${profileId}`);
                                 return;
@@ -326,13 +340,13 @@ module.exports = function socketHandler(io) {
                                     return;
                                 }
                                 
-                                await Profile.findOneAndUpdate(
-                                    { _id: profileId },
-                                    { isActive: false }
-                                );
+                                await prisma.profile.updateMany({
+                                    where: { id: String(profileId) },
+                                    data: { isActive: false },
+                                });
                                 
                                 // Notify connects that user is offline
-                                let profileConnects = await Profile.findById(profileId);
+                                let profileConnects = { connects: await connectIdsOf(profileId) };
                                 if (profileConnects && profileConnects.connects && profileConnects.connects.length > 0) {
                                     profileConnects.connects.forEach(connect => {
                                         console.log('connect_offline', String(connect), profileId);

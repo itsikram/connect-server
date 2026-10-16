@@ -1,10 +1,26 @@
-const { isValidObjectId } = require('mongoose')
-const Message = require('../models/Message')
+const { prisma, isValidId: isValidObjectId, populated } = require('../utils/db')
 const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
-const Profile = require('../models/Profile')
 const { notifyNewChatMessage } = require('../utils/chatNotifications')
 const { senderDisplayName } = require('../utils/messagePreview')
-const { listHasId } = require('../utils/ids')
+
+// Reminder bookkeeping columns never leave the server (was .select('-unseenReminder...')).
+const REMINDER_OMIT = {
+    unseenReminderEmailSentAt: true,
+    unseenReminderEmailProcessingKey: true,
+    unseenReminderEmailProcessingAt: true,
+    unseenReminderEmailLastError: true,
+};
+const PARENT_SELECT = { id: true, _id: true, message: true, senderId: true, attachment: true, timestamp: true, messageType: true };
+const conversationWhere = (a, b) => ({
+    OR: [
+        { senderId: String(a), receiverId: String(b) },
+        { senderId: String(b), receiverId: String(a) },
+    ],
+});
+const findMessage = async (id) =>
+    (isValidObjectId(id) ? prisma.message.findUnique({ where: { id: String(id) } }) : null);
+const findMessageWithParent = async (where) =>
+    populated(await prisma.message.findFirst({ where, include: { parentDoc: true } }), 'parent');
 
 
 const reactionProfileId = (reaction) => String(reaction && reaction.profile ? reaction.profile : reaction || '');
@@ -35,11 +51,11 @@ exports.removeMessageReact = async (req, res, next) => {
     try {
         const profileId = req.profile && req.profile._id;
         const { messageId } = req.body;
-        const message = await Message.findById(messageId);
+        const message = await findMessage(messageId);
         if (!message) return res.status(404).json({ message: 'Message not found' });
         if (!canAccessMessage(message, profileId)) return res.status(403).json({ message: 'Message access denied' });
         message.reacts = normalizedReactions(message.reacts).filter((reaction) => String(reaction.profile) !== String(profileId));
-        await message.save();
+        await prisma.message.update({ where: { id: message.id }, data: { reacts: message.reacts } });
         emitReactionUpdate(req.app.get('io'), message);
         return res.status(200).json({ message: 'Message React Removed', updatedMessage: message, reactions: message.reacts });
     } catch (error) { next(error); }
@@ -50,12 +66,12 @@ exports.addMessageReact = async (req, res, next) => {
         const profileId = req.profile && req.profile._id;
         const { messageId, reactType = '👍' } = req.body;
         if (!reactType || typeof reactType !== 'string') return res.status(400).json({ message: 'Invalid reaction type' });
-        const message = await Message.findById(messageId);
+        const message = await findMessage(messageId);
         if (!message) return res.status(404).json({ message: 'Message not found' });
         if (!canAccessMessage(message, profileId)) return res.status(403).json({ message: 'Message access denied' });
         message.reacts = normalizedReactions(message.reacts).filter((reaction) => String(reaction.profile) !== String(profileId));
-        message.reacts.push({ profile: profileId, type: reactType });
-        await message.save();
+        message.reacts.push({ profile: String(profileId), type: reactType });
+        await prisma.message.update({ where: { id: message.id }, data: { reacts: message.reacts } });
         emitReactionUpdate(req.app.get('io'), message);
         return res.status(200).json({ message: 'Message React Added', updatedMessage: message, reactions: message.reacts });
 
@@ -69,17 +85,13 @@ exports.getMedia = async(req,res,next) => {
 
     try {
         const fileUrlRegex = /^https?:\/\/[^\s/$.?#].[^\s]*$/i;
-        let getMessages = await Message.find({
-            $or: [
-                { senderId: req.profile._id, receiverId: req.query.profileId },
-                { senderId: req.query.profileId, receiverId: req.profile._id }
-            ],
-            attachment: { $regex: fileUrlRegex }
-        })
-            .select('attachment timestamp')
-            .sort({ timestamp: -1 })
-            .limit(10)
-            .lean();
+        const candidates = await prisma.message.findMany({
+            where: { ...conversationWhere(req.profile._id, req.query.profileId), attachment: { startsWith: 'http' } },
+            select: { id: true, _id: true, attachment: true, timestamp: true },
+            orderBy: { timestamp: 'desc' },
+            take: 50,
+        });
+        let getMessages = candidates.filter((m) => fileUrlRegex.test(m.attachment || '')).slice(0, 10);
 
         res.json(getMessages).status(200)
         
@@ -104,18 +116,21 @@ exports.getChatList = async(req,res,next) => {
 
         // Use two indexed scans instead of a single $or (which cannot use both indexes)
         const profileIdStr = String(profileId);
-        const [sentAgg, receivedAgg] = await Promise.all([
-            Message.aggregate([
-                { $match: { senderId: profileIdStr } },
-                { $sort: { timestamp: -1 } },
-                { $group: { _id: '$receiverId', lastMessage: { $first: '$$ROOT' } } },
-            ]).option({ maxTimeMS: 7500 }),
-            Message.aggregate([
-                { $match: { receiverId: profileIdStr } },
-                { $sort: { timestamp: -1 } },
-                { $group: { _id: '$senderId', lastMessage: { $first: '$$ROOT' } } },
-            ]).option({ maxTimeMS: 7500 }),
+        // Latest message id per peer, one indexed scan per direction.
+        const [sentIds, receivedIds] = await Promise.all([
+            prisma.$queryRaw`SELECT id FROM (SELECT id, ROW_NUMBER() OVER (PARTITION BY receiverId ORDER BY timestamp DESC) AS rn FROM messages WHERE senderId = ${profileIdStr}) t WHERE rn = 1`,
+            prisma.$queryRaw`SELECT id FROM (SELECT id, ROW_NUMBER() OVER (PARTITION BY senderId ORDER BY timestamp DESC) AS rn FROM messages WHERE receiverId = ${profileIdStr}) t WHERE rn = 1`,
         ]);
+        const latestIds = [...sentIds, ...receivedIds].map((row) => row.id);
+        const latestMessages = latestIds.length
+            ? await prisma.message.findMany({ where: { id: { in: latestIds } } })
+            : [];
+        const sentAgg = [];
+        const receivedAgg = [];
+        latestMessages.forEach((m) => {
+            if (m.senderId === profileIdStr) sentAgg.push({ _id: m.receiverId, lastMessage: m });
+            if (m.receiverId === profileIdStr) receivedAgg.push({ _id: m.senderId, lastMessage: m });
+        });
 
         if (timedOut || res.headersSent) return;
 
@@ -132,13 +147,31 @@ exports.getChatList = async(req,res,next) => {
         receivedAgg.forEach((row) => consider(row._id, row.lastMessage));
 
         // Get profile with slim connect fields (avoid shipping tokens, push subs, nested connects)
-        const myProfile = await Profile.findOne({ _id: profileId })
-            .select('_id connects')
-            .populate({
-                path: 'connects',
-                select: '_id fullName displayName username nickname profilePic isActive lastActive user',
-                populate: { path: 'user', select: 'firstName surname' },
-            });
+        const myProfileRow = await prisma.profile.findUnique({
+            where: { id: profileIdStr },
+            select: {
+                id: true,
+                _id: true,
+                connects: {
+                    select: {
+                        connectDoc: {
+                            select: {
+                                id: true, _id: true, fullName: true, displayName: true, username: true, nickname: true,
+                                profilePic: true, isActive: true, lastActive: true, user: true,
+                                userDoc: { select: { id: true, _id: true, firstName: true, surname: true } },
+                            },
+                        },
+                    },
+                },
+            },
+        });
+        const myProfile = myProfileRow && {
+            _id: myProfileRow._id,
+            connects: myProfileRow.connects
+                .map((c) => c.connectDoc)
+                .filter(Boolean)
+                .map((p) => populated(p, 'user')),
+        };
 
         if (timedOut || res.headersSent) return;
         
@@ -199,24 +232,17 @@ exports.getChatHistory = async(req,res,next) => {
         let skip = parseInt(req.query.skip) || 0
                 
         // Build query for messages between these users
-        const query = {
-            $or: [
-                { senderId: profileId, receiverId: connectId },
-                { senderId: connectId, receiverId: profileId }
-            ]
-        };
+        const query = conversationWhere(profileId, connectId);
 
         // Fetch one extra row instead of a separate countDocuments query
-        const messages = await Message.find(query)
-            .select('-unseenReminderEmailSentAt -unseenReminderEmailProcessingKey -unseenReminderEmailProcessingAt -unseenReminderEmailLastError')
-            .sort({ timestamp: -1 })
-            .skip(skip)
-            .limit(limit + 1)
-            .populate({
-                path: 'parent',
-                select: 'message senderId attachment timestamp messageType',
-            })
-            .lean();
+        const messages = populated(await prisma.message.findMany({
+            where: query,
+            omit: REMINDER_OMIT,
+            orderBy: { timestamp: 'desc' },
+            skip,
+            take: limit + 1,
+            include: { parentDoc: { select: PARENT_SELECT } },
+        }), 'parent');
 
         const hasMore = messages.length > limit;
         const pageMessages = hasMore ? messages.slice(0, limit) : messages;
@@ -272,23 +298,15 @@ exports.getOldMessages = async(req,res,next) => {
         if (limit < 1) limit = 20;
                 
         // Build query for messages between these users before the given timestamp
-        const query = {
-            $or: [
-                { senderId: profileId, receiverId: connectId },
-                { senderId: connectId, receiverId: profileId }
-            ],
-            timestamp: { $lt: timestamp }
-        };
+        const query = { ...conversationWhere(profileId, connectId), timestamp: { lt: timestamp } };
 
-        const messages = await Message.find(query)
-            .select('-unseenReminderEmailSentAt -unseenReminderEmailProcessingKey -unseenReminderEmailProcessingAt -unseenReminderEmailLastError')
-            .sort({ timestamp: -1 })
-            .limit(limit + 1)
-            .populate({
-                path: 'parent',
-                select: 'message senderId attachment timestamp messageType',
-            })
-            .lean();
+        const messages = populated(await prisma.message.findMany({
+            where: query,
+            omit: REMINDER_OMIT,
+            orderBy: { timestamp: 'desc' },
+            take: limit + 1,
+            include: { parentDoc: { select: PARENT_SELECT } },
+        }), 'parent');
 
         const hasMore = messages.length > limit;
         const resultMessages = messages.slice(0, limit);
@@ -328,7 +346,7 @@ exports.sendMessage = async (req, res, next) => {
 
         // Idempotent retries: return the existing copy of this optimistic message.
         if (tempId) {
-            const existing = await Message.findOne({ senderId, tempId }).populate('parent');
+            const existing = await findMessageWithParent({ senderId, tempId: String(tempId) });
             if (existing) {
                 return res.status(200).json({ message: 'Message sent successfully', data: existing, duplicate: true });
             }
@@ -336,13 +354,18 @@ exports.sendMessage = async (req, res, next) => {
 
         // Prevent messaging if either user has blocked the other
         if (senderId && receiverId && String(senderId) !== String(receiverId)) {
-            const [senderProfile, receiverProfile] = await Promise.all([
-                Profile.findById(senderId).select('blockedUsers'),
-                Profile.findById(receiverId).select('blockedUsers'),
-            ]);
+            const blocks = await prisma.block.findMany({
+                where: {
+                    OR: [
+                        { profile: senderId, blocked: String(receiverId) },
+                        { profile: String(receiverId), blocked: senderId },
+                    ],
+                },
+                select: { profile: true },
+            });
 
-            const senderBlockedReceiver = listHasId(senderProfile?.blockedUsers, receiverId);
-            const receiverBlockedSender = listHasId(receiverProfile?.blockedUsers, senderId);
+            const senderBlockedReceiver = blocks.some((b) => b.profile === senderId);
+            const receiverBlockedSender = blocks.some((b) => b.profile === String(receiverId));
 
             if (senderBlockedReceiver || receiverBlockedSender) {
                 return res.status(403).json({
@@ -352,25 +375,30 @@ exports.sendMessage = async (req, res, next) => {
             }
         }
 
-        const newMessage = new Message({
-            room,
-            senderId,
-            receiverId: String(receiverId),
-            message,
-            attachment: attachment || undefined,
-            ...(parent && isValidObjectId(parent) ? { parent } : {}),
-            messageType,
-            callType,
-            callEvent,
-            tempId,
+        const newMessage = await prisma.message.create({
+            data: {
+                room,
+                senderId,
+                receiverId: String(receiverId),
+                message: message == null ? undefined : String(message),
+                attachment: attachment || undefined,
+                ...(parent && isValidObjectId(parent) ? { parent: String(parent) } : {}),
+                messageType,
+                callType,
+                callEvent,
+                tempId: tempId == null ? undefined : String(tempId),
+                reacts: [],
+            },
         });
-        await newMessage.save();
 
         // Update last active time for sending message
         await updateLastActive(senderId);
 
-        let updatedMessage = await Message.findOne({ _id: newMessage._id }).populate('parent');
-        let profileData = await Profile.findById(senderId).populate('user');
+        let updatedMessage = await findMessageWithParent({ id: newMessage.id });
+        let profileData = populated(
+            await prisma.profile.findUnique({ where: { id: senderId }, include: { userDoc: true } }),
+            'user',
+        );
         
         if (!profileData) {
             return res.status(404).json({ message: 'Sender profile not found' });
@@ -412,7 +440,7 @@ exports.sendMessage = async (req, res, next) => {
 // Helper function to update last active time
 const updateLastActive = async (userId) => {
     try {
-        await Profile.findByIdAndUpdate(userId, { lastActive: new Date(), isActive: true });
+        await prisma.profile.updateMany({ where: { id: String(userId) }, data: { lastActive: new Date(), isActive: true } });
     } catch (error) {
         console.error('Error updating last active time:', error);
     }
@@ -431,45 +459,38 @@ exports.getNewMessages = async (req, res, next) => {
         
         if (connectId) {
             // Get messages between two specific users (for Chat.js)
-            query = {
-                $or: [
-                    { senderId: profileId, receiverId: connectId },
-                    { senderId: connectId, receiverId: profileId }
-                ]
-            };
+            query = conversationWhere(profileId, connectId);
             
             // If we have a lastMessageId, only get messages newer than that
             if (lastMessageId) {
-                const lastMessage = await Message.findById(lastMessageId);
+                const lastMessage = await findMessage(lastMessageId);
                 if (lastMessage) {
-                    query.timestamp = { $gt: lastMessage.timestamp };
+                    query.timestamp = { gt: lastMessage.timestamp };
                 }
             }
         } else {
             // Get all new messages for the user (for Main.js)
             query = {
-                receiverId: profileId,
+                receiverId: String(profileId),
                 isSeen: false
             };
             
             // If we have a lastMessageId, only get messages newer than that
             if (lastMessageId) {
-                const lastMessage = await Message.findById(lastMessageId);
+                const lastMessage = await findMessage(lastMessageId);
                 if (lastMessage) {
-                    query.timestamp = { $gt: lastMessage.timestamp };
+                    query.timestamp = { gt: lastMessage.timestamp };
                 }
             }
         }
         
-        const newMessages = await Message.find(query)
-            .select('-unseenReminderEmailSentAt -unseenReminderEmailProcessingKey -unseenReminderEmailProcessingAt -unseenReminderEmailLastError')
-            .sort({ timestamp: -1 })
-            .limit(20)
-            .populate({
-                path: 'parent',
-                select: 'message senderId attachment timestamp messageType',
-            })
-            .lean();
+        const newMessages = populated(await prisma.message.findMany({
+            where: query,
+            omit: REMINDER_OMIT,
+            orderBy: { timestamp: 'desc' },
+            take: 20,
+            include: { parentDoc: { select: PARENT_SELECT } },
+        }), 'parent');
 
         const senderIds = [
             ...new Set(
@@ -480,9 +501,10 @@ exports.getNewMessages = async (req, res, next) => {
         ];
         const senders =
             senderIds.length > 0
-                ? await Profile.find({ _id: { $in: senderIds } })
-                      .select('name profilePic')
-                      .lean()
+                ? await prisma.profile.findMany({
+                      where: { id: { in: senderIds } },
+                      select: { id: true, _id: true, profilePic: true },
+                  })
                 : [];
         const senderMap = new Map(
             senders.map((profile) => [String(profile._id), profile]),
@@ -521,7 +543,7 @@ exports.getNewMessagesCount = async (req, res, next) => {
             return res.status(400).json({ hasNewMessages: false, count: 0 });
         }
 
-        const count = await Message.countDocuments({ receiverId: profileId, isSeen: false });
+        const count = await prisma.message.count({ where: { receiverId: String(profileId), isSeen: false } });
         return res.status(200).json({
             hasNewMessages: count > 0,
             count
@@ -541,7 +563,7 @@ exports.getMessageReactions = async (req, res, next) => {
             return res.status(400).json({ reactions: [] });
         }
         
-        const message = await Message.findById(messageId);
+        const message = await findMessage(messageId);
         
         if (!message) {
             return res.status(404).json({ reactions: [] });
@@ -573,11 +595,19 @@ exports.markMessageAsSeen = async (req, res, next) => {
         const myId = String(req.profile._id);
         const validIds = ids.map(String).filter((id) => isValidObjectId(id));
         // Only the receiver can mark a message as seen.
-        const seenFilter = { _id: { $in: validIds }, receiverId: myId, isSeen: { $ne: true } };
-        const toUpdate = await Message.find(seenFilter).select('_id room senderId receiverId timestamp').lean();
-        const result = toUpdate.length > 0
-            ? await Message.updateMany({ _id: { $in: toUpdate.map((m) => m._id) } }, { $set: { isSeen: true } })
-            : { modifiedCount: 0, matchedCount: 0 };
+        const seenFilter = { id: { in: validIds }, receiverId: myId, isSeen: false };
+        const toUpdate = await prisma.message.findMany({
+            where: seenFilter,
+            select: { id: true, _id: true, room: true, senderId: true, receiverId: true, timestamp: true },
+        });
+        let result = { modifiedCount: 0, matchedCount: 0 };
+        if (toUpdate.length > 0) {
+            const { count } = await prisma.message.updateMany({
+                where: { id: { in: toUpdate.map((m) => m.id) }, isSeen: false },
+                data: { isSeen: true },
+            });
+            result = { modifiedCount: count, matchedCount: toUpdate.length };
+        }
 
         if (result.modifiedCount > 0) {
             const io = req.app.get('io');
@@ -619,7 +649,7 @@ exports.deleteMessage = async (req, res, next) => {
             return res.status(400).json({ message: 'Message ID is required' });
         }
         
-        const message = await Message.findById(messageId);
+        const message = await findMessage(messageId);
         
         if (!message) {
             return res.status(404).json({ message: 'Message not found' });
@@ -632,7 +662,7 @@ exports.deleteMessage = async (req, res, next) => {
         }
         
         // Delete the message
-        await Message.findByIdAndDelete(messageId);
+        await prisma.message.deleteMany({ where: { id: message.id } });
         await deleteCloudinaryResources([message.attachment]);
         
         // Emit real-time event to all users in the chat room
@@ -660,15 +690,11 @@ exports.deleteConversation = async (req, res, next) => {
             return res.status(400).json({ message: 'Profile ID and connect ID are required' });
         }
 
-        const conversationQuery = {
-            $or: [
-                { senderId: profileId, receiverId: String(connectId) },
-                { senderId: String(connectId), receiverId: profileId },
-            ],
-        };
+        const conversationQuery = conversationWhere(profileId, connectId);
 
-        const messages = await Message.find(conversationQuery).select('attachment');
-        const result = await Message.deleteMany(conversationQuery);
+        const messages = await prisma.message.findMany({ where: conversationQuery, select: { attachment: true } });
+        const deleted = await prisma.message.deleteMany({ where: conversationQuery });
+        const result = { deletedCount: deleted.count };
         await deleteCloudinaryResources(messages.map((message) => message.attachment));
 
         const io = req.app.get('io');

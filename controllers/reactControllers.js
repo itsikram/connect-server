@@ -1,53 +1,54 @@
-const Post = require('../models/Post')
-const Story = require('../models/Story')
-const Watch = require('../models/Watch')
-const Profile = require('../models/Profile')
+const { prisma, isValidId, toId, populated } = require('../utils/db')
 const { saveNotification } = require('./notificationController')
 const checkIsActive = require('../utils/checkIsActive')
 const { sendPushToProfile } = require('../utils/pushNotifications')
 const { normalizeReactType } = require('../utils/reactTypes')
 const { updateInterestProfile } = require('../services/recommendationService')
+const { postInclude, watchInclude, storyInclude, shapePost, shapeWatch, shapeStory } = require('../services/contentShape')
 
-const reactProfileId = (value) => String(value?._id || value || '')
-
-const withoutReactor = (reacts = [], profileId) =>
-    (Array.isArray(reacts) ? reacts : []).filter(
-        (react) => reactProfileId(react?.profile) !== reactProfileId(profileId)
-    )
-
-const uniqueReactsByProfile = (reacts = []) => {
-    const seen = new Set()
-    const next = []
-    for (const react of [...(reacts || [])].reverse()) {
-        const id = reactProfileId(react?.profile)
-        if (!id || seen.has(id)) continue
-        seen.add(id)
-        next.push(react)
-    }
-    return next.reverse()
+// Reacts are join rows unique per (target, profile); the old document had the
+// newest react last, so replacing = delete + create.
+const TARGETS = {
+    post: { model: 'post', react: 'postReact', key: 'post', include: () => postInclude({ author: false }), shape: shapePost },
+    story: { model: 'story', react: 'storyReact', key: 'story', include: () => storyInclude({ author: false }), shape: shapeStory },
+    watch: { model: 'watch', react: 'watchReact', key: 'watch', include: () => watchInclude({ author: false }), shape: shapeWatch },
 }
 
-const replaceReact = async (Model, id, profileId, reactType) => {
-    const doc = await Model.findById(id)
-    if (!doc) return null
-    const cleaned = uniqueReactsByProfile(withoutReactor(doc.reacts, profileId))
-    cleaned.push({ profile: profileId, type: reactType })
-    doc.reacts = cleaned
-    await doc.save()
-    return doc
+// Reacted document in its old unpopulated shape (reacts, comments ids, aiMetadata...)
+const loadTarget = async (target, id) =>
+    target.shape(await prisma[target.model].findUnique({ where: { id }, include: target.include() }))
+
+const findWithAuthor = async (target, id) => {
+    if (!isValidId(id)) return null
+    const row = await prisma[target.model].findUnique({ where: { id: String(id) }, select: { id: true, author: true, authorDoc: true } })
+    return row ? populated(row, 'author').author : null
 }
 
-const removeReact = async (Model, id, profileId) => {
-    const doc = await Model.findById(id)
-    if (!doc) return null
-    doc.reacts = uniqueReactsByProfile(withoutReactor(doc.reacts, profileId))
-    await doc.save()
-    return doc
+const replaceReact = async (target, id, profileId, reactType) => {
+    if (!isValidId(id)) return null
+    id = String(id)
+    profileId = toId(profileId)
+    const exists = await prisma[target.model].findUnique({ where: { id }, select: { id: true } })
+    if (!exists) return null
+    await prisma.$transaction([
+        prisma[target.react].deleteMany({ where: { [target.key]: id, profile: profileId } }),
+        prisma[target.react].create({ data: { [target.key]: id, profile: profileId, type: reactType } }),
+    ])
+    return loadTarget(target, id)
+}
+
+const removeReact = async (target, id, profileId) => {
+    if (!isValidId(id)) return null
+    id = String(id)
+    const exists = await prisma[target.model].findUnique({ where: { id }, select: { id: true } })
+    if (!exists) return null
+    await prisma[target.react].deleteMany({ where: { [target.key]: id, profile: toId(profileId) } })
+    return loadTarget(target, id)
 }
 
 exports.postAddReact = async (req, res, next) => {
     try {
-        const profile = req.profile._id
+        const profile = toId(req.profile._id)
         const myProfileData = req.profile
         let { reactType, id, postType, watchType } = req.body
         postType = postType || watchType
@@ -65,14 +66,14 @@ exports.postAddReact = async (req, res, next) => {
 
         switch (postType) {
             case 'post': {
-                connectProfile = (await Post.findOne({ _id: id }).populate('author')).author
-                const addPostReact = await replaceReact(Post, id, profile, reactType)
+                connectProfile = await findWithAuthor(TARGETS.post, id)
+                const addPostReact = await replaceReact(TARGETS.post, id, profile, reactType)
                 if (!addPostReact) {
                     return res.status(404).json({ message: 'Post not found' })
                 }
                 updateInterestProfile({ profileId: profile, item: addPostReact }).catch((error) => console.error('[recommendations] post interest update failed:', error.message || error))
 
-                if (String(connectProfile._id) !== String(profile)) {
+                if (connectProfile && String(connectProfile._id) !== String(profile)) {
                     const activeBrowserIds = connectProfile.browserIds
                         ?.filter(browser => browser.isActive)
                         ?.map(browser => browser.browserId) || []
@@ -116,13 +117,13 @@ exports.postAddReact = async (req, res, next) => {
                 return res.status(200).json(addPostReact)
             }
             case 'story': {
-                connectProfile = (await Story.findOne({ _id: id }).populate('author')).author
-                const addStoryReact = await replaceReact(Story, id, profile, reactType)
+                connectProfile = await findWithAuthor(TARGETS.story, id)
+                const addStoryReact = await replaceReact(TARGETS.story, id, profile, reactType)
                 if (!addStoryReact) {
                     return res.status(404).json({ message: 'Story not found' })
                 }
 
-                if (String(connectProfile._id) !== String(profile)) {
+                if (connectProfile && String(connectProfile._id) !== String(profile)) {
                     saveNotification(io, {
                         receiverId: connectProfile._id,
                         text: `${myProfileData.fullName} Reacted your Story`,
@@ -153,8 +154,8 @@ exports.postAddReact = async (req, res, next) => {
                 return res.status(200).json(addStoryReact)
             }
             case 'watch': {
-                connectProfile = (await Watch.findOne({ _id: id }).populate('author')).author
-                const addWatchReact = await replaceReact(Watch, id, profile, reactType)
+                connectProfile = await findWithAuthor(TARGETS.watch, id)
+                const addWatchReact = await replaceReact(TARGETS.watch, id, profile, reactType)
                 if (!addWatchReact) {
                     return res.status(404).json({ message: 'Video not found' })
                 }
@@ -225,15 +226,15 @@ exports.postRemoveReact = async (req, res, next) => {
 
         switch (postType) {
             case 'post': {
-                const removePostReact = await removeReact(Post, id, reactor)
+                const removePostReact = await removeReact(TARGETS.post, id, reactor)
                 return res.status(200).json(removePostReact)
             }
             case 'story': {
-                const removeStoryReact = await removeReact(Story, id, profile)
+                const removeStoryReact = await removeReact(TARGETS.story, id, profile)
                 return res.status(200).json(removeStoryReact)
             }
             case 'watch': {
-                const removeWatchReact = await removeReact(Watch, id, reactor)
+                const removeWatchReact = await removeReact(TARGETS.watch, id, reactor)
                 return res.status(200).json(removeWatchReact)
             }
             default:

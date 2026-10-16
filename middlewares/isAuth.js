@@ -1,8 +1,29 @@
 const jwt = require("jsonwebtoken");
-const Profile = require("../models/Profile");
-const User = require("../models/User");
+const { prisma, populated, pluck } = require("../utils/db");
 
 const SECRET_KEY = process.env.JWT_SECRET_KEY;
+
+/**
+ * Profile of a user with `user` populated, plus the `connects` / `blockedUsers`
+ * id arrays that other modules still read from req.profile (they were arrays
+ * on the Mongoose document; now they come from the join tables).
+ */
+const loadAuthProfile = async (userId) => {
+  if (!userId) return null;
+  const row = await prisma.profile.findFirst({
+    where: { user: String(userId) },
+    include: {
+      userDoc: true,
+      connects: { select: { connect: true } },
+      blockedUsers: { select: { blocked: true } },
+    },
+  });
+  if (!row) return null;
+  populated(row, "user");
+  row.connects = pluck(row.connects, "connect");
+  row.blockedUsers = pluck(row.blockedUsers, "blocked");
+  return row;
+};
 
 let isAuth = async (req, res, next) => {
   try {
@@ -16,7 +37,7 @@ let isAuth = async (req, res, next) => {
     }
 
     let { user_id } = jwt.verify(token, SECRET_KEY);
-    let profileData = await Profile.findOne({ user: user_id }).populate("user");
+    let profileData = await loadAuthProfile(user_id);
     if (!profileData) {
       return res.status(401).json({
         message: "You are not a authenticated User",
@@ -43,9 +64,12 @@ let isAuth = async (req, res, next) => {
     }
 
     // Fire-and-forget: these status writes don't need to block the request.
-    // Awaiting them was responsible for 3 extra serial DB round-trips per request.
-    Profile.findByIdAndUpdate(profileData._id, updateData).catch(() => {});
-    User.findByIdAndUpdate(user_id, { lastLogin: Date.now() }).catch(() => {});
+    prisma.profile
+      .update({ where: { id: profileData.id }, data: updateData })
+      .catch(() => {});
+    prisma.user
+      .updateMany({ where: { id: String(user_id) }, data: { lastLogin: Date.now() } })
+      .catch(() => {});
 
     req.profile = profileData;
     next();
@@ -62,5 +86,7 @@ let isAuth = async (req, res, next) => {
     next(error);
   }
 };
+
+isAuth.loadAuthProfile = loadAuthProfile;
 
 module.exports = isAuth;

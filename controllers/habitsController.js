@@ -1,4 +1,10 @@
-const Habit = require('../models/Habit');
+const { prisma, jsonObject } = require('../utils/db');
+
+const findOwnHabit = (id, profileId) =>
+    prisma.habit.findFirst({ where: { id: String(id), user: String(profileId) } });
+
+// records was a Mongoose Map<"YYYY-MM-DD", Boolean>; now a Json object.
+const shapeHabit = (habit) => (habit ? { ...habit, records: jsonObject(habit.records) } : habit);
 
 // Get all habits for authenticated user
 exports.getAllHabits = async (req, res, next) => {
@@ -11,8 +17,10 @@ exports.getAllHabits = async (req, res, next) => {
             });
         }
 
-        const habits = await Habit.find({ user: profileId })
-            .sort({ createdAt: -1 });
+        const habits = (await prisma.habit.findMany({
+            where: { user: String(profileId) },
+            orderBy: { createdAt: 'desc' }
+        })).map(shapeHabit);
 
         return res.status(200).json({
             success: true,
@@ -41,7 +49,7 @@ exports.getHabit = async (req, res, next) => {
             });
         }
 
-        const habit = await Habit.findOne({ _id: id, user: profileId });
+        const habit = await findOwnHabit(id, profileId);
 
         if (!habit) {
             return res.status(404).json({
@@ -52,7 +60,7 @@ exports.getHabit = async (req, res, next) => {
 
         return res.status(200).json({
             success: true,
-            habit
+            habit: shapeHabit(habit)
         });
     } catch (error) {
         console.error('Error getting habit:', error);
@@ -84,16 +92,16 @@ exports.createHabit = async (req, res, next) => {
             });
         }
 
-        const habit = new Habit({
-            user: profileId,
-            name: name.trim(),
-            color: color || '#22C55E',
-            streak: 0,
-            longestStreak: 0,
-            records: new Map()
-        });
-
-        const savedHabit = await habit.save();
+        const savedHabit = shapeHabit(await prisma.habit.create({
+            data: {
+                user: String(profileId),
+                name: name.trim(),
+                color: color || '#22C55E',
+                streak: 0,
+                longestStreak: 0,
+                records: {}
+            }
+        }));
 
         return res.status(201).json({
             success: true,
@@ -124,7 +132,7 @@ exports.updateHabit = async (req, res, next) => {
             });
         }
 
-        const habit = await Habit.findOne({ _id: id, user: profileId });
+        const habit = await findOwnHabit(id, profileId);
 
         if (!habit) {
             return res.status(404).json({
@@ -140,12 +148,11 @@ exports.updateHabit = async (req, res, next) => {
             habit.color = color;
         }
         if (records !== undefined) {
-            // Convert records object to Map
-            const recordsMap = new Map();
-            Object.keys(records).forEach(key => {
-                recordsMap.set(key, records[key]);
+            const recordsObj = {};
+            Object.keys(records || {}).forEach(key => {
+                recordsObj[key] = Boolean(records[key]);
             });
-            habit.records = recordsMap;
+            habit.records = recordsObj;
         }
         if (streak !== undefined) {
             habit.streak = streak;
@@ -153,9 +160,17 @@ exports.updateHabit = async (req, res, next) => {
         if (longestStreak !== undefined) {
             habit.longestStreak = longestStreak;
         }
-        habit.updatedAt = Date.now();
 
-        const updatedHabit = await habit.save();
+        const updatedHabit = shapeHabit(await prisma.habit.update({
+            where: { id: habit.id },
+            data: {
+                name: habit.name,
+                color: habit.color,
+                records: jsonObject(habit.records),
+                streak: Number(habit.streak) || 0,
+                longestStreak: Number(habit.longestStreak) || 0
+            }
+        }));
 
         return res.status(200).json({
             success: true,
@@ -185,7 +200,7 @@ exports.deleteHabit = async (req, res, next) => {
             });
         }
 
-        const habit = await Habit.findOne({ _id: id, user: profileId });
+        const habit = await findOwnHabit(id, profileId);
 
         if (!habit) {
             return res.status(404).json({
@@ -194,7 +209,7 @@ exports.deleteHabit = async (req, res, next) => {
             });
         }
 
-        await Habit.deleteOne({ _id: id, user: profileId });
+        await prisma.habit.delete({ where: { id: habit.id } });
 
         return res.status(200).json({
             success: true,

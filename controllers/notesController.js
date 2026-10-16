@@ -1,4 +1,7 @@
-const Note = require('../models/Note');
+const { prisma } = require('../utils/db');
+
+const findOwnNote = (id, profileId) =>
+    prisma.note.findFirst({ where: { id: String(id), user: String(profileId) } });
 
 // Get all notes for authenticated user
 exports.getAllNotes = async (req, res, next) => {
@@ -11,8 +14,10 @@ exports.getAllNotes = async (req, res, next) => {
             });
         }
 
-        const notes = await Note.find({ user: profileId })
-            .sort({ updatedAt: -1 });
+        const notes = await prisma.note.findMany({
+            where: { user: String(profileId) },
+            orderBy: { updatedAt: 'desc' }
+        });
 
         return res.status(200).json({
             success: true,
@@ -41,7 +46,7 @@ exports.getNote = async (req, res, next) => {
             });
         }
 
-        const note = await Note.findOne({ _id: id, user: profileId });
+        const note = await findOwnNote(id, profileId);
 
         if (!note) {
             return res.status(404).json({
@@ -84,13 +89,13 @@ exports.createNote = async (req, res, next) => {
             });
         }
 
-        const note = new Note({
-            user: profileId,
-            title: title.trim(),
-            content: content || ''
+        const savedNote = await prisma.note.create({
+            data: {
+                user: String(profileId),
+                title: title.trim(),
+                content: content || ''
+            }
         });
-
-        const savedNote = await note.save();
 
         return res.status(201).json({
             success: true,
@@ -121,7 +126,7 @@ exports.updateNote = async (req, res, next) => {
             });
         }
 
-        const note = await Note.findOne({ _id: id, user: profileId });
+        const note = await findOwnNote(id, profileId);
 
         if (!note) {
             return res.status(404).json({
@@ -143,9 +148,11 @@ exports.updateNote = async (req, res, next) => {
         if (content !== undefined) {
             note.content = content;
         }
-        note.updatedAt = Date.now();
 
-        const updatedNote = await note.save();
+        const updatedNote = await prisma.note.update({
+            where: { id: note.id },
+            data: { title: note.title, content: note.content }
+        });
 
         return res.status(200).json({
             success: true,
@@ -175,7 +182,7 @@ exports.deleteNote = async (req, res, next) => {
             });
         }
 
-        const note = await Note.findOne({ _id: id, user: profileId });
+        const note = await findOwnNote(id, profileId);
 
         if (!note) {
             return res.status(404).json({
@@ -184,7 +191,7 @@ exports.deleteNote = async (req, res, next) => {
             });
         }
 
-        await Note.deleteOne({ _id: id, user: profileId });
+        await prisma.note.delete({ where: { id: note.id } });
 
         return res.status(200).json({
             success: true,

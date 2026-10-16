@@ -1,9 +1,7 @@
-const User = require("../models/User");
+const { prisma, isValidId } = require("../utils/db");
 
 const SUBSCRIPTION_STATUSES = new Set(["none", "active", "expired", "cancelled"]);
 const SUBSCRIPTION_TIERS = new Set(["plus_basic", "plus_pro"]);
-
-const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const serializeUser = (user) => ({
   _id: user._id,
@@ -31,24 +29,23 @@ const listSubscriptions = async (req, res) => {
   }
 
   try {
-    const query = {};
-    if (status !== "all") query.subscriptionStatus = status;
-    if (tier !== "all") query.subscriptionTier = tier;
+    const where = {};
+    if (status !== "all") where.subscriptionStatus = status;
+    if (tier !== "all") where.subscriptionTier = tier;
     if (search) {
-      const safeSearch = escapeRegex(search);
-      query.$or = [
-        { email: { $regex: safeSearch, $options: "i" } },
-        { firstName: { $regex: safeSearch, $options: "i" } },
-        { surname: { $regex: safeSearch, $options: "i" } },
-        { username: { $regex: safeSearch, $options: "i" } },
+      where.OR = [
+        { email: { contains: search } },
+        { firstName: { contains: search } },
+        { surname: { contains: search } },
+        { username: { contains: search } },
       ];
     }
 
-    const users = await User.find(query)
-      .select("firstName surname email username createdAt lastLogin subscriptionStatus subscriptionTier subscriptionExpiresAt")
-      .sort({ updatedAt: -1 })
-      .limit(200)
-      .lean();
+    const users = await prisma.user.findMany({
+      where,
+      orderBy: { updatedAt: "desc" },
+      take: 200,
+    });
 
     return res.json({ success: true, users: users.map(serializeUser) });
   } catch (error) {
@@ -69,7 +66,9 @@ const grantSubscription = async (req, res) => {
   }
 
   try {
-    const user = await User.findById(req.params.id);
+    const user = isValidId(req.params.id)
+      ? await prisma.user.findUnique({ where: { id: req.params.id } })
+      : null;
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
     const now = new Date();
@@ -77,15 +76,19 @@ const grantSubscription = async (req, res) => {
       ? user.subscriptionExpiresAt
       : now;
 
-    user.subscriptionStatus = "active";
-    user.subscriptionTier = tier;
-    user.subscriptionExpiresAt = new Date(currentExpiry.getTime() + days * 24 * 60 * 60 * 1000);
-    await user.save();
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        subscriptionStatus: "active",
+        subscriptionTier: tier,
+        subscriptionExpiresAt: new Date(currentExpiry.getTime() + days * 24 * 60 * 60 * 1000),
+      },
+    });
 
     return res.json({
       success: true,
       message: "Complimentary subscription applied",
-      user: serializeUser(user),
+      user: serializeUser(updated),
     });
   } catch (error) {
     console.error("Admin subscription grant failed:", error);
@@ -95,11 +98,13 @@ const grantSubscription = async (req, res) => {
 
 const revokeSubscription = async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { $set: { subscriptionStatus: "cancelled", subscriptionTier: "none", subscriptionExpiresAt: null } },
-      { new: true },
-    );
+    const { count } = isValidId(req.params.id)
+      ? await prisma.user.updateMany({
+        where: { id: req.params.id },
+        data: { subscriptionStatus: "cancelled", subscriptionTier: "none", subscriptionExpiresAt: null },
+      })
+      : { count: 0 };
+    const user = count ? await prisma.user.findUnique({ where: { id: req.params.id } }) : null;
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
     return res.json({ success: true, message: "Subscription access removed", user: serializeUser(user) });

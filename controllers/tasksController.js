@@ -1,4 +1,10 @@
-const Task = require('../models/Task');
+const { prisma } = require('../utils/db');
+
+const DEFAULT_NOTIFICATION_SENT = { before30: false, before15: false, atTime: false };
+const shapeTask = (task) => (task ? {
+    ...task,
+    notificationSent: { ...DEFAULT_NOTIFICATION_SENT, ...(task.notificationSent || {}) }
+} : task);
 
 const isValidReminderTime = (value) => typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 const isValidTimezone = (value) => {
@@ -23,8 +29,10 @@ exports.getAllTasks = async (req, res, next) => {
             });
         }
 
-        const tasks = await Task.find({ user: profileId })
-            .sort({ createdAt: -1 });
+        const tasks = (await prisma.task.findMany({
+            where: { user: String(profileId) },
+            orderBy: { createdAt: 'desc' }
+        })).map(shapeTask);
 
         return res.status(200).json({
             success: true,
@@ -73,16 +81,17 @@ exports.createTask = async (req, res, next) => {
             return res.status(400).json({ success: false, message: 'Reminder timezone is required' });
         }
 
-        const task = new Task({
-            user: profileId,
-            text: text.trim(),
-            completed: false,
-            taskTime: parsedTaskTime || undefined,
-            reminderTime: reminderTime || undefined,
-            reminderTimezone: reminderTimezone || undefined
-        });
-
-        const savedTask = await task.save();
+        const savedTask = shapeTask(await prisma.task.create({
+            data: {
+                user: String(profileId),
+                text: text.trim(),
+                completed: false,
+                taskTime: parsedTaskTime || null,
+                reminderTime: reminderTime || null,
+                reminderTimezone: reminderTimezone || null,
+                notificationSent: { ...DEFAULT_NOTIFICATION_SENT }
+            }
+        }));
 
         return res.status(201).json({
             success: true,
@@ -122,7 +131,7 @@ exports.updateTask = async (req, res, next) => {
         if (reminderTimezone !== undefined && reminderTimezone !== null && !isValidTimezone(reminderTimezone)) {
             return res.status(400).json({ success: false, message: 'Reminder timezone is invalid' });
         }
-        const task = await Task.findOne({ _id: id, user: profileId });
+        const task = await prisma.task.findFirst({ where: { id: String(id), user: String(profileId) } });
 
         if (!task) {
             return res.status(404).json({
@@ -134,26 +143,27 @@ exports.updateTask = async (req, res, next) => {
             return res.status(400).json({ success: false, message: 'Reminder timezone is required' });
         }
 
+        const data = {};
         if (text !== undefined) {
-            task.text = text.trim();
+            data.text = text.trim();
         }
         if (completed !== undefined) {
-            task.completed = completed;
+            data.completed = Boolean(completed);
         }
         if (taskTime !== undefined) {
-            task.taskTime = parsedTaskTime || undefined;
-            task.notificationSent = { before30: false, before15: false, atTime: false };
+            data.taskTime = parsedTaskTime || null;
+            data.notificationSent = { ...DEFAULT_NOTIFICATION_SENT };
         }
         if (reminderTime !== undefined) {
-            task.reminderTime = reminderTime || undefined;
-            task.lastReminderDate = null;
+            data.reminderTime = reminderTime || null;
+            data.lastReminderDate = null;
         }
         if (reminderTimezone !== undefined) {
-            task.reminderTimezone = reminderTimezone || undefined;
-            task.lastReminderDate = null;
+            data.reminderTimezone = reminderTimezone || null;
+            data.lastReminderDate = null;
         }
 
-        const updatedTask = await task.save();
+        const updatedTask = shapeTask(await prisma.task.update({ where: { id: task.id }, data }));
 
         return res.status(200).json({
             success: true,
@@ -183,7 +193,7 @@ exports.deleteTask = async (req, res, next) => {
             });
         }
 
-        const task = await Task.findOne({ _id: id, user: profileId });
+        const task = await prisma.task.findFirst({ where: { id: String(id), user: String(profileId) } });
 
         if (!task) {
             return res.status(404).json({
@@ -192,7 +202,7 @@ exports.deleteTask = async (req, res, next) => {
             });
         }
 
-        await Task.deleteOne({ _id: id, user: profileId });
+        await prisma.task.delete({ where: { id: task.id } });
 
         return res.status(200).json({
             success: true,
@@ -220,12 +230,12 @@ exports.deleteCompletedTasks = async (req, res, next) => {
             });
         }
 
-        const result = await Task.deleteMany({ user: profileId, completed: true });
+        const result = await prisma.task.deleteMany({ where: { user: String(profileId), completed: true } });
 
         return res.status(200).json({
             success: true,
             message: 'Completed tasks deleted successfully',
-            deletedCount: result.deletedCount
+            deletedCount: result.count
         });
     } catch (error) {
         console.error('Error deleting completed tasks:', error);

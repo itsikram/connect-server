@@ -1,11 +1,8 @@
-const User = require("../models/User");
-const PayoutRequest = require("../models/PayoutRequest");
-const MonetizationSettings = require("../models/MonetizationSettings");
-const CoinReward = require("../models/CoinReward");
+const { prisma, toId, isDuplicate } = require("../utils/db");
 
-const getUserId = (req) => req.profile?.user?._id || req.profile?.user || req.profile?._id;
+const getUserId = (req) => toId(req.profile?.user?._id || req.profile?.user || req.profile?._id);
 const getSettings = async () => {
-  const settings = await MonetizationSettings.findOne({ singletonKey: "default" }).lean();
+  const settings = await prisma.monetizationSettings.findUnique({ where: { singletonKey: "default" } });
   return {
     coinToBDTRate: Number(settings?.payout?.coinToBDTRate || 0.1),
     minimumCoins: Number(settings?.payout?.minimumCoins || 100),
@@ -15,7 +12,10 @@ const getSettings = async () => {
 
 exports.listPayoutRequests = async (req, res, next) => {
   try {
-    const requests = await PayoutRequest.find({ userId: getUserId(req) }).sort({ createdAt: -1 }).lean();
+    const requests = await prisma.payoutRequest.findMany({
+      where: { userId: getUserId(req) },
+      orderBy: { createdAt: "desc" },
+    });
     return res.json({ success: true, requests });
   } catch (error) {
     return next(error);
@@ -41,43 +41,39 @@ exports.createPayoutRequest = async (req, res, next) => {
       return res.status(400).json({ success: false, message: `Minimum payout is ${settings.minimumCoins} coins.` });
     }
     const userId = getUserId(req);
-    const pending = await PayoutRequest.countDocuments({ userId, status: "pending" });
+    const pending = await prisma.payoutRequest.count({ where: { userId, status: "pending" } });
     if (pending >= 3) {
       return res.status(429).json({ success: false, message: "You can have at most 3 pending payout requests." });
     }
-    const reservation = await User.updateOne(
-      {
-        _id: userId,
-        $expr: {
-          $gte: [
-            { $subtract: ["$creatorEarningsCoins", { $ifNull: ["$payoutReservedCoins", 0] }] },
-            amountCoins,
-          ],
-        },
-      },
-      { $inc: { payoutReservedCoins: amountCoins } },
-    );
-    if (!reservation.modifiedCount) {
+    // Atomic reservation: only succeeds while withdrawable earnings cover the amount.
+    const reserved = await prisma.$executeRaw`
+      UPDATE users
+      SET payoutReservedCoins = payoutReservedCoins + ${amountCoins}, updatedAt = NOW(3)
+      WHERE id = ${userId} AND creatorEarningsCoins - payoutReservedCoins >= ${amountCoins}`;
+    if (!reserved) {
       return res.status(400).json({ success: false, message: "You do not have enough withdrawable earnings." });
     }
 
     try {
-      const request = await PayoutRequest.create({
-        userId,
-        method,
-        payoutAddress: payoutAddress.trim(),
-        recipientName: recipientName.trim(),
-        phoneNumber: phoneNumber.trim(),
-        amountCoins,
-        amountBDT: Number((amountCoins * settings.coinToBDTRate).toFixed(2)),
-        exchangeRate: settings.coinToBDTRate,
+      const request = await prisma.payoutRequest.create({
+        data: {
+          userId,
+          method,
+          payoutAddress: payoutAddress.trim(),
+          recipientName: recipientName.trim(),
+          phoneNumber: phoneNumber.trim(),
+          amountCoins,
+          amountBDT: Number((amountCoins * settings.coinToBDTRate).toFixed(2)),
+          exchangeRate: settings.coinToBDTRate,
+          auditLog: [],
+        },
       });
       return res.status(201).json({ success: true, request });
     } catch (error) {
-      await User.updateOne(
-        { _id: userId },
-        { $inc: { payoutReservedCoins: -amountCoins } },
-      );
+      await prisma.user.updateMany({
+        where: { id: userId },
+        data: { payoutReservedCoins: { decrement: amountCoins } },
+      });
       throw error;
     }
   } catch (error) {
@@ -95,14 +91,17 @@ exports.claimActionReward = async (req, res, next) => {
     const settings = await getSettings();
     const userId = getUserId(req);
     try {
-      await CoinReward.create({ userId, actionKey, referenceId, coins: settings.actionRewardCoins });
+      await prisma.coinReward.create({ data: { userId, actionKey, referenceId, coins: settings.actionRewardCoins } });
     } catch (error) {
-      if (error?.code === 11000) {
+      if (isDuplicate(error)) {
         return res.status(409).json({ success: false, message: "This action has already earned coins." });
       }
       throw error;
     }
-    await User.updateOne({ _id: userId }, { $inc: { creatorEarningsCoins: settings.actionRewardCoins } });
+    await prisma.user.updateMany({
+      where: { id: userId },
+      data: { creatorEarningsCoins: { increment: settings.actionRewardCoins } },
+    });
     return res.json({ success: true, coinsAwarded: settings.actionRewardCoins });
   } catch (error) {
     return next(error);

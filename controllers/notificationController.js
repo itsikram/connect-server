@@ -1,9 +1,29 @@
-const { mongoose } = require("mongoose");
-const Notification = require("../models/Notification");
-const Profile = require("../models/Profile");
+const { prisma, isValidId, jsonArray } = require("../utils/db");
+const { isMySQLReady } = require("../config/prisma");
 const { sendPushToProfile } = require("../utils/pushNotifications");
 const { sendWebPushToProfile } = require("../utils/webPush");
 const { getPostId, postLink } = require("../utils/getPostId");
+
+const NOTIFICATION_SELECT = {
+  id: true,
+  _id: true,
+  receiverId: true,
+  text: true,
+  title: true,
+  icon: true,
+  link: true,
+  type: true,
+  data: true,
+  isSeen: true,
+  timestamp: true,
+};
+
+// Ludo / chess invite filter on the Json `data` column ("data.gameId" in Mongo).
+function inviteFilter(profileId, type, gameId, inviterId) {
+  const and = [{ data: { path: "$.gameId", equals: String(gameId) } }];
+  if (inviterId) and.push({ data: { path: "$.inviterId", equals: String(inviterId) } });
+  return { receiverId: String(profileId), type, AND: and };
+}
 
 const VALID_POST_LINK = /^\/post\/([a-f0-9]{24})$/i;
 const OBJECT_ID_IN_TEXT = /([a-f0-9]{24})/i;
@@ -31,11 +51,13 @@ exports.notificationSocket = async (io, socket) => {
     // Clients can emit this while MongoDB is still connecting; with
     // bufferCommands disabled the query throws, and an unhandled rejection
     // here used to crash the whole API process.
-    if (!profileId || Notification.db.readyState !== 1) return;
+    if (!profileId || !isMySQLReady()) return;
     try {
-      let notificaitons = await Notification.find({ receiverId: profileId })
-        .limit(25)
-        .sort({ timestamp: -1 });
+      let notificaitons = await prisma.notification.findMany({
+        where: { receiverId: String(profileId) },
+        take: 25,
+        orderBy: { timestamp: "desc" },
+      });
       io.to(profileId).emit("oldNotifications", notificaitons.reverse());
     } catch (err) {
       console.error("[fetchNotifications] failed:", err.message);
@@ -61,19 +83,20 @@ exports.saveNotification = async (io, data) => {
   let browserIds = data.browserIds || [];
   let notificationTitle = data.title || "Connect";
 
-  let notification = new Notification({
-    receiverId,
-    text: notificationText,
-    title: notificationTitle,
-    link: notificationLink,
-    icon: notificationIcon,
-    type: notificationType,
+  let newNotification = await prisma.notification.create({
     data: {
-      ...(data.data || {}),
-      browserIds: browserIds,
+      receiverId,
+      text: notificationText,
+      title: notificationTitle,
+      link: notificationLink,
+      icon: notificationIcon,
+      type: notificationType,
+      data: {
+        ...(data.data || {}),
+        browserIds: browserIds,
+      },
     },
   });
-  let newNotification = await notification.save();
 
   if (newNotification) {
     if (io && typeof io.to === "function") {
@@ -122,15 +145,15 @@ exports.postNotification = async (req, res, next) => {
   let notificationLink = req.body.link || "/";
   let notificationIcon = req.body.icon || null;
   let notificationType = req.body.type || null;
-  let notification = new Notification({
-    receiverId,
-    text: notificationText,
-    link: notificationLink,
-    icon: notificationIcon,
-    type: notificationType,
+  let newNotification = await prisma.notification.create({
+    data: {
+      receiverId: receiverId == null ? null : String(receiverId),
+      text: notificationText,
+      link: notificationLink,
+      icon: notificationIcon,
+      type: notificationType,
+    },
   });
-
-  let newNotification = await notification.save();
   if (newNotification) {
     return res.json({ message: "New Notification Created" }).json(200);
   }
@@ -140,17 +163,14 @@ exports.postNotification = async (req, res, next) => {
 exports.notificationView = async (req, res, next) => {
   let notificationId = req.body.notificationId;
 
-  if (!mongoose.isValidObjectId(notificationId)) return next();
+  if (!isValidId(notificationId)) return next();
 
-  let updatedNotification = await Notification.findOneAndUpdate(
-    { _id: notificationId },
-    {
-      isSeen: true,
-    },
-    { new: true },
-  );
+  let updatedNotification = await prisma.notification.updateMany({
+    where: { id: String(notificationId) },
+    data: { isSeen: true },
+  });
 
-  if (updatedNotification) {
+  if (updatedNotification.count > 0) {
     return res
       .json({ message: "Notification status updated successfully" })
       .status(200);
@@ -160,13 +180,10 @@ exports.notificationView = async (req, res, next) => {
 exports.notificationViewAll = async (req, res, next) => {
   let profile = req.profile;
 
-  let updatedNotification = await Notification.updateMany(
-    { receiverId: profile._id },
-    {
-      isSeen: true,
-    },
-    { new: true },
-  );
+  let updatedNotification = await prisma.notification.updateMany({
+    where: { receiverId: String(profile._id) },
+    data: { isSeen: true },
+  });
 
   if (updatedNotification) {
     return res
@@ -186,14 +203,16 @@ exports.getNotifications = async (req, res, next) => {
 
   let receverId = req.query.receverId || req.query.profileId || req.profile._id;
   let limit = Math.min(Number(req.query.limit) || 50, 100);
-  let notifications = await Notification.find({
-    receiverId: receverId,
-    type: { $ne: "message" },
-  })
-    .select("receiverId text title icon link type data isSeen timestamp")
-    .limit(limit)
-    .sort({ timestamp: -1 })
-    .lean();
+  // Mongo's $ne also matched documents without a type.
+  let notifications = await prisma.notification.findMany({
+    where: {
+      receiverId: String(receverId),
+      OR: [{ type: null }, { type: { not: "message" } }],
+    },
+    select: NOTIFICATION_SELECT,
+    take: limit,
+    orderBy: { timestamp: "desc" },
+  });
   if (notifications) {
     return res.status(200).json(notifications);
   }
@@ -215,15 +234,16 @@ exports.getNewNotifications = async (req, res, next) => {
       return res.status(400).json({ notifications: [] });
     }
 
-    const notifications = await Notification.find({
-      receiverId: profileId,
-      isSeen: false,
-      type: { $ne: "message" },
-    })
-      .select("receiverId text title icon link type data isSeen timestamp")
-      .limit(20)
-      .sort({ timestamp: -1 })
-      .lean();
+    const notifications = await prisma.notification.findMany({
+      where: {
+        receiverId: String(profileId),
+        isSeen: false,
+        OR: [{ type: null }, { type: { not: "message" } }],
+      },
+      select: NOTIFICATION_SELECT,
+      take: 20,
+      orderBy: { timestamp: "desc" },
+    });
 
     return res.status(200).json({ notifications });
   } catch (error) {
@@ -237,16 +257,15 @@ exports.deleteNotification = async (req, res, next) => {
     const notificationId = req.body.notificationId;
     const profileId = req.profile?._id;
 
-    if (!mongoose.isValidObjectId(notificationId)) {
+    if (!isValidId(notificationId)) {
       return res.status(400).json({ message: "Invalid notification id" });
     }
 
-    const deleted = await Notification.findOneAndDelete({
-      _id: notificationId,
-      receiverId: profileId,
+    const deleted = await prisma.notification.deleteMany({
+      where: { id: String(notificationId), receiverId: String(profileId) },
     });
 
-    if (!deleted) {
+    if (!deleted.count) {
       return res.status(404).json({ message: "Notification not found" });
     }
 
@@ -273,16 +292,9 @@ exports.resolveLudoInviteNotifications = async (req, res, next) => {
       return res.status(400).json({ message: "gameId is required" });
     }
 
-    const filter = {
-      receiverId: profileId,
-      type: "ludo_invite",
-      "data.gameId": String(gameId),
-    };
-    if (inviterId) {
-      filter["data.inviterId"] = String(inviterId);
-    }
-
-    const result = await Notification.deleteMany(filter);
+    const filter = inviteFilter(profileId, "ludo_invite", gameId, inviterId);
+    const deleted = await prisma.notification.deleteMany({ where: filter });
+    const result = { deletedCount: deleted.count };
 
     return res.status(200).json({
       message: "Ludo invite notifications resolved",
@@ -309,16 +321,9 @@ exports.resolveChessInviteNotifications = async (req, res, next) => {
       return res.status(400).json({ message: "gameId is required" });
     }
 
-    const filter = {
-      receiverId: profileId,
-      type: "chess_invite",
-      "data.gameId": String(gameId),
-    };
-    if (inviterId) {
-      filter["data.inviterId"] = String(inviterId);
-    }
-
-    const result = await Notification.deleteMany(filter);
+    const filter = inviteFilter(profileId, "chess_invite", gameId, inviterId);
+    const deleted = await prisma.notification.deleteMany({ where: filter });
+    const result = { deletedCount: deleted.count };
 
     return res.status(200).json({
       message: "Chess invite notifications resolved",
@@ -338,8 +343,8 @@ exports.deleteAllNotifications = async (req, res, next) => {
     if (!profileId) {
       return res.status(400).json({ message: "Profile required" });
     }
-    let deletedNotification = await Notification.deleteMany({
-      receiverId: profileId,
+    let deletedNotification = await prisma.notification.deleteMany({
+      where: { receiverId: String(profileId) },
     });
     if (deletedNotification) {
       return res.status(200).json({
@@ -353,18 +358,28 @@ exports.deleteAllNotifications = async (req, res, next) => {
   }
 };
 
+// Read-modify-write of the Profile.deviceTokens Json array.
+async function updateDeviceTokens(profileId, change) {
+  const profile = await prisma.profile.findUnique({
+    where: { id: profileId },
+    select: { deviceTokens: true },
+  });
+  if (!profile) return null;
+  const deviceTokens = change(jsonArray(profile.deviceTokens));
+  await prisma.profile.update({ where: { id: profileId }, data: { deviceTokens } });
+  return { deviceTokens };
+}
+
 // Register a device token to the authenticated profile
 exports.registerDeviceToken = async (req, res, next) => {
   try {
     const token = (req.body?.token || "").trim();
     if (!token) return res.status(400).json({ message: "Token is required" });
 
-    const profileId = req.profile._id;
-    const updated = await Profile.findByIdAndUpdate(
-      profileId,
-      { $addToSet: { deviceTokens: token } },
-      { new: true },
-    ).select("deviceTokens");
+    const profileId = String(req.profile._id);
+    const updated = await updateDeviceTokens(profileId, (tokens) =>
+      tokens.includes(token) ? tokens : [...tokens, token],
+    );
 
     return res
       .status(200)
@@ -383,12 +398,10 @@ exports.unregisterDeviceToken = async (req, res, next) => {
     const token = (req.body?.token || "").trim();
     if (!token) return res.status(400).json({ message: "Token is required" });
 
-    const profileId = req.profile._id;
-    const updated = await Profile.findByIdAndUpdate(
-      profileId,
-      { $pull: { deviceTokens: token } },
-      { new: true },
-    ).select("deviceTokens");
+    const profileId = String(req.profile._id);
+    const updated = await updateDeviceTokens(profileId, (tokens) =>
+      tokens.filter((t) => t !== token),
+    );
 
     return res
       .status(200)
@@ -407,7 +420,11 @@ exports.unregisterAllOtherDeviceTokens = async (req, res, next) => {
     const profileId = req.profile._id;
     const currentToken = (req.body?.currentToken || "").trim();
 
-    const profile = await Profile.findById(profileId);
+    const row = await prisma.profile.findUnique({
+      where: { id: String(profileId) },
+      select: { id: true, deviceTokens: true },
+    });
+    const profile = row && { ...row, deviceTokens: jsonArray(row.deviceTokens) };
     if (!profile) {
       return res.status(404).json({ message: "Profile not found" });
     }
@@ -427,7 +444,10 @@ exports.unregisterAllOtherDeviceTokens = async (req, res, next) => {
     const remainingCount = profile.deviceTokens?.length || 0;
     const unregisteredCount = previousCount - remainingCount;
 
-    await profile.save({ validateBeforeSave: false });
+    await prisma.profile.update({
+      where: { id: profile.id },
+      data: { deviceTokens: profile.deviceTokens },
+    });
 
     return res.status(200).json({
       message: "All other device tokens unregistered",

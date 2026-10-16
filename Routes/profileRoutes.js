@@ -19,7 +19,6 @@ const {
 const coverPicUpload = require("../middlewares/UploadCover");
 const photosUpload = require("../middlewares/photosUpload");
 const isAuth = require("../middlewares/isAuth");
-const Profile = require("../models/Profile");
 const multer = require("multer");
 
 const upload = multer({ storage: multer.memoryStorage() }); // Create an endpoint for image upload

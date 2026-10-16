@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const AiSettings = require("../models/AiSettings");
+const { prisma } = require("./db");
 
 const CACHE_TTL_MS = 15000;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
@@ -133,10 +133,11 @@ exports.loadAiSettings = async ({ force = false } = {}) => {
   if (!force && cache.doc && Date.now() - cache.at < CACHE_TTL_MS) {
     return cache.doc;
   }
-  let raw = await AiSettings.findOne({ singletonKey: "default" }).lean();
-  if (!raw) {
-    raw = (await AiSettings.create(defaultDoc())).toObject();
-  }
+  const raw = await prisma.aiSettings.upsert({
+    where: { singletonKey: "default" },
+    create: defaultDoc(),
+    update: {},
+  });
   const doc = normalizeDoc(raw);
   cache = { at: Date.now(), doc };
   return doc;
@@ -233,19 +234,18 @@ exports.updateAiSettings = async (patch = {}) => {
     }
   }
 
-  const saved = await AiSettings.findOneAndUpdate(
-    { singletonKey: "default" },
-    {
-      $set: {
-        defaultProvider: next.defaultProvider,
-        enabled: next.enabled,
-        models: next.models,
-        keys: next.keys,
-        cursorRepoUrl: next.cursorRepoUrl,
-      },
-    },
-    { new: true, upsert: true, setDefaultsOnInsert: true },
-  ).lean();
+  const data = {
+    defaultProvider: next.defaultProvider,
+    enabled: next.enabled,
+    models: next.models,
+    keys: next.keys,
+    cursorRepoUrl: next.cursorRepoUrl,
+  };
+  const saved = await prisma.aiSettings.upsert({
+    where: { singletonKey: "default" },
+    create: { singletonKey: "default", ...data },
+    update: data,
+  });
 
   const doc = normalizeDoc(saved);
   cache = { at: Date.now(), doc };
@@ -253,3 +253,5 @@ exports.updateAiSettings = async (patch = {}) => {
 };
 
 exports.PROVIDERS = PROVIDERS;
+// Was the AiSettings model static; kept for any importer.
+exports.AI_SETTING_PROVIDERS = PROVIDERS;

@@ -1,4 +1,23 @@
-const Flashcard = require('../models/Flashcard');
+const { prisma, newId, isValidId, jsonArray } = require('../utils/db');
+
+const findOwnDeck = (id, profileId) =>
+    prisma.flashcard.findFirst({ where: { id: String(id), user: String(profileId) } });
+
+// Cards were Mongoose subdocuments: each gets its own _id and a createdAt.
+const normalizeCards = (cards) =>
+    jsonArray(cards).map((card) => {
+        const c = card && typeof card === 'object' ? card : {};
+        const cardId = c._id != null && isValidId(String(c._id)) ? String(c._id) : newId();
+        return {
+            ...c,
+            _id: cardId,
+            front: c.front,
+            back: c.back,
+            createdAt: c.createdAt ? new Date(c.createdAt) : new Date()
+        };
+    });
+
+const shapeDeck = (deck) => (deck ? { ...deck, cards: jsonArray(deck.cards) } : deck);
 
 // Get all flashcard decks for authenticated user
 exports.getAllDecks = async (req, res, next) => {
@@ -11,8 +30,10 @@ exports.getAllDecks = async (req, res, next) => {
             });
         }
 
-        const decks = await Flashcard.find({ user: profileId })
-            .sort({ updatedAt: -1 });
+        const decks = (await prisma.flashcard.findMany({
+            where: { user: String(profileId) },
+            orderBy: { updatedAt: 'desc' }
+        })).map(shapeDeck);
 
         return res.status(200).json({
             success: true,
@@ -41,7 +62,7 @@ exports.getDeck = async (req, res, next) => {
             });
         }
 
-        const deck = await Flashcard.findOne({ _id: id, user: profileId });
+        const deck = await findOwnDeck(id, profileId);
 
         if (!deck) {
             return res.status(404).json({
@@ -52,7 +73,7 @@ exports.getDeck = async (req, res, next) => {
 
         return res.status(200).json({
             success: true,
-            deck
+            deck: shapeDeck(deck)
         });
     } catch (error) {
         console.error('Error getting deck:', error);
@@ -84,13 +105,13 @@ exports.createDeck = async (req, res, next) => {
             });
         }
 
-        const deck = new Flashcard({
-            user: profileId,
-            deckName: deckName.trim(),
-            cards: []
-        });
-
-        const savedDeck = await deck.save();
+        const savedDeck = shapeDeck(await prisma.flashcard.create({
+            data: {
+                user: String(profileId),
+                deckName: deckName.trim(),
+                cards: []
+            }
+        }));
 
         return res.status(201).json({
             success: true,
@@ -121,7 +142,7 @@ exports.updateDeck = async (req, res, next) => {
             });
         }
 
-        const deck = await Flashcard.findOne({ _id: id, user: profileId });
+        const deck = await findOwnDeck(id, profileId);
 
         if (!deck) {
             return res.status(404).json({
@@ -134,11 +155,13 @@ exports.updateDeck = async (req, res, next) => {
             deck.deckName = deckName.trim();
         }
         if (cards !== undefined) {
-            deck.cards = cards;
+            deck.cards = normalizeCards(cards);
         }
-        deck.updatedAt = Date.now();
 
-        const updatedDeck = await deck.save();
+        const updatedDeck = shapeDeck(await prisma.flashcard.update({
+            where: { id: deck.id },
+            data: { deckName: deck.deckName, cards: deck.cards ?? [] }
+        }));
 
         return res.status(200).json({
             success: true,
@@ -168,7 +191,7 @@ exports.deleteDeck = async (req, res, next) => {
             });
         }
 
-        const deck = await Flashcard.findOne({ _id: id, user: profileId });
+        const deck = await findOwnDeck(id, profileId);
 
         if (!deck) {
             return res.status(404).json({
@@ -177,7 +200,7 @@ exports.deleteDeck = async (req, res, next) => {
             });
         }
 
-        await Flashcard.deleteOne({ _id: id, user: profileId });
+        await prisma.flashcard.delete({ where: { id: deck.id } });
 
         return res.status(200).json({
             success: true,

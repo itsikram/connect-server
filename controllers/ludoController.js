@@ -1,5 +1,36 @@
-const LudoGame = require("../models/LudoGame");
-const mongoose = require("mongoose");
+const { prisma, isValidId, isDuplicate, jsonArray } = require("../utils/db");
+
+const PROFILE_CARD = { id: true, _id: true, fullName: true, profilePic: true, coverPic: true };
+
+// players[].profileId, kept in sync on every write so games can be queried by player.
+const playerProfileIdsOf = (players) => [
+  ...new Set(
+    jsonArray(players)
+      .map((p) => (p && p.profileId ? String(p.profileId) : ""))
+      .filter(Boolean),
+  ),
+];
+
+// Mongoose populate("host") + populate("players.profileId") equivalent.
+async function populateGames(games) {
+  const list = games.filter(Boolean);
+  const ids = new Set();
+  list.forEach((g) => {
+    if (g.host) ids.add(String(g.host));
+    jsonArray(g.players).forEach((p) => p?.profileId && ids.add(String(p.profileId)));
+  });
+  const profiles = ids.size
+    ? await prisma.profile.findMany({ where: { id: { in: [...ids] } }, select: PROFILE_CARD })
+    : [];
+  const byId = new Map(profiles.map((p) => [p.id, p]));
+  list.forEach((g) => {
+    g.host = byId.get(String(g.host)) || null;
+    g.players = jsonArray(g.players).map((p) =>
+      p && p.profileId ? { ...p, profileId: byId.get(String(p.profileId)) || null } : p,
+    );
+  });
+  return games;
+}
 
 // Save or update game state
 exports.saveGameState = async (req, res, next) => {
@@ -44,7 +75,7 @@ exports.saveGameState = async (req, res, next) => {
 
     // Use findOneAndUpdate with upsert to handle race conditions atomically
     // First check if game exists to validate host permissions
-    const existingGame = await LudoGame.findOne({ gameId });
+    const existingGame = await prisma.ludoGame.findUnique({ where: { gameId: String(gameId) } });
 
     if (existingGame && String(existingGame.host) !== String(hostId)) {
       return res.status(403).json({
@@ -56,7 +87,7 @@ exports.saveGameState = async (req, res, next) => {
     // Bot/local seats carry ids like "bot-1" or "local" that are not
     // ObjectIds; strip them so the snapshot still validates and saves.
     const toObjectIdOrUndefined = (value) =>
-      value && mongoose.Types.ObjectId.isValid(String(value)) &&
+      value && isValidId(String(value)) &&
       String(value).length === 24
         ? value
         : undefined;
@@ -80,9 +111,7 @@ exports.saveGameState = async (req, res, next) => {
       0,
     );
 
-    const game = await LudoGame.findOneAndUpdate(
-      { gameId },
-      {
+    const gameData = {
         stateVersion: Math.max(incomingVersion, existingGame?.stateVersion || 0),
         gameId,
         host: hostId,
@@ -105,14 +134,15 @@ exports.saveGameState = async (req, res, next) => {
         selectedPlayerCount:
           selectedPlayerCount || existingGame?.selectedPlayerCount || 4,
         lastUpdated: new Date(),
-      },
-      {
-        upsert: true,
-        new: true,
-        runValidators: true,
-        setDefaultsOnInsert: true,
-      },
-    );
+    };
+    gameData.gameId = String(gameId);
+    gameData.host = String(hostId);
+    gameData.playerProfileIds = playerProfileIdsOf(sanitizedPlayers);
+    const game = await prisma.ludoGame.upsert({
+      where: { gameId: gameData.gameId },
+      create: gameData,
+      update: gameData,
+    });
 
     return res.status(200).json({
       success: true,
@@ -121,7 +151,7 @@ exports.saveGameState = async (req, res, next) => {
     });
   } catch (error) {
     console.error("Error saving game state:", error);
-    if (error.code === 11000) {
+    if (isDuplicate(error)) {
       // Duplicate key error (gameId already exists)
       return res.status(409).json({
         success: false,
@@ -148,9 +178,8 @@ exports.getGameState = async (req, res, next) => {
       });
     }
 
-    const game = await LudoGame.findOne({ gameId })
-      .populate("host", "fullName profilePic coverPic")
-      .populate("players.profileId", "fullName profilePic coverPic");
+    const game = await prisma.ludoGame.findUnique({ where: { gameId: String(gameId) } });
+    if (game) await populateGames([game]);
 
     if (!game) {
       return res.status(404).json({
@@ -186,14 +215,18 @@ exports.getUserGames = async (req, res, next) => {
     }
 
     // Find games where user is host or player
-    const games = await LudoGame.find({
-      $or: [{ host: profileId }, { "players.profileId": profileId }],
-      gameEnded: false, // Only return active games
-    })
-      .populate("host", "fullName profilePic coverPic")
-      .populate("players.profileId", "fullName profilePic coverPic")
-      .sort({ lastUpdated: -1 })
-      .limit(50);
+    const games = await prisma.ludoGame.findMany({
+      where: {
+        OR: [
+          { host: String(profileId) },
+          { playerProfileIds: { array_contains: String(profileId) } },
+        ],
+        gameEnded: false, // Only return active games
+      },
+      orderBy: { lastUpdated: "desc" },
+      take: 50,
+    });
+    await populateGames(games);
 
     return res.status(200).json({
       success: true,
@@ -231,7 +264,7 @@ exports.leaveGame = async (req, res, next) => {
       });
     }
 
-    const game = await LudoGame.findOne({ gameId });
+    const game = await prisma.ludoGame.findUnique({ where: { gameId: String(gameId) } });
     if (!game) {
       return res.status(200).json({
         success: true,
@@ -240,7 +273,7 @@ exports.leaveGame = async (req, res, next) => {
     }
 
     if (String(game.host) === String(profileId)) {
-      await LudoGame.deleteOne({ gameId });
+      await prisma.ludoGame.deleteMany({ where: { gameId: String(gameId) } });
       return res.status(200).json({
         success: true,
         gameRemoved: true,
@@ -249,6 +282,7 @@ exports.leaveGame = async (req, res, next) => {
     }
 
     let playerRemoved = false;
+    game.players = jsonArray(game.players);
     game.players.forEach((player, index) => {
       if (player?.profileId && String(player.profileId) === String(profileId)) {
         player.profileId = null;
@@ -263,8 +297,14 @@ exports.leaveGame = async (req, res, next) => {
     });
 
     if (playerRemoved) {
-      game.lastUpdated = new Date();
-      await game.save();
+      await prisma.ludoGame.update({
+        where: { id: game.id },
+        data: {
+          players: game.players,
+          playerProfileIds: playerProfileIdsOf(game.players),
+          lastUpdated: new Date(),
+        },
+      });
     }
 
     return res.status(200).json({
@@ -303,7 +343,7 @@ exports.deleteGame = async (req, res, next) => {
       });
     }
 
-    const game = await LudoGame.findOne({ gameId });
+    const game = await prisma.ludoGame.findUnique({ where: { gameId: String(gameId) } });
 
     if (!game) {
       return res.status(404).json({
@@ -320,7 +360,7 @@ exports.deleteGame = async (req, res, next) => {
       });
     }
 
-    await LudoGame.deleteOne({ gameId });
+    await prisma.ludoGame.deleteMany({ where: { gameId: String(gameId) } });
 
     return res.status(200).json({
       success: true,
@@ -344,10 +384,10 @@ exports.cleanupOldGames = async (req, res, next) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const result = await LudoGame.deleteMany({
-      gameEnded: true,
-      lastUpdated: { $lt: thirtyDaysAgo },
+    const deleted = await prisma.ludoGame.deleteMany({
+      where: { gameEnded: true, lastUpdated: { lt: thirtyDaysAgo } },
     });
+    const result = { deletedCount: deleted.count };
 
     return res.status(200).json({
       success: true,

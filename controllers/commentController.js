@@ -1,21 +1,36 @@
-const Comment = require('../models/Comment')
-const Post = require('../models/Post')
-const Profile = require('../models/Profile')
-const CmntReply = require('../models/CmntReply')
+const { prisma, isValidId, toId, populated, jsonArray } = require('../utils/db')
 const {saveNotification} = require('./notificationController')
 const checkIsActive = require('../utils/checkIsActive')
 const { sendPushToProfile } = require('../utils/pushNotifications')
 const { getPostId, postLink } = require('../utils/getPostId')
-const Story = require('../models/Story')
-const Watch = require('../models/Watch')
-const mongoose = require('mongoose')
 const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
+const { profileArgs, shapeComment, shapeReply } = require('../services/contentShape')
+
+// author: profilePic, user, fullName, displayName (+ user firstName, surname)
+const commentAuthor = profileArgs(['profilePic', 'fullName', 'displayName'], ['firstName', 'surname'])
+
+// Comment in the old shape: author populated, replies as ids.
+const findCommentWithAuthor = async (id) => shapeComment(await prisma.comment.findUnique({
+    where: { id },
+    include: { authorDoc: commentAuthor, replies: { orderBy: { createdAt: 'asc' }, select: { id: true } } },
+}))
+
+const findReplyWithAuthor = async (id) => shapeReply(await prisma.cmntReply.findUnique({
+    where: { id },
+    include: { authorDoc: commentAuthor },
+}))
+
+// Parent document with its author profile populated (Mongoose .populate('author')).
+const loadWithAuthor = async (model, id) => {
+    const row = await prisma[model].findUnique({ where: { id }, include: { authorDoc: true } })
+    return row ? populated(row, 'author') : null
+}
 
 async function resolveCommentParent(parentId) {
     const id = getPostId(parentId)
-    if (!id || !mongoose.isValidObjectId(id)) return null
+    if (!id || !isValidId(id)) return null
 
-    const story = await Story.findById(id).populate('author')
+    const story = await loadWithAuthor('story', id)
     if (story) {
         return {
             type: 'story',
@@ -25,7 +40,7 @@ async function resolveCommentParent(parentId) {
         }
     }
 
-    const watch = await Watch.findById(id).populate('author')
+    const watch = await loadWithAuthor('watch', id)
     if (watch) {
         return {
             type: 'watch',
@@ -35,7 +50,7 @@ async function resolveCommentParent(parentId) {
         }
     }
 
-    const post = await Post.findById(id).populate('author')
+    const post = await loadWithAuthor('post', id)
     if (post) {
         return {
             type: 'post',
@@ -48,53 +63,55 @@ async function resolveCommentParent(parentId) {
     return null
 }
 
+const commentParentId = (comment) => comment?.post || comment?.watch || comment?.story
+
 const sameProfile = (left, right) => String(left?._id || left) === String(right?._id || right)
 
 async function canDeleteComment(profileId, comment) {
     if (sameProfile(comment.author, profileId)) return true
-    const parent = await resolveCommentParent(comment.post || comment.watch)
+    const parent = await resolveCommentParent(commentParentId(comment))
     return Boolean(parent?.type === 'post' && parent.doc?.author && sameProfile(parent.doc.author, profileId))
 }
 
 async function canDeleteReply(profileId, reply) {
     if (sameProfile(reply.author, profileId)) return true
-    const parentComment = await Comment.findById(reply.parent).select('post watch')
+    const parentComment = await prisma.comment.findUnique({ where: { id: reply.parent }, select: { id: true, post: true, watch: true, story: true } })
     if (!parentComment) return false
-    const parent = await resolveCommentParent(parentComment.post || parentComment.watch)
+    const parent = await resolveCommentParent(commentParentId(parentComment))
     return Boolean(parent?.type === 'post' && parent.doc?.author && sameProfile(parent.doc.author, profileId))
 }
+
+const activeBrowserIdsOf = (profile) => jsonArray(profile?.browserIds)
+    .filter(browser => browser?.isActive)
+    .map(browser => browser.browserId)
+
 exports.postAddComment = async (req, res, next) => {
     try {
         let attachment = req.body.attachment ? req.body.attachment : ''
         let body = req.body.body|| ''
         let post = req.body.post || ''
         let watch = req.body.watch || ''
-        let profile = req.profile._id|| ''
+        let profile = toId(req.profile._id) || ''
         let myProfileData = req.profile
 
         let io = req.app.get('io')
 
-        if (watch && mongoose.isValidObjectId(watch) && mongoose.isValidObjectId(profile)) {
-            let commentData = new Comment({
-                attachment,
-                body,
-                author: profile,
-                watch,
-            })
-            let savedCommentData = await commentData.save()
-
-            let updateWatch = await Watch.findOneAndUpdate({
-                _id: watch
-            }, {
-                $push: {
-                    comments: savedCommentData._id
+        if (watch && isValidId(watch) && isValidId(profile)) {
+            watch = String(watch)
+            let savedCommentData = await prisma.comment.create({
+                data: {
+                    attachment,
+                    body,
+                    author: profile,
+                    watch,
+                    reacts: [],
                 }
-            }, { new: true }).populate('author')
+            })
+
+            let updateWatch = await loadWithAuthor('watch', watch)
 
             if (updateWatch && updateWatch.author && String(updateWatch.author._id) !== String(profile)) {
-                const activeBrowserIds = updateWatch.author.browserIds
-                    ?.filter(browser => browser.isActive)
-                    ?.map(browser => browser.browserId) || [];
+                const activeBrowserIds = activeBrowserIdsOf(updateWatch.author);
 
                 let notification = {
                     receiverId: updateWatch.author._id,
@@ -134,45 +151,33 @@ exports.postAddComment = async (req, res, next) => {
                 } catch (e) {}
             }
 
-            const populatedComment = await Comment.findById(savedCommentData._id).populate({
-                path: 'author',
-                select: ['profilePic', 'user', 'fullName', 'displayName'],
-                populate: {
-                    path: 'user',
-                    select: ['firstName', 'surname']
-                }
-            });
+            const populatedComment = await findCommentWithAuthor(savedCommentData.id);
 
             return res.json(populatedComment).status(200)
         }
 
 
-        if(!mongoose.isValidObjectId(post) || !mongoose.isValidObjectId(profile)) {
+        if(!isValidId(post) || !isValidId(profile)) {
             return res.json({message: 'Post Comment Failed'}).status(400)
         }
-        
-        let commentData = new Comment({
-            attachment,
-            body,
-            author: profile,
-            post
-        })
-        let savedCommentData = await commentData.save()
+        post = String(post)
 
-        let updatePost = await Post.findOneAndUpdate({
-            _id: post
-        }, {
-            $push: {
-                comments: savedCommentData._id
+        let savedCommentData = await prisma.comment.create({
+            data: {
+                attachment,
+                body,
+                author: profile,
+                post,
+                reacts: [],
             }
-        }, { new: true }).populate('author')
+        })
+
+        let updatePost = await loadWithAuthor('post', post)
 
 
-        if(String(updatePost.author._id) !== String(profile)) {
+        if(updatePost?.author && String(updatePost.author._id) !== String(profile)) {
             // Get all active browser IDs for the post author
-            const activeBrowserIds = updatePost.author.browserIds
-                ?.filter(browser => browser.isActive)
-                ?.map(browser => browser.browserId) || [];
+            const activeBrowserIds = activeBrowserIdsOf(updatePost.author);
 
             let notification = {
                 receiverId: updatePost.author._id,
@@ -216,14 +221,7 @@ exports.postAddComment = async (req, res, next) => {
 
 
         // Populate the comment with author and user details before returning
-        const populatedComment = await Comment.findById(savedCommentData._id).populate({
-            path: 'author',
-            select: ['profilePic', 'user', 'fullName', 'displayName'],
-            populate: {
-                path: 'user',
-                select: ['firstName', 'surname']
-            }
-        });
+        const populatedComment = await findCommentWithAuthor(savedCommentData.id);
 
         return res.json(populatedComment).status(200)
 
@@ -237,45 +235,28 @@ exports.updateComment = async(req,res,next) => {
     let {commentId, body} = req.body
     try {
 
-        let UpdatedComment = await Comment.findOneAndUpdate({ _id: commentId, author: req.profile._id }, {
-            body
-        }, { new: true }).populate({
-            path: 'author',
-            select: ['profilePic', 'user', 'fullName', 'displayName'],
-            populate: {
-                path: 'user',
-                select: ['firstName', 'surname']
-            }
-
-        })
-        if (UpdatedComment) {
-            return res.json(UpdatedComment).status(200)
+        const { count } = isValidId(commentId)
+            ? await prisma.comment.updateMany({ where: { id: String(commentId), author: toId(req.profile._id) }, data: { body } })
+            : { count: 0 }
+        if (count) {
+            return res.json(await findCommentWithAuthor(String(commentId))).status(200)
         }
         return res.json({ message: 'Comment Update Failed' }).status(400)
-        
+
     } catch (error) {
         next(error)
-        
+
     }
 }
 
 exports.updateCommentReply = async (req, res, next) => {
     const { replyId, body } = req.body
     try {
-        const updatedReply = await CmntReply.findOneAndUpdate(
-            { _id: replyId, author: req.profile._id },
-            { body },
-            { new: true }
-        ).populate({
-            path: 'author',
-            select: ['profilePic', 'user', 'fullName', 'displayName'],
-            populate: {
-                path: 'user',
-                select: ['firstName', 'surname']
-            }
-        })
+        const { count } = isValidId(replyId)
+            ? await prisma.cmntReply.updateMany({ where: { id: String(replyId), author: toId(req.profile._id) }, data: { body } })
+            : { count: 0 }
 
-        if (updatedReply) return res.status(200).json(updatedReply)
+        if (count) return res.status(200).json(await findReplyWithAuthor(String(replyId)))
         return res.status(403).json({ message: 'Reply update is not allowed' })
     } catch (error) {
         next(error)
@@ -287,26 +268,25 @@ exports.storyAddComment = async (req, res, next) => {
         let body = req.body.body
         let storyId = req.body.storyId
         let myProfileData = req.profile
-        let profile = myProfileData._id
+        let profile = toId(myProfileData._id)
 
         let io = req.app.get('io')
-        
-        let commentData = new Comment({
-            body,
-            author: profile,
-            post: storyId
-        })
-        let savedCommentData = await commentData.save()
 
-        let updateStory = await Story.findOneAndUpdate({
-            _id: storyId
-        }, {
-            $push: {
-                comments: savedCommentData._id
+        if (!isValidId(storyId)) throw new Error('Invalid story id')
+        storyId = String(storyId)
+
+        let savedCommentData = await prisma.comment.create({
+            data: {
+                body,
+                author: profile,
+                story: storyId,
+                reacts: [],
             }
-        }, { new: true }).populate('author')
+        })
 
-        if(String(updateStory.author._id) !== String(profile)) {
+        let updateStory = await loadWithAuthor('story', storyId)
+
+        if(updateStory?.author && String(updateStory.author._id) !== String(profile)) {
             let notification = {
                 receiverId: updateStory.author._id,
                 text: `${myProfileData.fullName} Commented in your Story`,
@@ -320,7 +300,7 @@ exports.storyAddComment = async (req, res, next) => {
                     senderName: myProfileData.fullName,
                 }
             }
-    
+
             saveNotification(io, notification)
             try {
                 const { isActive } = await checkIsActive(updateStory.author._id)
@@ -336,14 +316,7 @@ exports.storyAddComment = async (req, res, next) => {
         }
 
         // Populate the comment with author and user details before returning
-        const populatedComment = await Comment.findById(savedCommentData._id).populate({
-            path: 'author',
-            select: ['profilePic', 'user', 'fullName', 'displayName'],
-            populate: {
-                path: 'user',
-                select: ['firstName', 'surname']
-            }
-        });
+        const populatedComment = await findCommentWithAuthor(savedCommentData.id);
 
         return res.json(populatedComment)
 
@@ -352,30 +325,41 @@ exports.storyAddComment = async (req, res, next) => {
     }
 }
 
+// Comment / reply reacts are a Json array of reactor ids.
+const addReactor = async (model, id, reactorId) => {
+    if (!isValidId(id) || !reactorId) return false
+    const row = await prisma[model].findUnique({ where: { id: String(id) }, select: { id: true, reacts: true } })
+    if (!row) return false
+    const reacts = jsonArray(row.reacts)
+    if (reacts.some((react) => String(react) === String(reactorId))) return false
+    await prisma[model].update({ where: { id: row.id }, data: { reacts: [...reacts, reactorId] } })
+    return true
+}
+
+const removeReactor = async (model, id, reactorId) => {
+    if (!isValidId(id)) return false
+    const row = await prisma[model].findUnique({ where: { id: String(id) }, select: { id: true, reacts: true } })
+    if (!row) return false
+    const reacts = jsonArray(row.reacts)
+    await prisma[model].update({ where: { id: row.id }, data: { reacts: reacts.filter((react) => String(react) !== String(reactorId)) } })
+    return true
+}
+
 exports.addCommentReact = async (req, res, next) => {
     try {
         let reactorId = req.body.reactorId
         let commentId = req.body.commentId
 
         if (!reactorId || !commentId) return;
-        let updatedComment = await Comment.findOneAndUpdate({
-            _id: commentId,
-            reacts: {
-                $nin: reactorId
-            }
-        }, {
-            $push: {
-                reacts: reactorId
-            }
-        }, { new: true })
+        let updatedComment = await addReactor('comment', commentId, reactorId)
         if (updatedComment) {
             // Notify the comment author (if not self)
             try {
-                const comment = await Comment.findById(commentId).populate('author');
+                const comment = await loadWithAuthor('comment', String(commentId));
                 const myProfile = req.profile;
                 if (comment && comment.author && String(comment.author._id) !== String(myProfile._id)) {
                     const io = req.app.get('io');
-                    const parent = await resolveCommentParent(comment.watch || comment.post);
+                    const parent = await resolveCommentParent(comment.watch || comment.story || comment.post);
                     const notification = {
                         receiverId: comment.author._id,
                         text: `${myProfile.fullName} liked your comment`,
@@ -415,11 +399,7 @@ exports.removeCommentReact = async (req, res, next) => {
     try {
         let reactorId = req.body.reactorId
         let commentId = req.body.commentId
-        let updatedComment = await Comment.findOneAndUpdate({ _id: commentId }, {
-            $pull: {
-                reacts: reactorId
-            }
-        }, { new: true })
+        let updatedComment = await removeReactor('comment', commentId, reactorId)
 
         if (updatedComment) {
             return res.json({ messasge: 'Comment React Removed Successfully' }).status(200)
@@ -435,9 +415,9 @@ exports.postCommentReply = async (req, res, next) => {
     console.log('add comment')
     try {
         let commentId = req.body.commentId
-        let authorId = req.profile._id
+        let authorId = toId(req.profile._id)
         let replyMsg = req.body.replyMsg
-        let myProfileId = req.profile._id
+        let myProfileId = authorId
         let myProfile = req.profile
         let io = req.app.get('io')
 
@@ -446,39 +426,71 @@ exports.postCommentReply = async (req, res, next) => {
             return res.status(400).json({ message: 'commentId and authorId are required' });
         }
 
-        let newReplyData = new CmntReply({
-            body: replyMsg,
-            author: authorId,
-            parent: commentId
-        })
+        let updateComment = isValidId(commentId)
+            ? await prisma.comment.findUnique({ where: { id: String(commentId) } })
+            : null
 
-        let newReply = await newReplyData.save()
-        if (newReply !== null) {
-            let updateComment = await Comment.findOneAndUpdate({ _id: commentId }, {
-                $push: {
-                    replies: newReply._id
+        if (updateComment) {
+            const newReply = await prisma.cmntReply.create({
+                data: {
+                    body: replyMsg,
+                    author: authorId,
+                    parent: updateComment.id,
+                    reacts: [],
                 }
-            }, { new: true })
+            })
 
-            if (updateComment) {
-                const parent = await resolveCommentParent(updateComment.watch || updateComment.post);
-                let newReplyWithAuthor = await CmntReply.findOne({ _id: newReply._id }).populate({
-                    path: 'author',
-                    select: ['profilePic', 'user', 'fullName', 'displayName'],
-                    populate: {
-                        path: 'user',
-                        select: ['firstName', 'surname']
+            const parent = await resolveCommentParent(commentParentId(updateComment));
+            let newReplyWithAuthor = await findReplyWithAuthor(newReply.id)
+
+            if (newReplyWithAuthor && parent?.doc?.author) {
+
+                if (String(parent.doc.author._id) !== String(myProfileId)) {
+                    let notification = {
+                        receiverId: parent.doc.author._id,
+                        text: `${myProfile.fullName} Replied to your comment`,
+                        link: parent.link,
+                        type: parent.type === 'story' ? 'storyCommentReply' : 'postCommentReply',
+                        icon: myProfile.profilePic,
+                        data: {
+                            replyMsg,
+                            commentId,
+                            senderId: myProfileId,
+                            senderName: myProfile.fullName,
+                            ...(parent.type === 'story'
+                                ? { storyId: parent.id }
+                                : { postId: parent.id }),
+                        }
                     }
-                })
 
-                if (newReplyWithAuthor && parent?.doc?.author) {
+                    saveNotification(io, notification)
+                    try {
+                        const { isActive } = await checkIsActive(parent.doc.author._id)
+                        if (!isActive) {
+                            await sendPushToProfile(parent.doc.author._id, {
+                                title: 'New reply',
+                                body: `${myProfile.fullName} replied to your comment`,
+                                image: myProfile.profilePic,
+                                data: {
+                                    type: 'comment_reply',
+                                    ...(parent.type === 'story'
+                                        ? { storyId: parent.id }
+                                        : { postId: parent.id }),
+                                }
+                            });
+                        }
+                    } catch (e) {}
+                }
 
-                    if (String(parent.doc.author._id) !== String(myProfileId)) {
-                        let notification = {
-                            receiverId: parent.doc.author._id,
-                            text: `${myProfile.fullName} Replied to your comment`,
+                // Also notify the original comment author (if different from replier)
+                try {
+                    const parentComment = await loadWithAuthor('comment', updateComment.id);
+                    if (parentComment && String(parentComment.author._id) !== String(myProfileId)) {
+                        const notifForCommentAuthor = {
+                            receiverId: parentComment.author._id,
+                            text: `${myProfile.fullName} replied to your comment`,
                             link: parent.link,
-                            type: parent.type === 'story' ? 'storyCommentReply' : 'postCommentReply',
+                            type: 'commentReply',
                             icon: myProfile.profilePic,
                             data: {
                                 replyMsg,
@@ -489,18 +501,18 @@ exports.postCommentReply = async (req, res, next) => {
                                     ? { storyId: parent.id }
                                     : { postId: parent.id }),
                             }
-                        }
-
-                        saveNotification(io, notification)
+                        };
+                        saveNotification(io, notifForCommentAuthor)
                         try {
-                            const { isActive } = await checkIsActive(parent.doc.author._id)
+                            const { isActive } = await checkIsActive(parentComment.author._id)
                             if (!isActive) {
-                                await sendPushToProfile(parent.doc.author._id, {
+                                await sendPushToProfile(parentComment.author._id, {
                                     title: 'New reply',
                                     body: `${myProfile.fullName} replied to your comment`,
                                     image: myProfile.profilePic,
                                     data: {
                                         type: 'comment_reply',
+                                        commentId: String(parentComment._id),
                                         ...(parent.type === 'story'
                                             ? { storyId: parent.id }
                                             : { postId: parent.id }),
@@ -509,51 +521,10 @@ exports.postCommentReply = async (req, res, next) => {
                             }
                         } catch (e) {}
                     }
+                } catch (e) {}
 
-                    // Also notify the original comment author (if different from replier)
-                    try {
-                        const parentComment = await Comment.findById(commentId).populate('author');
-                        if (parentComment && String(parentComment.author._id) !== String(myProfileId)) {
-                            const notifForCommentAuthor = {
-                                receiverId: parentComment.author._id,
-                                text: `${myProfile.fullName} replied to your comment`,
-                                link: parent.link,
-                                type: 'commentReply',
-                                icon: myProfile.profilePic,
-                                data: {
-                                    replyMsg,
-                                    commentId,
-                                    senderId: myProfileId,
-                                    senderName: myProfile.fullName,
-                                    ...(parent.type === 'story'
-                                        ? { storyId: parent.id }
-                                        : { postId: parent.id }),
-                                }
-                            };
-                            saveNotification(io, notifForCommentAuthor)
-                            try {
-                                const { isActive } = await checkIsActive(parentComment.author._id)
-                                if (!isActive) {
-                                    await sendPushToProfile(parentComment.author._id, {
-                                        title: 'New reply',
-                                        body: `${myProfile.fullName} replied to your comment`,
-                                        image: myProfile.profilePic,
-                                        data: {
-                                            type: 'comment_reply',
-                                            commentId: String(parentComment._id),
-                                            ...(parent.type === 'story'
-                                                ? { storyId: parent.id }
-                                                : { postId: parent.id }),
-                                        }
-                                    });
-                                }
-                            } catch (e) {}
-                        }
-                    } catch (e) {}
+                return res.json(newReplyWithAuthor).status(200)
 
-                    return res.json(newReplyWithAuthor).status(200)
-
-                }
             }
         }
 
@@ -567,7 +538,7 @@ exports.removeCommentReply = async (req, res, next) => {
     try {
 
         let replyId = req.body.replyId
-        let reply = await CmntReply.findById(replyId)
+        let reply = isValidId(replyId) ? await prisma.cmntReply.findUnique({ where: { id: String(replyId) } }) : null
         if (!reply) {
             return res.status(400).json({ message: 'Comment Reply Deletion Failed' })
         }
@@ -575,18 +546,14 @@ exports.removeCommentReply = async (req, res, next) => {
             return res.status(403).json({ message: 'You are not allowed to delete this reply' })
         }
 
-        let deletedReply = await CmntReply.findOneAndDelete({ _id: replyId })
+        const { count } = await prisma.cmntReply.deleteMany({ where: { id: reply.id } })
 
-        if (deletedReply) {
-            await deleteCloudinaryResources([deletedReply.attachment])
+        if (count) {
+            await deleteCloudinaryResources([reply.attachment])
 
-            let pullReplyIdFromCmnt = await Comment.findOneAndUpdate({ _id: deletedReply.parent }, {
-                $pull: {
-                    replies: deletedReply._id
-                }
-            })
+            const parentComment = await prisma.comment.findUnique({ where: { id: reply.parent }, select: { id: true } })
 
-            if (pullReplyIdFromCmnt) {
+            if (parentComment) {
                 return res.json({ message: 'Comment Reply Deleted Successfully' }).status(200)
 
             }
@@ -601,15 +568,7 @@ exports.addReplyReact = async (req, res, next) => {
     let replyId = req.body.replyId
     let myId = req.body.myId
     try {
-        let addedReact = await CmntReply.findOneAndUpdate({
-            _id: replyId, reacts: {
-                $nin: myId
-            }
-        },{
-            $push: {
-                reacts: myId
-            }
-        })
+        let addedReact = await addReactor('cmntReply', replyId, myId)
 
         if(addedReact) {
             return res.json({message: 'Reply React added sucessfully'}).status(200)
@@ -624,17 +583,13 @@ exports.removeReplyReact = async (req, res, next) => {
     let myId = req.body.myId
     try {
 
-        let removedReact = await CmntReply.findOneAndUpdate({_id: replyId},{
-            $pull: {
-                reacts: myId
-            }
-        })
+        let removedReact = await removeReactor('cmntReply', replyId, myId)
 
         if(removedReact) {
             return res.json({message: 'Reply React Removed Sucessfully'}).status(200)
         }
         return res.json({message: 'Reply React cannot be removed'}).status(400)
-        
+
     } catch (error) {
         next(error)
     }
@@ -643,10 +598,8 @@ exports.removeReplyReact = async (req, res, next) => {
 exports.postDeleteComment = async (req, res, next) => {
     try {
         let commentId = req.body.commentId
-        let parentId = req.body.postId || req.body.storyId || req.body.watchId
-        let parentType = req.body.parentType
 
-        const comment = await Comment.findById(commentId)
+        const comment = isValidId(commentId) ? await prisma.comment.findUnique({ where: { id: String(commentId) } }) : null
         if (!comment) {
             return res.status(500).json({ message: 'Comment Deletion Failed' })
         }
@@ -654,38 +607,15 @@ exports.postDeleteComment = async (req, res, next) => {
             return res.status(403).json({ message: 'You are not allowed to delete this comment' })
         }
 
-        const replies = await CmntReply.find({ parent: commentId }).select('attachment')
-        let deleteComment = await Comment.findOneAndDelete({ _id: commentId })
-        if (deleteComment) {
-            await deleteCloudinaryResources([deleteComment.attachment])
+        // The comment points at its parent, so removing it also removes it from the post / watch / story.
+        const replies = await prisma.cmntReply.findMany({ where: { parent: comment.id }, select: { attachment: true } })
+        const [, deleted] = await prisma.$transaction([
+            prisma.cmntReply.deleteMany({ where: { parent: comment.id } }),
+            prisma.comment.deleteMany({ where: { id: comment.id } }),
+        ])
+        if (deleted.count) {
+            await deleteCloudinaryResources([comment.attachment])
             await deleteCloudinaryResources(replies.map((reply) => reply.attachment))
-            await CmntReply.deleteMany({ parent: commentId })
-            const idToPull = parentId || deleteComment.watch || deleteComment.post
-
-            if (parentType === 'story') {
-                await Story.findByIdAndUpdate(idToPull, {
-                    $pull: { comments: commentId }
-                }, { new: true })
-            } else if (parentType === 'watch') {
-                await Watch.findByIdAndUpdate(idToPull, {
-                    $pull: { comments: commentId }
-                }, { new: true })
-            } else {
-                const updatedPost = await Post.findByIdAndUpdate(idToPull, {
-                    $pull: { comments: commentId }
-                }, { new: true })
-
-                if (!updatedPost) {
-                    const updatedWatch = await Watch.findByIdAndUpdate(idToPull, {
-                        $pull: { comments: commentId }
-                    }, { new: true })
-                    if (!updatedWatch) {
-                        await Story.findByIdAndUpdate(idToPull, {
-                            $pull: { comments: commentId }
-                        }, { new: true })
-                    }
-                }
-            }
 
             return res.status(200).json({ message: 'Comment Deleted Successfully' })
         }
