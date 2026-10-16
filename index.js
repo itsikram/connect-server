@@ -840,6 +840,11 @@ app.delete("/api/expo-control-access", isAuth, async (req, res) => {
 
 attachPeerRelayRoute(app, io);
 
+// One-off import used to copy the database onto a new server (off unless
+// DATA_IMPORT_SECRET is set). Mounted before the readiness check so the
+// schema push can run on an empty database.
+app.use("/api/data-import", require("./Routes/dataImportRoutes"));
+
 app.use("/api", (req, res, next) => {
   if (isMySQLReady()) return next();
   return res.status(503).json({
