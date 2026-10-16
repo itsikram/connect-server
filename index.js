@@ -588,7 +588,7 @@ app.get("/env-check", (req, res) => {
   res.json({
     nodeEnv: process.env.NODE_ENV || null,
     databaseUrlUsed: mask(process.env.DATABASE_URL),
-    databaseUrlVariable: "DATABASE_URL",
+    databaseUrlVariable: process.env.DB_HOST && process.env.DB_NAME ? "DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD" : "DATABASE_URL",
     envFile,
     vars,
   });
@@ -846,7 +846,7 @@ app.use("/api", (req, res, next) => {
     ok: false,
     error: "Database unavailable",
     message:
-      "MySQL is not connected. Check DATABASE_URL and that the MySQL server is running.",
+      "MySQL is not connected. Check DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD and that the MySQL server is running.",
   });
 });
 

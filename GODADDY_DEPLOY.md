@@ -22,9 +22,9 @@ Shared hosting has no compiler, so this branch drops native modules that fail to
 4. Click **Run NPM Install**, then **Restart**.
 5. MongoDB Atlas: allow the hosting server's IP under Network Access.
 6. MySQL (Prisma): cPanel → **MySQL Databases**, create a database and user, add the user to
-   the database with all privileges, then set
-   `DATABASE_URL=mysql://USER:PASSWORD@localhost:3306/DBNAME`. `npm install` runs
-   `prisma generate`; create the tables once from cPanel **Terminal** with `npx prisma db push`.
+   the database with all privileges, then set `DB_HOST=localhost`, `DB_PORT=3306`,
+   `DB_NAME`, `DB_USER` and `DB_PASSWORD`. `npm install` runs `prisma generate`; create the
+   tables once from cPanel **Terminal** with `npm run db:push`.
 
 ## Notes / limits of shared hosting
 

@@ -1,4 +1,5 @@
-// Shared Prisma client for the MySQL database (DATABASE_URL).
+// Shared Prisma client for the MySQL database (DB_HOST, DB_PORT, DB_NAME,
+// DB_USER, DB_PASSWORD — or a full DATABASE_URL; see config/databaseUrl.js).
 // Require this module instead of creating new PrismaClient instances so the
 // whole process shares one connection pool.
 //
@@ -9,6 +10,10 @@
 //   hex string when none is given. Nested creates should pass `id: newId()`;
 //   otherwise the schema's cuid() default applies.
 const { PrismaClient } = require("@prisma/client");
+const { applyDatabaseUrl } = require("./databaseUrl");
+
+// Before the client is created: it reads DATABASE_URL at construction.
+applyDatabaseUrl();
 const { newId } = require("../utils/objectId");
 
 const withId = (data) =>
@@ -90,7 +95,7 @@ let mysqlReady = false;
 
 async function connectMySQL() {
   if (!process.env.DATABASE_URL) {
-    console.warn("DATABASE_URL is not set — MySQL (Prisma) is disabled");
+    console.warn("DB_HOST / DB_NAME (or DATABASE_URL) are not set — MySQL (Prisma) is disabled");
     return false;
   }
   try {

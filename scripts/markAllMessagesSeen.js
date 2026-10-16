@@ -6,7 +6,7 @@ const { prisma } = require('../utils/db');
 const markAllMessagesSeen = async () => {
   try {
     if (!process.env.DATABASE_URL) {
-      console.error('❌ No DATABASE_URL configured');
+      console.error('❌ No database configured (set DB_HOST, DB_NAME, DB_USER, DB_PASSWORD)');
       process.exit(1);
     }
 

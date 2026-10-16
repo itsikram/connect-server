@@ -33,7 +33,7 @@ const processModel = async (delegate, kind) => {
 };
 
 (async () => {
-    if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
+    if (!process.env.DATABASE_URL) throw new Error('DB_HOST and DB_NAME (or DATABASE_URL) are required');
     const posts = await processModel(prisma.post, 'post');
     const watches = await processModel(prisma.watch, 'watch');
     console.log(`[ai-backfill] complete: ${posts} posts, ${watches} watches`);

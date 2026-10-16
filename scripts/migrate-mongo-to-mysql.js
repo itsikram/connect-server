@@ -346,7 +346,7 @@ async function migrateCollection(db, name, spec) {
 
 async function main() {
   if (!MONGO_URI) throw new Error("Set MIGRATE_MONGO_URI (or MONGODB_URI) to the MongoDB source");
-  if (!process.env.DATABASE_URL) throw new Error("Set DATABASE_URL to the MySQL target");
+  if (!process.env.DATABASE_URL) throw new Error("Set DB_HOST, DB_NAME, DB_USER, DB_PASSWORD (or DATABASE_URL) for the MySQL target");
   if (!DRY_RUN && !CONFIRMED) {
     console.error("This replaces the contents of the MySQL tables. Re-run with --yes (or use --dry-run).");
     process.exit(1);
