@@ -794,6 +794,25 @@ model ServerSettings {
   @@map("serversettings")
 }
 
+/// Singleton (singletonKey = "default"). Google Drive storage for user uploads,
+/// edited from the admin panel (Google Drive page). The table is also created
+/// at runtime by utils/driveSettingsStore.js so live servers need no db push.
+/// accounts is [{ name, email, refreshToken, enabled, addedAt }].
+model DriveSettings {
+  id             String   @id @default(cuid()) @db.VarChar(32)
+  singletonKey   String   @unique @default("default") @db.VarChar(32)
+  /// null follows the MEDIA_STORAGE env variable
+  uploadsEnabled Boolean?
+  clientId       String   @default("") @db.VarChar(255)
+  clientSecret   String   @default("") @db.VarChar(255)
+  publicBaseUrl  String   @default("") @db.VarChar(512)
+  accounts       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("drivesettings")
+}
+
 /// Singleton (singletonKey = "default").
 model ExpoControlAccess {
   id              String   @id @default(cuid()) @db.VarChar(32)

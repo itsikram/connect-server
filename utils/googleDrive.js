@@ -1,12 +1,17 @@
 const { Readable } = require('stream')
 const { drive: createDrive, auth: driveAuth } = require('@googleapis/drive')
 
+const { getEffectiveDriveConfig } = require('./driveSettingsStore')
+
 // User uploads can be stored across several Google Drive accounts. Each
 // account is a personal Google account that granted this app the
-// `drive.file` scope (see scripts/gdrive-auth.js). Files are served back
-// through /api/media/:account/:fileId so clients get a normal URL.
+// `drive.file` scope. Files are served back through
+// /api/media/:account/:fileId so clients get a normal URL.
 //
-// GDRIVE_CLIENT_ID / GDRIVE_CLIENT_SECRET: OAuth client (Desktop app type)
+// Accounts, the OAuth client and the on/off switch are managed from the
+// admin panel (utils/driveSettingsStore.js). The env variables below still
+// work as defaults:
+// GDRIVE_CLIENT_ID / GDRIVE_CLIENT_SECRET: OAuth client
 // GDRIVE_ACCOUNTS: comma separated "name:refreshToken" pairs
 // GDRIVE_FOLDER_NAME: folder created in each account (default connect-uploads)
 // MEDIA_STORAGE=gdrive switches user uploads from Cloudinary to Drive
@@ -14,46 +19,43 @@ const { drive: createDrive, auth: driveAuth } = require('@googleapis/drive')
 const FOLDER_NAME = process.env.GDRIVE_FOLDER_NAME || 'connect-uploads'
 const QUOTA_TTL_MS = 5 * 60 * 1000
 
-let accountsCache = null
+// Drive clients by client id + account + token, kept across settings reloads
+// so folder ids and quota stay cached for unchanged accounts
+const clients = new Map()
 
-const parseAccounts = () => {
-    const raw = String(process.env.GDRIVE_ACCOUNTS || '').trim()
-    if (!raw) return []
-    return raw.split(',').map((entry) => {
-        const index = entry.indexOf(':')
-        if (index < 1) return null
-        const name = entry.slice(0, index).trim()
-        const refreshToken = entry.slice(index + 1).trim()
-        if (!/^[a-z0-9_-]+$/i.test(name) || !refreshToken) return null
-        return { name, refreshToken }
-    }).filter(Boolean)
-}
+const createOAuthClient = (clientId, clientSecret, redirectUri) =>
+    new driveAuth.OAuth2(clientId, clientSecret, redirectUri)
 
-const getAccounts = () => {
-    if (accountsCache) return accountsCache
-    const clientId = process.env.GDRIVE_CLIENT_ID
-    const clientSecret = process.env.GDRIVE_CLIENT_SECRET
-    if (!clientId || !clientSecret) return []
-
-    accountsCache = parseAccounts().map(({ name, refreshToken }) => {
-        const client = new driveAuth.OAuth2(clientId, clientSecret)
-        client.setCredentials({ refresh_token: refreshToken })
-        return {
-            name,
-            drive: createDrive({ version: 'v3', auth: client }),
-            folderId: null,
-            quota: null,
-            quotaCheckedAt: 0,
-            full: false,
+const getAccounts = async () => {
+    const config = await getEffectiveDriveConfig()
+    if (!config.clientId || !config.clientSecret) return []
+    return config.accounts.map(({ name, refreshToken, enabled, email, source }) => {
+        const key = `${config.clientId}|${name}|${refreshToken}`
+        let account = clients.get(key)
+        if (!account) {
+            const client = createOAuthClient(config.clientId, config.clientSecret)
+            client.setCredentials({ refresh_token: refreshToken })
+            account = {
+                name,
+                drive: createDrive({ version: 'v3', auth: client }),
+                folderId: null,
+                quota: null,
+                quotaCheckedAt: 0,
+                full: false,
+            }
+            clients.set(key, account)
         }
+        return Object.assign(account, { enabled, email, source })
     })
-    return accountsCache
 }
 
-const isDriveStorageEnabled = () =>
-    String(process.env.MEDIA_STORAGE || '').toLowerCase() === 'gdrive' && getAccounts().length > 0
+const isDriveStorageEnabled = async () => {
+    const config = await getEffectiveDriveConfig()
+    return config.enabled && Boolean(config.clientId && config.clientSecret) && config.accounts.some((a) => a.enabled)
+}
 
-const getAccount = (name) => getAccounts().find((account) => account.name === name) || null
+// Disabled accounts still serve and delete their existing files
+const getAccount = async (name) => (await getAccounts()).find((account) => account.name === name) || null
 
 const refreshQuota = async (account) => {
     if (account.quota && Date.now() - account.quotaCheckedAt < QUOTA_TTL_MS) return account.quota
@@ -88,22 +90,36 @@ const ensureFolder = async (account) => {
     return account.folderId
 }
 
-// Accounts with the most free space first, skipping ones that cannot hold the file
+// Short reason Google gave for a failure, e.g. "invalid_grant: Token has been expired or revoked."
+const getGoogleErrorReason = (error) => {
+    const data = error?.response?.data
+    if (data && typeof data.error === 'string') {
+        return data.error_description ? `${data.error}: ${data.error_description}` : data.error
+    }
+    return data?.error?.message || error?.message || String(error)
+}
+
+// Accounts with the most free space first, skipping ones that cannot hold the file.
+// `failures` lists accounts whose quota could not be read (bad credentials, network).
 const pickAccounts = async (size) => {
-    const accounts = getAccounts()
+    const accounts = (await getAccounts()).filter((account) => account.enabled)
+    const failures = []
     const ranked = await Promise.all(accounts.map(async (account) => {
         try {
             const quota = await refreshQuota(account)
             return { account, free: quota.free }
         } catch (error) {
-            console.error('[gdrive] quota check failed', { account: account.name, error: error?.message || error })
+            const reason = getGoogleErrorReason(error)
+            console.error('[gdrive] quota check failed', { account: account.name, error: reason })
+            failures.push({ account: account.name, reason })
             return { account, free: -1 }
         }
     }))
-    return ranked
+    const candidates = ranked
         .filter(({ account, free }) => !account.full && free > size)
         .sort((a, b) => b.free - a.free)
         .map(({ account }) => account)
+    return { candidates, failures }
 }
 
 const isQuotaError = (error) => {
@@ -112,10 +128,15 @@ const isQuotaError = (error) => {
 }
 
 const uploadToDrive = async ({ buffer, mimeType, name }) => {
-    const candidates = await pickAccounts(buffer.length)
+    const { candidates, failures } = await pickAccounts(buffer.length)
     if (!candidates.length) {
-        const error = new Error('No Google Drive account has enough free space for this upload')
-        error.code = 'MEDIA_STORAGE_FULL'
+        // Only call it full when every account answered; otherwise Google rejected us
+        const unreachable = failures.length > 0
+        const error = new Error(unreachable
+            ? `Google Drive unavailable: ${failures.map((f) => `${f.account} (${f.reason})`).join(', ')}`
+            : 'No Google Drive account has enough free space for this upload')
+        error.code = unreachable ? 'MEDIA_STORAGE_UNAVAILABLE' : 'MEDIA_STORAGE_FULL'
+        error.failures = failures
         throw error
     }
 
@@ -147,7 +168,7 @@ const uploadToDrive = async ({ buffer, mimeType, name }) => {
 
 // Returns the Drive response stream for a file, honouring an optional Range header
 const getDriveFileStream = async (accountName, fileId, range) => {
-    const account = getAccount(accountName)
+    const account = await getAccount(accountName)
     if (!account) return null
     return account.drive.files.get(
         { fileId, alt: 'media' },
@@ -156,14 +177,14 @@ const getDriveFileStream = async (accountName, fileId, range) => {
 }
 
 const getDriveFileMeta = async (accountName, fileId) => {
-    const account = getAccount(accountName)
+    const account = await getAccount(accountName)
     if (!account) return null
     const { data } = await account.drive.files.get({ fileId, fields: 'id,name,mimeType,size' })
     return data
 }
 
 const deleteFromDrive = async (accountName, fileId) => {
-    const account = getAccount(accountName)
+    const account = await getAccount(accountName)
     if (!account) return { result: 'unknown account' }
     try {
         await account.drive.files.delete({ fileId })
@@ -184,22 +205,26 @@ const parseDriveMediaUrl = (value) => {
     return match ? { account: match[1], fileId: match[2] } : null
 }
 
-const buildMediaUrl = (req, { account, fileId, name }) => {
-    const base = (process.env.MEDIA_PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '')
+const buildMediaUrl = async (req, { account, fileId, name }) => {
+    const { publicBaseUrl } = await getEffectiveDriveConfig()
+    const base = (publicBaseUrl || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '')
     const safeName = encodeURIComponent(String(name || 'file').replace(/[\\/]/g, '_'))
     return `${base}/api/media/${account}/${fileId}/${safeName}`
 }
 
-const getDriveStorageStatus = async () => Promise.all(getAccounts().map(async (account) => {
+const getDriveStorageStatus = async () => Promise.all((await getAccounts()).map(async (account) => {
     try {
         const quota = await refreshQuota(account)
-        return { name: account.name, ...quota }
+        return { name: account.name, email: account.email, enabled: account.enabled, source: account.source, ...quota }
     } catch (error) {
-        return { name: account.name, error: error?.message || String(error) }
+        return { name: account.name, email: account.email, enabled: account.enabled, source: account.source, error: getGoogleErrorReason(error) }
     }
 }))
 
 module.exports = {
+    createOAuthClient,
+    createDrive,
+    getGoogleErrorReason,
     isDriveStorageEnabled,
     uploadToDrive,
     getDriveFileStream,

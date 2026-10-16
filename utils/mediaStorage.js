@@ -49,7 +49,7 @@ const uploadUserMediaToDrive = async (req, file, { kind = 'file', transcodeAudio
     const base = (parsed.name || kind).replace(/[^a-z0-9_-]/gi, '_').slice(0, 60) || kind
     const name = `${kind}-${Date.now()}-${uuidv4().slice(0, 8)}-${base}${ext ? `.${ext}` : ''}`
     const stored = await uploadToDrive({ buffer, mimeType, name })
-    const url = buildMediaUrl(req, stored)
+    const url = await buildMediaUrl(req, stored)
 
     return {
         provider: 'gdrive',

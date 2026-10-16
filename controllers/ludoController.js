@@ -1,15 +1,7 @@
-const { prisma, isValidId, isDuplicate, jsonArray } = require("../utils/db");
+const { prisma, jsonArray } = require("../utils/db");
+const ludoSocket = require("../sockets/ludoSocket");
 
 const PROFILE_CARD = { id: true, _id: true, fullName: true, profilePic: true, coverPic: true };
-
-// players[].profileId, kept in sync on every write so games can be queried by player.
-const playerProfileIdsOf = (players) => [
-  ...new Set(
-    jsonArray(players)
-      .map((p) => (p && p.profileId ? String(p.profileId) : ""))
-      .filter(Boolean),
-  ),
-];
 
 // Mongoose populate("host") + populate("players.profileId") equivalent.
 async function populateGames(games) {
@@ -32,139 +24,15 @@ async function populateGames(games) {
   return games;
 }
 
-// Save or update game state
-exports.saveGameState = async (req, res, next) => {
-  try {
-    const {
-      gameId,
-      players,
-      currentPlayer,
-      diceValue,
-      gameStarted,
-      gameEnded,
-      winners,
-      selectedPlayerCount,
-      stateVersion,
-      playersSeq,
-    } = req.body;
-
-    // Validate required fields
-    if (!gameId) {
-      return res.status(400).json({
-        success: false,
-        message: "Game ID is required",
-      });
-    }
-
-    // Get host profile from auth middleware
-    const hostId = req.profile?._id;
-    if (!hostId) {
-      return res.status(401).json({
-        success: false,
-        message: "Authentication required",
-      });
-    }
-
-    // Validate players array
-    if (!Array.isArray(players) || players.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Players array is required",
-      });
-    }
-
-    // Use findOneAndUpdate with upsert to handle race conditions atomically
-    // First check if game exists to validate host permissions
-    const existingGame = await prisma.ludoGame.findUnique({ where: { gameId: String(gameId) } });
-
-    if (existingGame && String(existingGame.host) !== String(hostId)) {
-      return res.status(403).json({
-        success: false,
-        message: "Only the host can update the game state",
-      });
-    }
-
-    // Bot/local seats carry ids like "bot-1" or "local" that are not
-    // ObjectIds; strip them so the snapshot still validates and saves.
-    const toObjectIdOrUndefined = (value) =>
-      value && isValidId(String(value)) &&
-      String(value).length === 24
-        ? value
-        : undefined;
-    const sanitizedPlayers = players.map((player) => ({
-      ...player,
-      profileId: toObjectIdOrUndefined(player?.profileId),
-    }));
-    const sanitizedWinners = Array.isArray(winners)
-      ? winners.map((winner) => ({
-          ...winner,
-          profileId: toObjectIdOrUndefined(winner?.profileId),
-        }))
-      : winners;
-
-    // Pause state (paused/pausedAt/pausedBy) is written only by the socket
-    // server's ludo:pause / ludo:resume, never from a host snapshot: the host
-    // may save a move before it has heard about a pause.
-    const incomingVersion = Math.max(
-      Number(stateVersion || 0),
-      Number(playersSeq || 0),
-      0,
-    );
-
-    const gameData = {
-        stateVersion: Math.max(incomingVersion, existingGame?.stateVersion || 0),
-        gameId,
-        host: hostId,
-        players: sanitizedPlayers,
-        currentPlayer:
-          currentPlayer !== undefined
-            ? currentPlayer
-            : existingGame?.currentPlayer || 0,
-        diceValue:
-          diceValue !== undefined ? diceValue : existingGame?.diceValue || 0,
-        gameStarted:
-          gameStarted !== undefined
-            ? gameStarted
-            : existingGame?.gameStarted || false,
-        gameEnded:
-          gameEnded !== undefined
-            ? gameEnded
-            : existingGame?.gameEnded || false,
-        winners: sanitizedWinners || existingGame?.winners || [],
-        selectedPlayerCount:
-          selectedPlayerCount || existingGame?.selectedPlayerCount || 4,
-        lastUpdated: new Date(),
-    };
-    gameData.gameId = String(gameId);
-    gameData.host = String(hostId);
-    gameData.playerProfileIds = playerProfileIdsOf(sanitizedPlayers);
-    const game = await prisma.ludoGame.upsert({
-      where: { gameId: gameData.gameId },
-      create: gameData,
-      update: gameData,
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Game state saved successfully",
-      game,
-    });
-  } catch (error) {
-    console.error("Error saving game state:", error);
-    if (isDuplicate(error)) {
-      // Duplicate key error (gameId already exists)
-      return res.status(409).json({
-        success: false,
-        message: "Game with this ID already exists",
-      });
-    }
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: error.message,
-    });
-  }
-};
+// The socket server hosts every game and saves it on each change, so client
+// snapshots are no longer written (an older app version must not be able to
+// overwrite the server's board). Kept so those versions don't see errors.
+exports.saveGameState = async (req, res) =>
+  res.status(200).json({
+    success: true,
+    ignored: true,
+    message: "Ludo games are saved by the server",
+  });
 
 // Get game state by gameId
 exports.getGameState = async (req, res, next) => {
@@ -243,9 +111,16 @@ exports.getUserGames = async (req, res, next) => {
   }
 };
 
-// Leave a game and remove the authenticated user's persisted match data.
-// A host leaving ends the room; a guest leaving only vacates their own seat.
-exports.leaveGame = async (req, res, next) => {
+// Leave a game. The game host applies it to the live board too: a host
+// leaving ends the game for everyone, a guest hands their seat to the computer.
+const leaveThroughHost = async (gameId, profileId) => {
+  const result = await ludoSocket.dispatch("leave", gameId, profileId);
+  if (result?.ok) return { found: true, removed: Boolean(result.removed) };
+  if (result?.error === "not_found") return { found: false, removed: false };
+  throw new Error(result?.message || "Ludo game host unavailable");
+};
+
+exports.leaveGame = async (req, res) => {
   try {
     const { gameId } = req.body || {};
     const profileId = req.profile?._id;
@@ -264,54 +139,12 @@ exports.leaveGame = async (req, res, next) => {
       });
     }
 
-    const game = await prisma.ludoGame.findUnique({ where: { gameId: String(gameId) } });
-    if (!game) {
-      return res.status(200).json({
-        success: true,
-        message: "Game data is already removed",
-      });
-    }
-
-    if (String(game.host) === String(profileId)) {
-      await prisma.ludoGame.deleteMany({ where: { gameId: String(gameId) } });
-      return res.status(200).json({
-        success: true,
-        gameRemoved: true,
-        message: "Game data removed successfully",
-      });
-    }
-
-    let playerRemoved = false;
-    game.players = jsonArray(game.players);
-    game.players.forEach((player, index) => {
-      if (player?.profileId && String(player.profileId) === String(profileId)) {
-        player.profileId = null;
-        player.name = `Player ${index + 1}`;
-        player.avatar = null;
-        player.cover = null;
-        player.isActive = false;
-        player.isOffline = false;
-        player.isBot = false;
-        playerRemoved = true;
-      }
-    });
-
-    if (playerRemoved) {
-      await prisma.ludoGame.update({
-        where: { id: game.id },
-        data: {
-          players: game.players,
-          playerProfileIds: playerProfileIdsOf(game.players),
-          lastUpdated: new Date(),
-        },
-      });
-    }
-
+    const { found, removed } = await leaveThroughHost(gameId, profileId);
     return res.status(200).json({
       success: true,
-      gameRemoved: false,
-      playerRemoved,
-      message: "Player data removed successfully",
+      gameRemoved: removed,
+      playerRemoved: found && !removed,
+      message: found ? "You left the game" : "Game data is already removed",
     });
   } catch (error) {
     console.error("Error leaving Ludo game:", error);
@@ -324,7 +157,7 @@ exports.leaveGame = async (req, res, next) => {
 };
 
 // Delete game (only host can delete)
-exports.deleteGame = async (req, res, next) => {
+exports.deleteGame = async (req, res) => {
   try {
     const { gameId } = req.body || req.query;
     const profileId = req.profile?._id;
@@ -360,6 +193,7 @@ exports.deleteGame = async (req, res, next) => {
       });
     }
 
+    await leaveThroughHost(gameId, profileId);
     await prisma.ludoGame.deleteMany({ where: { gameId: String(gameId) } });
 
     return res.status(200).json({

@@ -100,6 +100,15 @@ Router.get('/server-settings', isAdminAuth, getAdminServerSettings);
 Router.put('/server-settings', isAdminAuth, updateAdminServerSettings);
 Router.post('/server-settings/check', isAdminAuth, checkAdminServers);
 
+const driveSettings = require('../controllers/driveSettingsController');
+Router.get('/gdrive', isAdminAuth, driveSettings.getDriveSettings);
+Router.put('/gdrive', isAdminAuth, driveSettings.updateDriveSettings);
+Router.post('/gdrive/connect', isAdminAuth, driveSettings.startConnect);
+// Google redirects the browser here, so no admin token; the signed state authenticates it
+Router.get('/gdrive/callback', driveSettings.connectCallback);
+Router.patch('/gdrive/accounts/:name', isAdminAuth, driveSettings.setAccountEnabled);
+Router.delete('/gdrive/accounts/:name', isAdminAuth, driveSettings.removeAccount);
+
 Router.get('/ai-auto-post/config', isAdminRole, aiAutoPostController.getConfig);
 Router.get('/ai-auto-post/author-profiles', isAdminRole, aiAutoPostController.searchAuthorProfiles);
 Router.put('/ai-auto-post/config', isAdminRole, aiAutoPostController.updateConfig);

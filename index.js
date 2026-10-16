@@ -842,6 +842,8 @@ app.delete("/api/expo-control-access", isAuth, async (req, res) => {
 });
 
 attachPeerRelayRoute(app, io);
+// Ludo games run on one owner server; the others forward actions to it here.
+require("./sockets/ludoSocket").attachRelayRoute(app, io);
 
 // One-off import used to copy the database onto a new server (off unless
 // DATA_IMPORT_SECRET is set). Mounted before the readiness check so the

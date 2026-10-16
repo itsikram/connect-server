@@ -101,7 +101,7 @@ exports.updateSetting = async (req, res, next) => {
         // Handle chatBackground file upload if present
         if (req.file) {
             try {
-                const uploadResult = isDriveStorageEnabled()
+                const uploadResult = (await isDriveStorageEnabled())
                     ? await uploadUserMediaToDrive(req, req.file, { kind: 'chat-background' })
                     : await withCloudinaryAccount('image', (cloudinary) =>
                     new Promise((resolve, reject) => {

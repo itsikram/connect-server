@@ -1,5 +1,5 @@
 const Router = require('express').Router()
-const { getDriveFileStream, getDriveFileMeta } = require('../utils/googleDrive')
+const { getDriveFileStream, getDriveFileMeta, getDriveStorageStatus, isDriveStorageEnabled } = require('../utils/googleDrive')
 
 // Streams files stored in Google Drive. Public like Cloudinary URLs were:
 // the Drive file id is unguessable and only files this app created are reachable.
@@ -53,6 +53,21 @@ const serveMedia = async (req, res) => {
         if (!res.headersSent) res.status(status).end()
     }
 }
+
+// Quick public health check for the Drive setup (full details are on the admin page)
+Router.get('/status', async (req, res) => {
+    try {
+        const accounts = (await getDriveStorageStatus()).map(({ name, enabled, free, error }) => ({
+            name,
+            enabled,
+            ...(error ? { error } : { freeGB: free === Number.MAX_SAFE_INTEGER ? 'unlimited' : +(free / 1024 ** 3).toFixed(2) }),
+        }))
+        res.set('Cache-Control', 'no-store')
+        res.json({ enabled: await isDriveStorageEnabled(), accounts })
+    } catch (error) {
+        res.status(500).json({ error: error?.message || 'Status check failed' })
+    }
+})
 
 Router.get('/:account/:fileId/:name?', serveMedia)
 Router.head('/:account/:fileId/:name?', serveMedia)

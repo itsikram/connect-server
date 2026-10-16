@@ -9,11 +9,18 @@ const sendDriveUpload = async (req, res, options, extra = () => ({})) => {
         return res.status(200).json({ ...extra(result), ...result });
     } catch (error) {
         const full = error?.code === 'MEDIA_STORAGE_FULL';
+        const unavailable = error?.code === 'MEDIA_STORAGE_UNAVAILABLE';
         console.error('[upload] Google Drive upload failed', error?.message || error);
         if (!res.headersSent) {
-            return res.status(full ? 507 : 502).json({
-                error: full ? 'Media storage is full. Please try again later.' : 'Media upload failed',
-                code: full ? 'MEDIA_STORAGE_FULL' : 'MEDIA_UPLOAD_FAILED',
+            return res.status(full ? 507 : unavailable ? 503 : 502).json({
+                error: full
+                    ? 'Media storage is full. Please try again later.'
+                    : unavailable
+                        ? 'Media storage is temporarily unavailable. Please try again later.'
+                        : 'Media upload failed',
+                code: full ? 'MEDIA_STORAGE_FULL' : unavailable ? 'MEDIA_STORAGE_UNAVAILABLE' : 'MEDIA_UPLOAD_FAILED',
+                // Google's reason (e.g. invalid_grant), no credentials included
+                detail: error?.failures?.map((f) => `${f.account}: ${f.reason}`).join('; ') || error?.message,
             });
         }
     }
@@ -55,7 +62,7 @@ exports.uploadImage = async (req, res, next) => {
         return res.status(400).json({ error: 'Uploaded file is empty' });
     }
 
-    if (isDriveStorageEnabled()) {
+    if (await isDriveStorageEnabled()) {
         return sendDriveUpload(req, res, { kind: 'image' });
     }
 
@@ -99,7 +106,7 @@ exports.uploadVideo = async (req, res, next) => {
         return res.status(400).json({ error: 'Uploaded file is not a video' });
     }
 
-    if (isDriveStorageEnabled()) {
+    if (await isDriveStorageEnabled()) {
         return sendDriveUpload(req, res, { kind: 'video' }, (result) => ({
             success: true,
             videoId: result.public_id,
@@ -165,7 +172,7 @@ exports.uploadFile = async (req, res, next) => {
             /\.(m4a|mp3|wav|aac|flac|webm|ogg|oga|opus)$/i.test(originalName);
         const needsAudioTranscode = isAudio;
 
-        if (isDriveStorageEnabled()) {
+        if (await isDriveStorageEnabled()) {
             return sendDriveUpload(req, res, { kind: isAudio ? 'audio' : 'file', transcodeAudio: needsAudioTranscode });
         }
 
