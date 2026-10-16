@@ -15,6 +15,7 @@ const {
   followProfile,
   unfollowProfile,
   getFollowStatus,
+  publicProfileGet,
 } = require("../controllers/profileController");
 const coverPicUpload = require("../middlewares/UploadCover");
 const photosUpload = require("../middlewares/photosUpload");
@@ -25,6 +26,7 @@ const { cacheResponse, GRAPH_TAGS, CONTENT_TAGS, MESSAGE_TAGS, NOTIFICATION_TAGS
 const upload = multer({ storage: multer.memoryStorage() }); // Create an endpoint for image upload
 
 Router.get("/", isAuth, cacheResponse({ ttl: 30, tags: CONTENT_TAGS }), profileGet);
+Router.get("/public/:username", publicProfileGet); // no auth: SEO / logged-out profile view
 Router.get("/hasStory", prefileHasStory);
 Router.get("/getImages", getProfileImages);
 Router.get("/nearby", isAuth, getNearbyProfiles); // Get nearby profiles endpoint

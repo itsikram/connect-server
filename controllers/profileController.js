@@ -157,6 +157,71 @@ exports.getProfileImages = async function (req, res, next) {
   return next();
 };
 
+// Unauthenticated, search-engine-facing view of a profile (used by the web
+// server to render /:username for Google and for logged-out visitors). Only
+// display fields are returned, and only when the owner's posts are Public;
+// any other postVisibility opts the profile out of search engines.
+exports.publicProfileGet = async function (req, res) {
+  try {
+    const username = String(req.params.username || "").trim();
+    if (!username || username.length > 64) {
+      return res.status(404).json({ message: "Profile Not Found" });
+    }
+
+    const row = await prisma.profile.findFirst({
+      where: { username },
+      select: {
+        id: true,
+        username: true,
+        fullName: true,
+        displayName: true,
+        nickname: true,
+        bio: true,
+        profilePic: true,
+        coverPic: true,
+        isVerified: true,
+        isOfficial: true,
+        createdAt: true,
+        userDoc: { select: { firstName: true, surname: true } },
+      },
+    });
+    if (!row) return res.status(404).json({ message: "Profile Not Found" });
+
+    const setting = await prisma.setting.findFirst({
+      where: { profile: row.id },
+      select: { postVisibility: true },
+    });
+    const indexable = (setting?.postVisibility || "public") === "public";
+
+    res.set("Cache-Control", "public, max-age=300");
+    if (!indexable) {
+      return res.status(200).json({ username: row.username, indexable: false });
+    }
+
+    const name =
+      row.fullName ||
+      row.displayName ||
+      [row.userDoc?.firstName, row.userDoc?.surname].filter(Boolean).join(" ") ||
+      row.username;
+
+    return res.status(200).json({
+      indexable: true,
+      username: row.username,
+      name,
+      nickname: row.nickname || "",
+      bio: row.bio || "",
+      profilePic: row.profilePic || "",
+      coverPic: row.coverPic || "",
+      isVerified: Boolean(row.isVerified),
+      isOfficial: Boolean(row.isOfficial),
+      joinedAt: row.createdAt,
+    });
+  } catch (error) {
+    console.error("Error in publicProfileGet:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
 exports.profileGet = async function (req, res, next) {
   try {
     const profileId = req.query?.profileId || req.params?.profileId;
