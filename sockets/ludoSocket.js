@@ -25,6 +25,7 @@
 const { createLudoHost } = require("./ludo/host");
 const store = require("./ludo/store");
 const { createCluster } = require("./ludo/cluster");
+const { profileIdOf } = require("./socketAuth");
 
 let debugLogger = null;
 try {
@@ -112,7 +113,7 @@ const collectGames = async (runtime, profileId) => {
 function ludoSocket(io, socket, profileId) {
   const runtime = runtimeFor(io);
   const pid = (() => {
-    const raw = str(profileId || socket?.handshake?.query?.profile || socket?.handshake?.query?.profileId);
+    const raw = str(profileId || profileIdOf(socket));
     return raw && raw !== "null" && raw !== "undefined" ? raw : "";
   })();
   const joined = new Set(); // game rooms this socket is in

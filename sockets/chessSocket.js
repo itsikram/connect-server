@@ -1,4 +1,5 @@
 // Chess game socket handler for online multiplayer and connect invites
+const { profileIdOf } = require("./socketAuth");
 
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -51,10 +52,7 @@ const ensureGame = (gameId) => {
 };
 
 function chessSocket(io, socket, profileId) {
-  const effectiveProfileId =
-    profileId ||
-    socket?.handshake?.query?.profile ||
-    socket?.handshake?.query?.profileId;
+  const effectiveProfileId = profileId || profileIdOf(socket);
 
   try {
     socket.on("error", (err) => {

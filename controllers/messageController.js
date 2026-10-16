@@ -3,6 +3,14 @@ const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
 const { notifyNewChatMessage } = require('../utils/chatNotifications')
 const { senderDisplayName } = require('../utils/messagePreview')
 const presence = require('../sockets/presence')
+const {
+    isSecureRequest,
+    prepareSecureContent,
+    createSecureMessage,
+    withSecureState,
+    openSecureMessage,
+    deleteSecureContent,
+} = require('../utils/secureMessages')
 const config = require('../config/config.json')
 
 // Reminder bookkeeping columns never leave the server (was .select('-unseenReminder...')).
@@ -23,6 +31,15 @@ const findMessage = async (id) =>
     (isValidObjectId(id) ? prisma.message.findUnique({ where: { id: String(id) } }) : null);
 const findMessageWithParent = async (where) =>
     populated(await prisma.message.findFirst({ where, include: { parentDoc: true } }), 'parent');
+
+// The signed-in profile is always one side of a conversation. `profileId`
+// query params are ignored: trusting them let any user read anyone's chats.
+const viewerId = (req) => String(req.profile?._id || '');
+const clampLimit = (value, fallback = 20) => {
+    const limit = parseInt(value, 10);
+    if (!Number.isFinite(limit) || limit < 1) return fallback;
+    return Math.min(limit, 100);
+};
 
 
 const reactionProfileId = (reaction) => String(reaction && reaction.profile ? reaction.profile : reaction || '');
@@ -87,8 +104,9 @@ exports.getMedia = async(req,res,next) => {
 
     try {
         const fileUrlRegex = /^https?:\/\/[^\s/$.?#].[^\s]*$/i;
+        if (!isValidObjectId(req.query.profileId)) return res.status(200).json([]);
         const candidates = await prisma.message.findMany({
-            where: { ...conversationWhere(req.profile._id, req.query.profileId), attachment: { startsWith: 'http' } },
+            where: { ...conversationWhere(viewerId(req), req.query.profileId), attachment: { startsWith: 'http' } },
             select: { id: true, _id: true, attachment: true, timestamp: true },
             orderBy: { timestamp: 'desc' },
             take: 50,
@@ -113,8 +131,7 @@ exports.getChatList = async(req,res,next) => {
     }, 8000); // 8 second timeout
 
     try {
-        let profileId = req.query.profileId || req.profile._id;
-        const now = new Date();
+        const profileId = viewerId(req);
 
         // Use two indexed scans instead of a single $or (which cannot use both indexes)
         const profileIdStr = String(profileId);
@@ -125,7 +142,7 @@ exports.getChatList = async(req,res,next) => {
         ]);
         const latestIds = [...sentIds, ...receivedIds].map((row) => row.id);
         const latestMessages = latestIds.length
-            ? await prisma.message.findMany({ where: { id: { in: latestIds } } })
+            ? await withSecureState(await prisma.message.findMany({ where: { id: { in: latestIds } }, omit: REMINDER_OMIT }))
             : [];
         const sentAgg = [];
         const receivedAgg = [];
@@ -228,19 +245,20 @@ exports.getChatList = async(req,res,next) => {
 }
 exports.getChatHistory = async(req,res,next) => {
     try {
-        let profileId = req.query.profileId || req.profile._id
-        let connectId = req.query.connectId
-        let limit = parseInt(req.query.limit) || 20
-        let skip = parseInt(req.query.skip) || 0
-                
-        // Build query for messages between these users
-        const query = conversationWhere(profileId, connectId);
+        const profileId = viewerId(req)
+        const connectId = req.query.connectId
+        const limit = clampLimit(req.query.limit)
+        const skip = Math.max(0, parseInt(req.query.skip, 10) || 0)
 
-        // Fetch one extra row instead of a separate countDocuments query
+        if (!profileId || !isValidObjectId(connectId)) {
+            return res.status(400).json({ messages: [], hasMore: false, error: 'connectId is required' });
+        }
+
+        // Fetch one extra row instead of a separate count query
         const messages = populated(await prisma.message.findMany({
-            where: query,
+            where: conversationWhere(profileId, connectId),
             omit: REMINDER_OMIT,
-            orderBy: { timestamp: 'desc' },
+            orderBy: [{ timestamp: 'desc' }, { id: 'desc' }],
             skip,
             take: limit + 1,
             include: { parentDoc: { select: PARENT_SELECT } },
@@ -248,28 +266,32 @@ exports.getChatHistory = async(req,res,next) => {
 
         const hasMore = messages.length > limit;
         const pageMessages = hasMore ? messages.slice(0, limit) : messages;
+        await withSecureState(pageMessages);
 
+        // Chat history is private and changes constantly; never let a browser,
+        // proxy or service worker reuse an old copy.
+        res.set('Cache-Control', 'no-store');
         // Return messages in chronological order (oldest first)
         res.status(200).json({
             messages: pageMessages.reverse(),
             hasMore
         });
-        
+
     } catch (error) {
         console.error('Error fetching chat history:', error);
-        res.status(400).json({ messages: [], hasMore: false });
+        res.status(500).json({ messages: [], hasMore: false, error: 'Could not load messages' });
     }
 }
 
 exports.getOldMessages = async(req,res,next) => {
     try {
-        let profileId = req.query.profileId || req.profile._id
-        let connectId = req.query.connectId
-        let limit = parseInt(req.query.limit) || 20
-        let beforeTimestamp = req.query.beforeTimestamp
-        
+        const profileId = viewerId(req)
+        const connectId = req.query.connectId
+        const limit = clampLimit(req.query.limit)
+        const beforeTimestamp = req.query.beforeTimestamp
+
         // Validate required parameters
-        if (!connectId) {
+        if (!isValidObjectId(connectId)) {
             return res.status(400).json({ 
                 messages: [], 
                 hasMore: false,
@@ -295,24 +317,22 @@ exports.getOldMessages = async(req,res,next) => {
             });
         }
         
-        // Ensure limit is within reasonable bounds
-        if (limit > 100) limit = 100;
-        if (limit < 1) limit = 20;
-                
-        // Build query for messages between these users before the given timestamp
+// Build query for messages between these users before the given timestamp
         const query = { ...conversationWhere(profileId, connectId), timestamp: { lt: timestamp } };
 
         const messages = populated(await prisma.message.findMany({
             where: query,
             omit: REMINDER_OMIT,
-            orderBy: { timestamp: 'desc' },
+            orderBy: [{ timestamp: 'desc' }, { id: 'desc' }],
             take: limit + 1,
             include: { parentDoc: { select: PARENT_SELECT } },
         }), 'parent');
 
         const hasMore = messages.length > limit;
         const resultMessages = messages.slice(0, limit);
+        await withSecureState(resultMessages);
 
+        res.set('Cache-Control', 'no-store');
         res.status(200).json({
             messages: resultMessages.reverse(),
             hasMore
@@ -320,10 +340,10 @@ exports.getOldMessages = async(req,res,next) => {
         
     } catch (error) {
         console.error('Error fetching old messages:', error);
-        res.status(500).json({ 
-            messages: [], 
+        res.status(500).json({
+            messages: [],
             hasMore: false,
-            error: error.message 
+            error: 'Could not load messages'
         });
     }
 }
@@ -338,10 +358,17 @@ exports.sendMessage = async (req, res, next) => {
     try {
         const io = req.app.get('io');
         const { receiverId, message, attachment, parent, messageType = 'text', callType, callEvent, tempId } = req.body;
+        const secure = isSecureRequest(req.body);
         // Authenticated identity is the sender; the body value is a legacy fallback only.
         const senderId = String(req.profile?._id || req.body.senderId || '');
-        if (!senderId || !receiverId) {
+        if (!senderId || !isValidObjectId(receiverId)) {
             return res.status(400).json({ message: 'senderId and receiverId are required' });
+        }
+        let secureContent = null;
+        if (secure) {
+            const prepared = prepareSecureContent({ message, attachment, messageType });
+            if (!prepared.ok) return res.status(400).json({ message: prepared.error });
+            secureContent = prepared.content;
         }
         // Same canonical room the socket path and both clients use.
         const room = [senderId, String(receiverId)].sort().join('_');
@@ -350,6 +377,7 @@ exports.sendMessage = async (req, res, next) => {
         if (tempId) {
             const existing = await findMessageWithParent({ senderId, tempId: String(tempId) });
             if (existing) {
+                await withSecureState(existing);
                 return res.status(200).json({ message: 'Message sent successfully', data: existing, duplicate: true });
             }
         }
@@ -377,26 +405,28 @@ exports.sendMessage = async (req, res, next) => {
             }
         }
 
-        const newMessage = await prisma.message.create({
-            data: {
-                room,
-                senderId,
-                receiverId: String(receiverId),
-                message: message == null ? undefined : String(message),
-                attachment: attachment || undefined,
-                ...(parent && isValidObjectId(parent) ? { parent: String(parent) } : {}),
-                messageType,
-                callType,
-                callEvent,
-                tempId: tempId == null ? undefined : String(tempId),
-                reacts: [],
-            },
-        });
+        const newMessage = secureContent
+            ? await createSecureMessage({ room, senderId, receiverId, parent, tempId, content: secureContent })
+            : await prisma.message.create({
+                data: {
+                    room,
+                    senderId,
+                    receiverId: String(receiverId),
+                    message: message == null ? undefined : String(message),
+                    attachment: attachment || undefined,
+                    ...(parent && isValidObjectId(parent) ? { parent: String(parent) } : {}),
+                    messageType,
+                    callType,
+                    callEvent,
+                    tempId: tempId == null ? undefined : String(tempId),
+                    reacts: [],
+                },
+            });
 
         // Update last active time for sending message
         await updateLastActive(senderId);
 
-        let updatedMessage = await findMessageWithParent({ id: newMessage.id });
+        let updatedMessage = await withSecureState(await findMessageWithParent({ id: newMessage.id }));
         let profileData = populated(
             await prisma.profile.findUnique({ where: { id: senderId }, include: { userDoc: true } }),
             'user',
@@ -451,15 +481,16 @@ const updateLastActive = async (userId) => {
 // HTTP-based new messages polling
 exports.getNewMessages = async (req, res, next) => {
     try {
-        const { profileId, connectId, lastMessageId } = req.query;
-        
+        const { connectId, lastMessageId } = req.query;
+        const profileId = viewerId(req);
+
         if (!profileId) {
             return res.status(400).json({ messages: [] });
         }
 
         let query;
         
-        if (connectId) {
+        if (connectId && isValidObjectId(connectId)) {
             // Get messages between two specific users (for Chat.js)
             query = conversationWhere(profileId, connectId);
             
@@ -493,6 +524,7 @@ exports.getNewMessages = async (req, res, next) => {
             take: 20,
             include: { parentDoc: { select: PARENT_SELECT } },
         }), 'parent');
+        await withSecureState(newMessages);
 
         const senderIds = [
             ...new Set(
@@ -539,7 +571,7 @@ exports.getNewMessages = async (req, res, next) => {
 // Count unseen new messages for sidebar/update checks
 exports.getNewMessagesCount = async (req, res, next) => {
     try {
-        const { profileId } = req.query;
+        const profileId = viewerId(req);
 
         if (!profileId) {
             return res.status(400).json({ hasNewMessages: false, count: 0 });
@@ -666,6 +698,7 @@ exports.deleteMessage = async (req, res, next) => {
         // Delete the message
         await prisma.message.deleteMany({ where: { id: message.id } });
         await deleteCloudinaryResources([message.attachment]);
+        await deleteSecureContent([message.id]);
         
         // Emit real-time event to all users in the chat room
         const io = req.app.get('io');
@@ -694,10 +727,11 @@ exports.deleteConversation = async (req, res, next) => {
 
         const conversationQuery = conversationWhere(profileId, connectId);
 
-        const messages = await prisma.message.findMany({ where: conversationQuery, select: { attachment: true } });
+        const messages = await prisma.message.findMany({ where: conversationQuery, select: { id: true, attachment: true, messageType: true } });
         const deleted = await prisma.message.deleteMany({ where: conversationQuery });
         const result = { deletedCount: deleted.count };
         await deleteCloudinaryResources(messages.map((message) => message.attachment));
+        await deleteSecureContent(messages.filter((message) => message.messageType === 'secure').map((message) => message.id));
 
         const io = req.app.get('io');
         if (io) {
@@ -727,7 +761,8 @@ exports.sendBump = async (req, res, next) => {
     try {
         const io = req.app.get('io');
         const connectProfile = req.body?.connectProfile;
-        const myProfile = req.body?.myProfile || req.profile?._id;
+        // A bump always comes from the signed-in profile.
+        const myProfile = req.profile?._id;
         const result = await require('../utils/sendBump').sendBump(io, {
             connectProfile,
             myProfile,
@@ -736,6 +771,41 @@ exports.sendBump = async (req, res, next) => {
             return res.status(400).json({ message: 'Bump failed', reason: result.reason });
         }
         return res.status(200).json({ message: 'Bump sent', skipped: !!result.skipped });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// One-time read of a vanishing secure message by its receiver.
+exports.openSecureMessage = async (req, res, next) => {
+    try {
+        const result = await openSecureMessage({ messageId: req.body?.messageId, profileId: viewerId(req) });
+        res.set('Cache-Control', 'no-store');
+        if (!result.ok) {
+            return res.status(result.status || 400).json({ message: result.error, state: result.state || null });
+        }
+
+        const { message, openedAt } = result;
+        const io = req.app.get('io');
+        if (io) {
+            // Both participants on every device: the sender sees "Opened",
+            // the receiver's other devices lock the bubble.
+            io.to([message.room, String(message.senderId), String(message.receiverId)].filter(Boolean))
+                .emit('secureMessageOpened', {
+                    messageId: String(message.id),
+                    _id: String(message.id),
+                    room: message.room,
+                    senderId: String(message.senderId),
+                    receiverId: String(message.receiverId),
+                    openedAt,
+                });
+        }
+
+        return res.status(200).json({
+            messageId: String(message.id),
+            openedAt,
+            content: result.content,
+        });
     } catch (error) {
         next(error);
     }

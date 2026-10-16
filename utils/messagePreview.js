@@ -9,6 +9,8 @@ function messagePreview(msg = {}) {
   const text = typeof msg.message === 'string' ? msg.message.trim() : '';
   const attachment = typeof msg.attachment === 'string' ? msg.attachment : '';
 
+  // Content of a secure message never appears outside the chat.
+  if (msg.messageType === 'secure') return '🔒 Secure message';
   if (msg.messageType === 'call') {
     if (text) return text;
     const label = msg.callType === 'video' ? 'video' : 'audio';

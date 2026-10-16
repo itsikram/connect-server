@@ -613,6 +613,22 @@ model Message {
   @@map("messages")
 }
 
+// Encrypted content of a vanishing secure message (utils/secureMessages.js).
+// `id` is the id of its placeholder row in `messages`. The table is created
+// on first use, so live databases need no migration.
+model SecureMessage {
+  id         String    @id @db.VarChar(32)
+  senderId   String    @db.VarChar(64)
+  receiverId String    @db.VarChar(64)
+  payload    String    @db.Text
+  expiresAt  DateTime
+  openedAt   DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([expiresAt])
+  @@map("securemessages")
+}
+
 model Notification {
   id         String   @id @default(cuid()) @db.VarChar(32)
   receiverId String?  @db.VarChar(32)

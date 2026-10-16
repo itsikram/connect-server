@@ -1,5 +1,6 @@
 const { Prisma, prisma, pluck } = require('./db')
 const { deleteCloudinaryResources } = require('./cloudinaryCleanup')
+const { deleteSecureContent } = require('./secureMessages')
 
 /**
  * Removes a profile, its user and every row that belongs to them, including
@@ -114,6 +115,8 @@ const deleteUserData = async (profileId) => {
         ...replies.map((reply) => reply.attachment),
         settings?.chatBackground,
     ])
+    // Encrypted secure-message content lives in its own table.
+    await deleteSecureContent(messages.map((message) => message.id))
 }
 
 module.exports = deleteUserData

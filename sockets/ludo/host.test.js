@@ -272,6 +272,10 @@ test("pause blocks play until any player resumes; it survives a reload", async (
   assert.equal(restored.state.players[1].profileId, GUEST);
   assert.equal(restored.state.players[1].isOffline, true);
 
+  // A reloaded game is a new epoch, so clients take its state as-is even if
+  // its version is lower than the last one they saw.
+  assert.notEqual(restored.state.epoch, paused.state.epoch);
+
   const resumed = await second.host.handle("resume", HOST, { gameId });
   assert.equal(resumed.state.paused, false);
   assert.equal((await second.host.handle("roll", HOST, { gameId })).ok, true);

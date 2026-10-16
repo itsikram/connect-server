@@ -9,6 +9,7 @@ const { sendBump } = require('../utils/sendBump');
 const ludoSocket = require('./ludoSocket');
 const chessSocket = require('./chessSocket');
 const presence = require('./presence');
+const { createSocketAuth } = require('./socketAuth');
 
 // Profile.connects (join table) -> connect profile ids.
 async function connectIdsOf(profileId) {
@@ -21,22 +22,19 @@ async function connectIdsOf(profileId) {
 }
 
 module.exports = function socketHandler(io) {
+    // Verify each connection's access token before 'connection' fires; the
+    // socket's identity is the token's profile (see socketAuth.js).
+    io.use(createSocketAuth().middleware);
+
     // profileId -> socketId
     const onlineUsers = new Map();
     // profileId -> Set of socketIds (to track multiple connections per user)
     const profileSockets = new Map();
 
     io.on('connection', async (socket) => {
-        const rawProfileId =
-            socket.handshake.query?.profile ||
-            socket.handshake.auth?.profile ||
-            socket.handshake.auth?.profileId;
-        // Logged-out clients send the literal strings "null"/"undefined";
-        // treat them as anonymous so no ObjectId queries run for them.
-        const profileId =
-            rawProfileId && rawProfileId !== 'null' && rawProfileId !== 'undefined'
-                ? rawProfileId
-                : null;
+        // Set by the auth middleware: the verified profile (or, in grace
+        // mode, the claimed one); null for anonymous sockets.
+        const profileId = socket.data?.profileId || null;
         const browserId = socket.handshake.query?.browserId;
 
         console.info('[realtime_socket_connected]', {

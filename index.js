@@ -56,6 +56,7 @@ const {
 const { getExpoControlConfig, applyExpoControlUrl } = require("./utils/expoControlSync");
 const { prisma, jsonArray } = require("./utils/db");
 const { startDbCleanupWorker } = require("./utils/dbCleanupWorker");
+const { startSecureMessageWorker } = require("./utils/secureMessages");
 
 const normalizeMultilineEnv = (value = "") =>
   String(value).replace(/\\n/g, "\n");
@@ -1031,6 +1032,8 @@ connectMySQL().then((ready) => {
     startAiAutoPostWorker();
     // Replaces Mongo's TTL indexes (recovery chat retention, yt-download progress).
     startDbCleanupWorker();
+    // Wipes expired secure-message content and deletes their attachments.
+    startSecureMessageWorker();
   } else {
     console.log("Background workers skipped on this instance");
   }

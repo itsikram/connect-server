@@ -4,8 +4,10 @@
 // piece, pause, invite, ...) and draw the state they receive.
 //
 // Each game is broadcast to the socket room `ludo_<gameId>` as `ludo:state`.
-// A state carries a `version` (strictly increasing) and the `lastAction` that
-// produced it, so clients can animate the dice and the token that moved.
+// A state carries a `version` (strictly increasing within an `epoch`) and the
+// `lastAction` that produced it, so clients can animate the dice and the token
+// that moved. A game reloaded from the database (server restart) gets a new
+// epoch, which tells clients to take its state as-is.
 
 const crypto = require("crypto");
 const {
@@ -34,6 +36,7 @@ const DEFAULT_TIMINGS = {
 };
 
 const SEAT_KINDS = new Set(["human", "bot", "local", "open"]);
+const MAX_OPEN_GAMES_PER_HOST = 30;
 
 const str = (value) => (value == null ? "" : String(value));
 const cleanText = (value, max = 80) =>
@@ -191,6 +194,7 @@ function createLudoHost(options = {}) {
     });
     return {
       gameId: g.gameId,
+      epoch: g.epoch,
       version: g.version,
       serverTs: now(),
       hostId: g.hostId,
@@ -457,6 +461,7 @@ function createLudoHost(options = {}) {
 
   const blankGame = ({ gameId, hostId, playerCount, pathLength: length }) => ({
     gameId,
+    epoch: crypto.randomBytes(4).toString("hex"),
     hostId,
     mode: "online",
     playerCount,
@@ -958,6 +963,13 @@ function createLudoHost(options = {}) {
       if (![2, 3, 4].includes(count)) return fail("bad_request", "Choose 2, 3 or 4 players.");
       const gameId = str(payload.gameId) || newGameId();
       if (games.has(gameId)) return fail("exists", "Game already exists.");
+      let open = 0;
+      games.forEach((g) => {
+        if (g.hostId === pid && g.status !== "ended" && !g.removed) open += 1;
+      });
+      if (open >= MAX_OPEN_GAMES_PER_HOST) {
+        return fail("too_many_games", "You have too many open games. Finish or delete some first.");
+      }
 
       const requested = Array.isArray(payload.seats) ? payload.seats : [];
       const inviteIds = requested

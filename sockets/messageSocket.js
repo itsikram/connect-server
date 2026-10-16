@@ -1,4 +1,5 @@
 const { prisma, isValidId: isValidObjectId, populated } = require("../utils/db");
+const { profileIdOf } = require("./socketAuth");
 const checkIsActive = require("../utils/checkIsActive");
 const updateLastActive = require("../utils/updateLastActive");
 const axios = require("axios");
@@ -7,6 +8,13 @@ const { sendDataPushToProfile } = require("../utils/pushNotifications");
 const { notifyNewChatMessage } = require("../utils/chatNotifications");
 const { senderDisplayName } = require("../utils/messagePreview");
 const config = require("../config/config.json");
+const {
+  isSecureRequest,
+  isSecureMessage,
+  prepareSecureContent,
+  createSecureMessage,
+  withSecureState,
+} = require("../utils/secureMessages");
 
 const conversationWhere = (a, b) => ({
   OR: [
@@ -24,14 +32,25 @@ const findMessage = async (id) =>
   (isValidObjectId(id) ? prisma.message.findUnique({ where: { id: String(id) } }) : null);
 
 module.exports = function messageSocket(io, socket, profileId) {
+  const me = String(profileId || "");
+  // Chat rooms are the sorted pair of the two profile ids ("a_b"). A socket
+  // may only join or read a room it is part of; anything else let any user
+  // listen in on, or load, other people's conversations.
+  const isOwnChatRoom = (roomId) => {
+    if (typeof roomId !== "string" || !me) return false;
+    const ids = roomId.split("_");
+    return ids.length === 2 && ids.every(isValidObjectId) && ids.includes(me);
+  };
+  const roomWith = (otherId) => [me, String(otherId)].sort().join("_");
+
   // Room management for real-time messaging
   socket.on("joinRoom", (roomId) => {
-    console.log(`User ${profileId} joining room: ${roomId}`);
+    if (!isOwnChatRoom(roomId)) return;
     socket.join(roomId);
   });
 
   socket.on("leaveRoom", (roomId) => {
-    console.log(`User ${profileId} leaving room: ${roomId}`);
+    if (typeof roomId !== "string" || roomId === me) return;
     socket.leave(roomId);
   });
 
@@ -74,39 +93,48 @@ module.exports = function messageSocket(io, socket, profileId) {
     }
   });
 
-  socket.on("startChat", async ({ user1, user2 }) => {
-    const room = [user1, user2].sort().join("_"); // Ensures consistent room ID
-    socket.join(room);
+  socket.on("startChat", async ({ user1, user2 } = {}) => {
+    try {
+      const ids = [String(user1 || ""), String(user2 || "")];
+      if (!ids.includes(me)) return;
+      const otherId = ids[0] === me ? ids[1] : ids[0];
+      if (!isValidObjectId(otherId)) return;
+      const room = roomWith(otherId); // Ensures consistent room ID
+      socket.join(room);
 
-    const messages = await findMessagesWithParent({
-      where: conversationWhere(user1, user2),
-      orderBy: { timestamp: "desc" },
-      take: 20,
-    });
-    socket.emit("previousMessages", messages.reverse());
-    socket.emit("roomJoined", { room });
+      const messages = await withSecureState(await findMessagesWithParent({
+        where: conversationWhere(me, otherId),
+        orderBy: [{ timestamp: "desc" }, { id: "desc" }],
+        take: 20,
+      }));
+      socket.emit("previousMessages", messages.reverse());
+      socket.emit("roomJoined", { room });
+    } catch (error) {
+      console.error("startChat failed:", error?.message || error);
+    }
   });
 
-  socket.on("loadMessages", async ({ myId, connectId, skip }) => {
+  socket.on("loadMessages", async ({ connectId, skip } = {}) => {
     let limit = 20;
+    if (!me || !isValidObjectId(connectId)) return;
     if (skip < 1) {
       return io
-        .to(myId)
+        .to(me)
         .emit("loadMessages", { loadedMessages: [], hasNewMessage: false });
     }
-    const loadedMessages = await findMessagesWithParent({
-      where: conversationWhere(myId, connectId),
+    const loadedMessages = await withSecureState(await findMessagesWithParent({
+      where: conversationWhere(me, connectId),
       skip: Number(skip) || 0,
       take: limit,
-      orderBy: { timestamp: "desc" },
-    });
+      orderBy: [{ timestamp: "desc" }, { id: "desc" }],
+    }));
     // (Same skip as above, as before: true whenever this page had rows.)
     let messagesLeft = loadedMessages;
     let hasNewMessage = messagesLeft.length < 1 ? false : true;
     let msgList = loadedMessages.reverse();
     // Note: loadMessages is for pagination, not for initial notifications
     return io
-      .to(myId)
+      .to(me)
       .emit("loadMessages", { loadedMessages: msgList, hasNewMessage });
   });
 
@@ -114,13 +142,10 @@ module.exports = function messageSocket(io, socket, profileId) {
     "fetchOldMessages",
     async ({ room, userId, page, limit, beforeTimestamp }) => {
       try {
-        console.log("fetchOldMessages received:", {
-          room,
-          userId,
-          page,
-          limit,
-          beforeTimestamp,
-        });
+        if (!isOwnChatRoom(room)) {
+          socket.emit("oldMessages", []);
+          return;
+        }
 
         // Parse the room to get both user IDs
         const [user1, user2] = room.split("_");
@@ -135,24 +160,16 @@ module.exports = function messageSocket(io, socket, profileId) {
         const skip = (page - 1) * limit;
 
         // Fetch old messages
-        const oldMessages = await findMessagesWithParent({
+        const oldMessages = await withSecureState(await findMessagesWithParent({
           where: query,
-          orderBy: { timestamp: "desc" },
+          orderBy: [{ timestamp: "desc" }, { id: "desc" }],
           skip: Math.max(0, Number(skip) || 0),
-          take: Number(limit) || undefined,
-        });
+          take: Math.min(Number(limit) || 20, 100),
+        }));
 
         // Check if there are more messages available
         const totalOldMessages = await prisma.message.count({ where: query });
         const hasMore = skip + limit < totalOldMessages;
-
-        console.log("fetchOldMessages result:", {
-          foundMessages: oldMessages.length,
-          hasMore,
-          totalOldMessages,
-          skip,
-          limit,
-        });
 
         // Emit the old messages (pagination - should NOT trigger notifications)
         // Frontend should not create notifications for old paginated messages
@@ -264,6 +281,10 @@ module.exports = function messageSocket(io, socket, profileId) {
           }
         }
 
+        // Secure messages are never read out (the client may still hold the
+        // plaintext after opening it).
+        if (isSecureMessage(msgData) || messageType === "secure") return;
+
         const resolvedMessageType =
           messageType ||
           msgData?.messageType ||
@@ -337,6 +358,7 @@ module.exports = function messageSocket(io, socket, profileId) {
     // The authenticated socket identity is the sender; never trust the payload
     // over it (the payload value is only a fallback for legacy clients).
     const senderId = String(profileId || payloadSenderId || "");
+    const secure = isSecureRequest(payload);
     // Web and Expo both derive the room as the sorted pair of profile ids.
     // Recompute it server-side so a client with a stale/malformed room can
     // never send a message the other side doesn't receive.
@@ -430,9 +452,19 @@ module.exports = function messageSocket(io, socket, profileId) {
         return;
       }
 
-      if (!senderId || !receiverId) {
+      if (!senderId || !isValidObjectId(receiverId)) {
         reply({ ok: false, error: "senderId and receiverId are required", tempId });
         return;
+      }
+
+      let secureContent = null;
+      if (secure) {
+        const prepared = prepareSecureContent({ message, attachment, messageType });
+        if (!prepared.ok) {
+          reply({ ok: false, error: prepared.error, tempId });
+          return;
+        }
+        secureContent = prepared.content;
       }
 
       try {
@@ -441,7 +473,7 @@ module.exports = function messageSocket(io, socket, profileId) {
       if (tempId) {
         const existing = await findMessageWithParent({ senderId, tempId: String(tempId) });
         if (existing) {
-          const existingMessage = serializeMessage(existing);
+          const existingMessage = serializeMessage(await withSecureState(existing));
           reply({ ok: true, updatedMessage: existingMessage, tempId, duplicate: true });
           io.to(String(senderId)).emit("messageSent", {
             updatedMessage: existingMessage,
@@ -453,7 +485,16 @@ module.exports = function messageSocket(io, socket, profileId) {
         }
       }
 
-      const newMessage = await prisma.message.create({
+      const newMessage = secureContent
+        ? await createSecureMessage({
+            room: chatRoom,
+            senderId,
+            receiverId,
+            parent,
+            tempId,
+            content: secureContent,
+          })
+        : await prisma.message.create({
         data: {
           room: chatRoom,
           senderId,
@@ -474,7 +515,7 @@ module.exports = function messageSocket(io, socket, profileId) {
       // Update last active time for sending message
       await updateLastActive(senderId);
 
-      let updatedMessage = await findMessageWithParent({ id: newMessage.id });
+      let updatedMessage = await withSecureState(await findMessageWithParent({ id: newMessage.id }));
       let profileData = populated(
         await prisma.profile.findUnique({ where: { id: senderId }, include: { userDoc: true } }),
         "user",
@@ -635,10 +676,7 @@ module.exports = function messageSocket(io, socket, profileId) {
         const roomSockets = room ? [...room] : [];
         const fallbackSockets = [...io.sockets.sockets.values()]
           .filter((candidate) => {
-            const candidateProfile =
-              candidate.handshake.query?.profile ||
-              candidate.handshake.auth?.profile ||
-              candidate.handshake.auth?.profileId;
+            const candidateProfile = profileIdOf(candidate);
             return String(candidateProfile || '') === String(toId);
           })
           .map((candidate) => candidate.id);
@@ -728,24 +766,24 @@ module.exports = function messageSocket(io, socket, profileId) {
 
   socket.on(
     "typing",
-    async ({ room, isTyping, type, receiverId, senderId }) => {
-      console.log("typing", room, isTyping, type, receiverId);
+    async ({ room: requestedRoom, isTyping, type, receiverId } = {}) => {
+      const room = isValidObjectId(receiverId) ? roomWith(receiverId) : requestedRoom;
+      if (!isOwnChatRoom(room)) return;
+      // The live-typing preview is plain text; cap it.
+      type = typeof type === "string" ? type.slice(0, 500) : type;
       if (isTyping) {
         socket.to(room).emit("typing", {
           receiverId,
-          senderId: profileId || senderId,
+          senderId: me,
           isTyping: true,
           type,
         });
         // Update last active time for typing activity (only when actively typing)
-        const activeProfileId = profileId || senderId;
-        if (activeProfileId) {
-          await updateLastActive(activeProfileId);
-        }
+        await updateLastActive(me);
       } else {
         socket.to(room).emit("typing", {
           receiverId,
-          senderId: profileId || senderId,
+          senderId: me,
           isTyping: false,
         });
       }
@@ -753,7 +791,8 @@ module.exports = function messageSocket(io, socket, profileId) {
     },
   );
 
-  socket.on("update_type", ({ room, type }) => {
+  socket.on("update_type", ({ room, type } = {}) => {
+    if (!isOwnChatRoom(room)) return;
     io.to(room).emit("update_type", { type });
   });
 
@@ -778,8 +817,8 @@ module.exports = function messageSocket(io, socket, profileId) {
     }
   });
 
-  socket.on("last_emotion", async ({ connectId, profileId }) => {
-    if (!isValidObjectId(connectId) && !isValidObjectId(profileId)) return;
+  socket.on("last_emotion", async ({ connectId } = {}) => {
+    if (!isValidObjectId(connectId) || !me) return;
 
     let profileData = isValidObjectId(connectId)
       ? await prisma.profile.findUnique({
@@ -788,7 +827,7 @@ module.exports = function messageSocket(io, socket, profileId) {
         })
       : null;
     if (profileData) {
-      io.to(profileId).emit("last_emotion", profileData);
+      io.to(me).emit("last_emotion", profileData);
     }
   });
 
