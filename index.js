@@ -516,6 +516,9 @@ initializeSpeechWebSocketServer(httpServer);
 startCpuSampler();
 attachPeerAdapter(io);
 
+// Per-request query count / DB time (QUERY_STATS=1), before every route.
+app.use(require("./utils/requestStats").requestStatsMiddleware);
+
 // Setting up middilewares
 middilewares(app);
 

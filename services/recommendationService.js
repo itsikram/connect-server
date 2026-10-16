@@ -1,4 +1,14 @@
 const { prisma, jsonObject } = require('../utils/db');
+const cache = require('../utils/cache');
+const { CONTENT_TAGS } = require('../utils/cacheResponse');
+
+// Ranked lists are kept for a minute (dropped at once on any content / graph
+// write) so paging and refreshes don't re-rank 500 candidates; interest
+// profiles change slowly and are kept for 10 minutes.
+const RANKED_TTL_MS = 60 * 1000;
+const RANKED_KEEP = 200;
+const INTEREST_TTL_MS = 10 * 60 * 1000;
+const INTEREST_TAGS = ['PostReact', 'WatchReact', 'Post', 'Watch'];
 const { profileArgs, commentInclude, postInclude, watchInclude, shapePost, shapeWatch } = require('./contentShape');
 
 const cosineSimilarity = (a, b) => {
@@ -54,7 +64,9 @@ const getRecommendations = async ({
     fallbackFilter = {},
     context = {},
 }) => {
-    const profile = await rebuildInterestProfile(profileId);
+    const profile = await cache.wrap(`interest:${profileId}`, INTEREST_TTL_MS, INTEREST_TAGS, () =>
+        rebuildInterestProfile(profileId),
+    );
     const fetchCandidates = async (where) => {
         const commentOptions = {
             comments: commentInclude(FEED_COMMENT_AUTHOR),
@@ -82,19 +94,35 @@ const getRecommendations = async ({
         return rows.map(shapePost);
     };
 
-    let candidates = await fetchCandidates(filter);
-    let fallbackUsed = false;
-    // If the personalized/connection-aware feed is empty, use only public content.
-    if (candidates.length === 0 && Object.keys(fallbackFilter).length > 0) {
-        candidates = await fetchCandidates(fallbackFilter);
-        fallbackUsed = candidates.length > 0;
-    }
+    const rankAll = async () => {
+        let candidates = await fetchCandidates(filter);
+        let fallbackUsed = false;
+        // If the personalized/connection-aware feed is empty, use only public content.
+        if (candidates.length === 0 && Object.keys(fallbackFilter).length > 0) {
+            candidates = await fetchCandidates(fallbackFilter);
+            fallbackUsed = candidates.length > 0;
+        }
+        return { ranked: rankItems(candidates, profile, { profileId, connects: context?.connects }), fallbackUsed };
+    };
 
-    const ranked = rankItems(candidates, profile, { profileId, connects: context?.connects });
     const start = (page - 1) * limit;
+    let result;
+    if (start + limit <= RANKED_KEEP) {
+        // The filters (connects / blocked lists) are part of the key, so a
+        // changed audience never reuses another audience's ranking.
+        const key = `rank:${kind}:${profileId}:${JSON.stringify([filter, fallbackFilter])}`;
+        result = await cache.wrap(key, RANKED_TTL_MS, CONTENT_TAGS, async () => {
+            const full = await rankAll();
+            return { ranked: full.ranked.slice(0, RANKED_KEEP), total: full.ranked.length, fallbackUsed: full.fallbackUsed };
+        });
+    } else {
+        const full = await rankAll();
+        result = { ranked: full.ranked, total: full.ranked.length, fallbackUsed: full.fallbackUsed };
+    }
+    const { ranked, fallbackUsed } = result;
     return {
         items: ranked.slice(start, start + limit),
-        hasMore: start + limit < ranked.length,
+        hasMore: start + limit < result.total,
         coldStart: !profile || !profile.interactionCount,
         fallbackUsed,
     };

@@ -17,6 +17,7 @@ const {
   resolveChessInviteNotifications,
 } = require("../controllers/notificationController");
 const isAuth = require("../middlewares/isAuth");
+const { cacheResponse, GRAPH_TAGS, CONTENT_TAGS, MESSAGE_TAGS, NOTIFICATION_TAGS } = require('../utils/cacheResponse')
 
 Router.post("/", isAuth, postNotification);
 Router.post("/view", isAuth, notificationView);
@@ -31,7 +32,7 @@ Router.post("/send-test", isAuth, sendTestPush);
 Router.post("/call/reject-push", isAuth, rejectIncomingCallFromPush);
 Router.post("/call/notify-ringing", isAuth, notifyIncomingCallRingingFromPush);
 Router.post("/viewall", isAuth, notificationViewAll);
-Router.get("/", isAuth, getNotifications);
+Router.get("/", isAuth, cacheResponse({ ttl: 15, tags: NOTIFICATION_TAGS }), getNotifications);
 Router.get("/new", isAuth, getNewNotifications);
 Router.post("/delete", isAuth, deleteNotification);
 Router.post("/deleteall", isAuth, deleteAllNotifications);

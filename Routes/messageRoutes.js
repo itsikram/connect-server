@@ -2,12 +2,13 @@ const Router = require('express').Router()
 const isAuth = require('../middlewares/isAuth')
 const {addMessageReact,removeMessageReact,getMedia,getChatList,getChatHistory,getOldMessages,sendMessage,getNewMessages,getNewMessagesCount,getMessageReactions,markMessageAsSeen,deleteMessage,deleteConversation,sendBump} = require('../controllers/messageController')
 const uploadAttachment = require('../middlewares/photosUpload')
+const { cacheResponse, GRAPH_TAGS, CONTENT_TAGS, MESSAGE_TAGS, NOTIFICATION_TAGS } = require('../utils/cacheResponse')
 
 
 Router.post('/addReact',isAuth,addMessageReact);
 Router.get('/media',isAuth,getMedia);
 Router.post('/removeReact',isAuth,removeMessageReact);
-Router.get('/chatList',isAuth,getChatList);
+Router.get('/chatList',isAuth,cacheResponse({ ttl: 15, tags: MESSAGE_TAGS }),getChatList);
 Router.get('/getChatHistory',isAuth,getChatHistory);
 Router.get('/getOldMessages',isAuth,getOldMessages);
 Router.post('/send',isAuth,sendMessage);

@@ -4,8 +4,9 @@ const {addStoryReact,deleteStoryReact} = require('../controllers/reactController
 const {storyAddComment} = require('../controllers/commentController')
 const isAuth = require('../middlewares/isAuth')
 const optionalAuth = require('../middlewares/optionalAuth')
+const { cacheResponse, GRAPH_TAGS, CONTENT_TAGS, MESSAGE_TAGS, NOTIFICATION_TAGS } = require('../utils/cacheResponse')
 
-Router.get('/',optionalAuth,getAllStories)
+Router.get('/',optionalAuth,cacheResponse({ ttl: 20, tags: CONTENT_TAGS }),getAllStories)
 Router.get('/single',getSingleStory)
 Router.post('/create',isAuth,postStory)
 Router.post('/delete',isAuth,deleteStory)

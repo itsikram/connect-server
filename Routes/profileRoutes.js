@@ -20,10 +20,11 @@ const coverPicUpload = require("../middlewares/UploadCover");
 const photosUpload = require("../middlewares/photosUpload");
 const isAuth = require("../middlewares/isAuth");
 const multer = require("multer");
+const { cacheResponse, GRAPH_TAGS, CONTENT_TAGS, MESSAGE_TAGS, NOTIFICATION_TAGS } = require('../utils/cacheResponse')
 
 const upload = multer({ storage: multer.memoryStorage() }); // Create an endpoint for image upload
 
-Router.get("/", isAuth, profileGet);
+Router.get("/", isAuth, cacheResponse({ ttl: 30, tags: CONTENT_TAGS }), profileGet);
 Router.get("/hasStory", prefileHasStory);
 Router.get("/getImages", getProfileImages);
 Router.get("/nearby", isAuth, getNearbyProfiles); // Get nearby profiles endpoint

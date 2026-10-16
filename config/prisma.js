@@ -15,6 +15,8 @@ const { applyDatabaseUrl } = require("./databaseUrl");
 // Before the client is created: it reads DATABASE_URL at construction.
 applyDatabaseUrl();
 const { newId } = require("../utils/objectId");
+const { recordQuery } = require("../utils/requestStats");
+const { invalidateModels, clear: clearCache } = require("../utils/cache");
 
 const withId = (data) =>
   data && typeof data === "object" && data.id == null ? { ...data, id: newId() } : data;
@@ -56,6 +58,27 @@ const ROW_OPERATIONS = new Set([
   "delete",
 ]);
 
+const WRITE_OPERATIONS = new Set([
+  "create",
+  "createMany",
+  "createManyAndReturn",
+  "update",
+  "updateMany",
+  "updateManyAndReturn",
+  "upsert",
+  "delete",
+  "deleteMany",
+]);
+
+// Presence bookkeeping runs on every request / socket event; it must not
+// flush cached feeds and profiles (they tolerate a slightly old "online" flag).
+const PRESENCE_FIELDS = new Set(["isActive", "lastActive", "lastLogin", "lastLocation", "updatedAt"]);
+const isPresenceOnlyWrite = (model, operation, args) =>
+  (model === "Profile" || model === "User") &&
+  (operation === "update" || operation === "updateMany") &&
+  args?.data &&
+  Object.keys(args.data).every((key) => PRESENCE_FIELDS.has(key));
+
 const base = new PrismaClient({
   log: process.env.NODE_ENV === "production" ? ["error"] : ["warn", "error"],
 });
@@ -71,9 +94,18 @@ const prisma = base.$extends({
   },
   query: {
     $allModels: {
-      $allOperations({ operation, args, query }) {
+      async $allOperations({ model, operation, args, query }) {
         if (ROW_OPERATIONS.has(operation)) addComputedIdToSelects(args);
-        return query(args);
+        const started = performance.now();
+        try {
+          return await query(args);
+        } finally {
+          recordQuery(performance.now() - started);
+          // After the write (success or not): drop cached reads of this table.
+          if (WRITE_OPERATIONS.has(operation) && !isPresenceOnlyWrite(model, operation, args)) {
+            invalidateModels([model]);
+          }
+        }
       },
       create({ args, query }) {
         args.data = withId(args.data);
@@ -87,6 +119,21 @@ const prisma = base.$extends({
         args.create = withId(args.create);
         return query(args);
       },
+    },
+    // Raw writes can touch any table: clear the whole cache afterwards.
+    async $executeRaw({ args, query }) {
+      try {
+        return await query(args);
+      } finally {
+        clearCache();
+      }
+    },
+    async $executeRawUnsafe({ args, query }) {
+      try {
+        return await query(args);
+      } finally {
+        clearCache();
+      }
     },
   },
 });
