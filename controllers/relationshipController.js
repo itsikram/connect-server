@@ -9,6 +9,7 @@ const {
 const { saveNotification } = require("./notificationController");
 const { sendPushToProfile } = require("../utils/pushNotifications");
 const sendEmailNotification = require("../utils/sendEmailNotification.js");
+const { getUserPrefs, getProfileEmail } = require("../utils/notificationPrefs");
 const checkIsActive = require("../utils/checkIsActive.js");
 const { asId, idsMatch, listHasId } = require("../utils/ids");
 
@@ -142,6 +143,24 @@ exports.postConnectReq = async (req, res, next) => {
       });
     }
 
+    // Privacy setting "Who can send you connect requests?"
+    const receiverPrefs = await getUserPrefs(connectProfile.id);
+    if (receiverPrefs.connectRequestVisibility === "om") {
+      return res.status(403).json({ message: "This person isn't accepting connect requests" });
+    }
+    if (receiverPrefs.connectRequestVisibility === "fof") {
+      const [theirConnects, myConnects] = await Promise.all([
+        graphIds.connects(connectProfile.id),
+        graphIds.connects(myProfile._id),
+      ]);
+      const mine = new Set(myConnects.map(String));
+      if (!theirConnects.some((id) => mine.has(String(id)))) {
+        return res.status(403).json({
+          message: "Only connects of their connects can send this person a request",
+        });
+      }
+    }
+
     // The unique (profile, requester) row is the atomic "not already requested" guard.
     const requestAdded = await addEdge(() =>
       prisma.connectRequest.create({
@@ -201,21 +220,25 @@ exports.postConnectReq = async (req, res, next) => {
       }
 
       if (!isActive) {
-        try {
-          await sendPushToProfile(receiverId, {
-            title: "New connect request",
-            body: `${myProfile.fullName} sent you a connect request`,
-            data: { type: "connect_request", senderId },
-          });
-        } catch (e) {}
-        Promise.resolve(
-          sendEmailNotification(
-            connectProfile?.user?.email,
-            "You've received a connect requiest",
-            myProfile.fullName + " Sent you connect Request On Connect",
-            myProfile.fullName,
-          ),
-        ).catch(() => {});
+        if (receiverPrefs.connectRequestReceived !== false) {
+          try {
+            await sendPushToProfile(receiverId, {
+              title: "New connect request",
+              body: `${myProfile.fullName} sent you a connect request`,
+              data: { type: "connect_request", senderId },
+            });
+          } catch (e) {}
+        }
+        if (receiverPrefs.connectRequestReceivedEmail) {
+          Promise.resolve(
+            sendEmailNotification(
+              connectProfile?.user?.email,
+              "You've received a connect request",
+              myProfile.fullName + " sent you a connect request on Connect",
+              myProfile.fullName,
+            ),
+          ).catch(() => {});
+        }
       }
     } catch (notifyErr) {
       console.error("Connect request saved but notify failed:", notifyErr);
@@ -596,12 +619,26 @@ exports.postConnectAccept = async (req, res, next) => {
 
     try {
       const { isActive } = await checkIsActive(profile);
-      if (!isActive) {
+      const requesterPrefs = await getUserPrefs(profile);
+      if (!isActive && requesterPrefs.connectRequestAccepted !== false) {
         await sendPushToProfile(profile, {
           title: "Connect request accepted",
           body: `${myProfile.fullName} accepted your connect request`,
           data: { type: "connect_accept", senderId: String(myProfile._id) },
         });
+      }
+      if (requesterPrefs.connectRequestAcceptedEmail) {
+        const email = await getProfileEmail(profile);
+        if (email) {
+          Promise.resolve(
+            sendEmailNotification(
+              email,
+              "Your connect request was accepted",
+              myProfile.fullName + " accepted your connect request on Connect",
+              myProfile.fullName,
+            ),
+          ).catch(() => {});
+        }
       }
     } catch (e) {}
 

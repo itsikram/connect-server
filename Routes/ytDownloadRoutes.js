@@ -1,12 +1,15 @@
 const Router = require('express').Router();
 const optionalAuth = require('../middlewares/optionalAuth');
+const requireFeatureFlag = require('../middlewares/requireFeatureFlag');
 const {
   startDownload,
   getProgress,
   searchVideos,
 } = require('../controllers/ytDownloadController');
 
-Router.get('/download', optionalAuth, startDownload);
+const requireYtDownloads = requireFeatureFlag('ytDownloadEnabled', 'YouTube downloads are turned off.');
+
+Router.get('/download', requireYtDownloads, optionalAuth, startDownload);
 Router.get('/progress/:progressId', getProgress);
 Router.get('/youtube/search', optionalAuth, searchVideos);
 

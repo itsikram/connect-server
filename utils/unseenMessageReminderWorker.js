@@ -1,6 +1,7 @@
 const { randomUUID } = require('crypto');
 const { prisma, populated } = require('./db');
 const sendEmailNotification = require('./sendEmailNotification');
+const { getUserPrefs } = require('./notificationPrefs');
 
 const DEFAULT_DELAY_MS = 5 * 60 * 1000;
 const DEFAULT_INTERVAL_MS = 60 * 1000;
@@ -144,6 +145,23 @@ const clearProcessingState = async (messageIds, extraSet = {}) => {
 
 const processReminderGroup = async ({ senderId, receiverId, cutoffDate, staleLockDate }) => {
   if (!senderId || !receiverId || String(senderId) === String(receiverId)) {
+    return;
+  }
+
+  // "New Message Received" email is off: settle these messages without emailing.
+  const receiverPrefs = await getUserPrefs(receiverId);
+  if (!receiverPrefs.newMessageReceivedEmail) {
+    await prisma.message.updateMany({
+      where: {
+        ...reminderEligibilityFilter(cutoffDate, staleLockDate),
+        senderId: String(senderId),
+        receiverId: String(receiverId),
+      },
+      data: {
+        unseenReminderEmailSentAt: new Date(),
+        unseenReminderEmailLastError: 'Email reminders turned off by receiver',
+      },
+    });
     return;
   }
 

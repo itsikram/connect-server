@@ -137,7 +137,8 @@ exports.updateSetting = async (req, res, next) => {
         })
 
         if (updatedSetting) {
-            if (req.file && existing?.chatBackground && existing.chatBackground !== updatedSetting.chatBackground) {
+            // Replaced or removed: delete the old uploaded background.
+            if (existing?.chatBackground && existing.chatBackground !== updatedSetting.chatBackground) {
                 await deleteCloudinaryResources([existing.chatBackground])
             }
             return res.status(200).json(updatedSetting)

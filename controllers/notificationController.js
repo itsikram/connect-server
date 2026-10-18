@@ -1,4 +1,5 @@
 const { prisma, isValidId, jsonArray } = require("../utils/db");
+const { wantsPushForType } = require("../utils/notificationPrefs");
 const { isMySQLReady } = require("../config/prisma");
 const { sendPushToProfile } = require("../utils/pushNotifications");
 const { sendWebPushToProfile } = require("../utils/webPush");
@@ -117,7 +118,10 @@ exports.saveNotification = async (io, data) => {
       newNotification?._id ||
       `${notificationType || "n"}-${Date.now()}`;
     const pushBody = data.pushBody || notificationText;
-    sendWebPushToProfile(receiverId, {
+    // The bell feed always gets the notification; the OS push follows the
+    // receiver's Notification settings.
+    const pushAllowed = await wantsPushForType(receiverId, notificationType);
+    if (pushAllowed) sendWebPushToProfile(receiverId, {
       title: notificationTitle,
       body: pushBody,
       text: pushBody,

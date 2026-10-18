@@ -5,6 +5,7 @@
 const { prisma, jsonArray } = require('./db');
 const { sendChatMessageDataPush } = require('./pushNotifications');
 const { messagePreview } = require('./messagePreview');
+const { wantsPushForType } = require('./notificationPrefs');
 
 // messageId -> timestamp; guards against a double fan-out for one message.
 const recentlyNotified = new Map();
@@ -36,7 +37,8 @@ async function notifyNewChatMessage(io, {
 
   // 1) Mobile push (independent of the web path so one failing never blocks the other)
   try {
-    const result = await sendChatMessageDataPush(receiverId, {
+    // Skipped when the receiver turned off message push in Notification settings.
+    const result = (await wantsPushForType(receiverId, 'message')) && await sendChatMessageDataPush(receiverId, {
       senderId,
       updatedMessage,
       senderName,

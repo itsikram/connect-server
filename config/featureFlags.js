@@ -6,10 +6,11 @@ const FEATURE_FLAG_NAMES = [
   "affiliateLinksEnabled",
   "manualPaymentEnabled",
   "recoveryEnabled",
+  "ytDownloadEnabled",
 ];
 
 // Free, core features are on unless an admin turns them off.
-const ENABLED_BY_DEFAULT = ["recoveryEnabled"];
+const ENABLED_BY_DEFAULT = ["recoveryEnabled", "ytDownloadEnabled"];
 
 const DEFAULT_FEATURE_FLAGS = Object.freeze(
   FEATURE_FLAG_NAMES.reduce((flags, name) => {

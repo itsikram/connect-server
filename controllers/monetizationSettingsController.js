@@ -146,9 +146,28 @@ const updateMonetizationSettings = async (req, res, next) => {
       where: { singletonKey: "default" },
       data: settingsToSave,
     });
+    flagsCache = null;
     return res.json({ success: true, settings: serialize(saved) });
   } catch (error) {
     return next(error);
+  }
+};
+
+// Feature flags read on hot paths (route gates) are cached briefly; an admin
+// update clears the cache right away.
+const FLAGS_CACHE_MS = 10000;
+let flagsCache = null;
+
+const loadFeatureFlags = async () => {
+  if (flagsCache && Date.now() - flagsCache.at < FLAGS_CACHE_MS) return flagsCache.flags;
+  try {
+    const settings = await prisma.monetizationSettings.findUnique({ where: { singletonKey: "default" } });
+    const flags = serialize(settings).featureFlags;
+    flagsCache = { at: Date.now(), flags };
+    return flags;
+  } catch (error) {
+    console.error("Unable to load feature flags:", error);
+    return getFeatureFlags();
   }
 };
 
@@ -181,4 +200,5 @@ module.exports = {
   getMonetizationSettings,
   updateMonetizationSettings,
   getPublicMonetizationConfig,
+  loadFeatureFlags,
 };
