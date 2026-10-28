@@ -21,6 +21,9 @@ const messageSchema = new Schema({
     // { profile, type } reaction records going forward.
     reacts: [Schema.Types.Mixed],
     tempId: String,
+    // Set when the sender edits the text after sending (see utils/messageEdit).
+    isEdited: Boolean,
+    editedAt: Date,
     isSeen: {
         type: Boolean,
         default: false

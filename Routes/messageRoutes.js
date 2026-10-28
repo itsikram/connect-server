@@ -1,6 +1,6 @@
 const Router = require('express').Router()
 const isAuth = require('../middlewares/isAuth')
-const {addMessageReact,removeMessageReact,getMedia,getChatList,getChatHistory,getOldMessages,sendMessage,getNewMessages,getNewMessagesCount,getMessageReactions,markMessageAsSeen,deleteMessage,deleteConversation,sendBump} = require('../controllers/messageController')
+const {addMessageReact,removeMessageReact,getMedia,getChatList,getChatHistory,getOldMessages,sendMessage,getNewMessages,getNewMessagesCount,getMessageReactions,markMessageAsSeen,deleteMessage,editMessage,deleteConversation,sendBump} = require('../controllers/messageController')
 const uploadAttachment = require('../middlewares/photosUpload')
 
 // Message data changes constantly; never let browsers, PWAs or proxies cache it.
@@ -25,6 +25,7 @@ Router.get('/new-messages-count',isAuth,getNewMessagesCount);
 Router.get('/reactions',isAuth,getMessageReactions);
 Router.post('/seen',isAuth,markMessageAsSeen);
 Router.post('/delete',isAuth,deleteMessage);
+Router.post('/edit',isAuth,editMessage);
 Router.post('/deleteConversation',isAuth,deleteConversation);
 Router.post('/bump',isAuth,sendBump);
 

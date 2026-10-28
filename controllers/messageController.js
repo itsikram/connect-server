@@ -5,6 +5,7 @@ const Profile = require('../models/Profile')
 const { notifyNewChatMessage } = require('../utils/chatNotifications')
 const { senderDisplayName } = require('../utils/messagePreview')
 const { listHasId } = require('../utils/ids')
+const { editMessage: applyMessageEdit, MessageEditError } = require('../utils/messageEdit')
 
 
 const reactionProfileId = (reaction) => String(reaction && reaction.profile ? reaction.profile : reaction || '');
@@ -647,6 +648,30 @@ exports.deleteMessage = async (req, res, next) => {
         return res.status(200).json({ message: 'Message deleted successfully' });
     } catch (error) {
         console.error('Error deleting message:', error);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+// Edit the text of one of my messages; both participants get `messageEdited`.
+exports.editMessage = async (req, res, next) => {
+    try {
+        const { messageId } = req.body || {};
+        const text = req.body?.message ?? req.body?.text;
+        const result = await applyMessageEdit({
+            io: req.app.get('io'),
+            profileId: req.profile?._id,
+            messageId,
+            text,
+        });
+        return res.status(200).json({
+            message: result.changed ? 'Message edited successfully' : 'Message unchanged',
+            data: result.message,
+        });
+    } catch (error) {
+        if (error instanceof MessageEditError) {
+            return res.status(error.status).json({ message: error.message });
+        }
+        console.error('Error editing message:', error);
         return res.status(500).json({ message: 'Internal server error' });
     }
 };

@@ -9,6 +9,7 @@ const { listHasId } = require("../utils/ids");
 const { sendDataPushToProfile } = require("../utils/pushNotifications");
 const { notifyNewChatMessage } = require("../utils/chatNotifications");
 const { senderDisplayName } = require("../utils/messagePreview");
+const { editMessage, MessageEditError } = require("../utils/messageEdit");
 const config = require("../config/config.json");
 
 
@@ -184,6 +185,36 @@ module.exports = function messageSocket(io, socket, profileId) {
       }
     } catch (error) {
       console.error("deleteMessage failed:", error?.message || error);
+    }
+  });
+
+  // Edit one of my messages: { messageId, message } -> ack { ok, updatedMessage }.
+  // Both participants receive `messageEdited` (see utils/messageEdit).
+  socket.on("editMessage", async (data, ack) => {
+    const reply = (result) => {
+      if (typeof ack !== "function") return;
+      try {
+        ack(result);
+      } catch (_e) {
+        /* ignore client disconnect during ack */
+      }
+    };
+    try {
+      const payload = data && typeof data === "object" ? data : {};
+      const result = await editMessage({
+        io,
+        profileId,
+        messageId: payload.messageId || payload._id,
+        text: payload.message ?? payload.text,
+      });
+      reply({ ok: true, updatedMessage: result.message, changed: result.changed });
+    } catch (error) {
+      if (error instanceof MessageEditError) {
+        reply({ ok: false, status: error.status, error: error.message });
+        return;
+      }
+      console.error("editMessage failed:", error?.message || error);
+      reply({ ok: false, status: 500, error: "Unable to edit message" });
     }
   });
 
