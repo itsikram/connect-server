@@ -13,6 +13,7 @@
     "test:socket-auth": "node --test sockets/socketAuth.test.js",
     "test:secure-messages": "node --test utils/secureMessages.test.js",
     "test:ludo": "node --test sockets/ludo/engine.test.js sockets/ludo/host.test.js sockets/ludo/cluster.test.js",
+    "test:ci": "npm run test:ai-feed && npm run test:recovery && npm run test:calls && npm run test:socket-auth && npm run test:secure-messages && npm run test:ludo",
     "start:lb": "node load-balancer/start-cluster.js",
     "start:lb:2": "node load-balancer/start-cluster.js 2",
     "start:lb:4": "node load-balancer/start-cluster.js 4",
