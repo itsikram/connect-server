@@ -437,7 +437,34 @@ async function sendPushToTokens(tokens = [], notification = {}) {
    }
   }
 
-  const payload = {
+  const channelId = String(notification.channelId || EXPO_DEFAULT_ANDROID_CHANNEL_ID);
+  /** missed_call also stops a call still ringing natively on Android
+   *  (ConnectFirebaseMessagingService). With a `notification` payload the OS
+   *  draws it itself while the app is in the background, the service never
+   *  sees it, and the ringtone kept playing after the caller hung up.
+   *  Data-only always reaches the service, which then shows the notification. */
+  const payload = stringData.type === 'missed_call'
+    ? {
+      data: { ...stringData, title: titleStr, body: bodyStr, channelId },
+      tokens: fcmTokens,
+      android: {
+        priority: 'high',
+        ttl: 60 * 60 * 1000,
+        directBootOk: true,
+      },
+      apns: {
+        headers: { 'apns-priority': '10', 'apns-push-type': 'alert' },
+        payload: {
+          aps: {
+            alert: { title: titleStr, body: bodyStr },
+            sound: 'default',
+            ...(imageUrl ? { 'mutable-content': 1 } : {}),
+          },
+        },
+        ...(imageUrl ? { fcmOptions: { imageUrl } } : {}),
+      },
+    }
+    : {
    notification: {
      title: notification.title || 'Notification',
      body: notificationBody,
@@ -449,8 +476,10 @@ async function sendPushToTokens(tokens = [], notification = {}) {
      priority: 'high',
      directBootOk: true,
      notification: {
-       channelId: String(notification.channelId || EXPO_DEFAULT_ANDROID_CHANNEL_ID),
+       channelId,
        sound: 'default',
+       // Android 7 has no channels: sound and heads-up come from here.
+       priority: 'high',
        ...(imageUrl ? { imageUrl } : {}),
      },
    },
@@ -591,6 +620,9 @@ async function sendFcmChatMulticast(fcmTokens, { title, body, data, imageUrl }) 
           title: title || 'Message',
           body: body || ' ',
           channelId: 'messages_chat_peek_v3',
+          // Android 7 has no channels: without these the message is silent.
+          sound: 'default',
+          priority: 'high',
           ...(imageUrl ? { imageUrl } : {}),
         },
       },
