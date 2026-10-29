@@ -119,7 +119,12 @@ test('audio call: ring, answer on one device, stop ringing on the other, end and
     const acc = await accepted;
     assert.equal(acc.channelName, channelName);
     assert.equal(acc.isAudio, true);
-    assert.equal((await echo).callerId, 'a1');
+    // The caller learns who answered; the answering device learns who called.
+    assert.equal(acc.callerId, 'b1');
+    assert.equal(acc.callerName, 'User b1');
+    const echoed = await echo;
+    assert.equal(echoed.callerId, 'a1');
+    assert.equal(echoed.callerName, 'User a1');
     assert.equal((await phoneStops).reason, 'answered_elsewhere');
 
     // A late duplicate reject from the other device must not kill the call.

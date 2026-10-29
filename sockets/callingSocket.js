@@ -260,10 +260,12 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             return;
         }
 
-        let myProfileData = null;
-        try {
-            myProfileData = await Profile.findById(me).select('fullName profilePic');
-        } catch (e) { }
+        // Both profiles are looked up once, here, so answering the call can
+        // relay "call-accepted" instantly instead of waiting on the database.
+        const [myProfileData, calleeProfileData] = await Promise.all([
+            Profile.findById(me).select('fullName profilePic').catch(() => null),
+            Profile.findById(calleeId).select('fullName profilePic').catch(() => null),
+        ]);
         const callerName = myProfileData?.fullName || 'Someone';
         const callerProfilePic = myProfileData?.profilePic || '';
 
@@ -279,6 +281,8 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             acceptedAt: null,
             timer: null,
             logged: false,
+            callerInfo: { fullName: myProfileData?.fullName, profilePic: myProfileData?.profilePic },
+            calleeInfo: { fullName: calleeProfileData?.fullName, profilePic: calleeProfileData?.profilePic },
         };
         activeCalls.set(call.channelName, call);
         // Clients reuse `${caller}-${callee}` as the channel for every call
@@ -454,10 +458,14 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                 clearCallTimer(call);
             }
 
-            const [calleeProfileData, callerProfileData] = await Promise.all([
-                Profile.findById(me).select('fullName profilePic').catch(() => null),
-                Profile.findById(callerId).select('fullName profilePic').catch(() => null),
-            ]);
+            // Profiles cached when the call started; look them up only when
+            // the call record is gone (e.g. the server restarted mid-ring).
+            const [calleeProfileData, callerProfileData] = call
+                ? [call.calleeInfo, call.callerInfo]
+                : await Promise.all([
+                    Profile.findById(me).select('fullName profilePic').catch(() => null),
+                    Profile.findById(callerId).select('fullName profilePic').catch(() => null),
+                ]);
 
             // Only the device that placed the call should join. Other idle
             // devices of the caller (e.g. a web tab while calling from the
