@@ -1,4 +1,4 @@
-# Deploying to GoDaddy Deluxe (cPanel) Node.js hosting
+# Deploying to GoDaddy Deluxe Node.js hosting
 
 GoDaddy Deluxe runs Node apps through cPanel **Setup Node.js App** (Phusion Passenger).
 Shared hosting has no compiler, so this branch drops native modules that fail to build there:
@@ -7,77 +7,33 @@ Shared hosting has no compiler, so this branch drops native modules that fail to
 - Removed unused `canvas`, `@tensorflow/tfjs`, `@tensorflow/tfjs-node`, `@vladmandic/face-api`
 - `app.js` is the Passenger startup file; it defaults `NODE_ENV=production` and `USE_PUBLIC_DNS=false`
 
-## Steps
-
-1. Upload the project (without `node_modules`, `debug.log`, `bin/`) to e.g. `~/connect-server`,
-   or clone this branch via cPanel **Git Version Control**.
-2. cPanel → **Setup Node.js App** → **Create Application**
-   - Node.js version: highest available (18 or newer)
-   - Application mode: Production
-   - Application root: `connect-server`
-   - Application URL: your domain / subdomain
-   - Application startup file: `app.js`
-3. Add environment variables in the same screen (copy from your `.env`), or upload `.env`
-   into the application root. At minimum: `PROD_MONGODB_URI` (or `MONGODB_URI`) and the keys you use.
-4. Click **Run NPM Install**, then **Restart**.
-5. MongoDB Atlas: allow the hosting server's IP under Network Access.
-6. MySQL (Prisma): cPanel → **MySQL Databases**, create a database and user, add the user to
-   the database with all privileges, then set `DB_HOST=localhost`, `DB_PORT=3306`,
-   `DB_NAME`, `DB_USER` and `DB_PASSWORD`. `npm install` runs `prisma generate`; create the
-   tables once from cPanel **Terminal** with `npm run db:push`.
-
 ## Automatic deploys from GitHub
 
-`.github/workflows/deploy-godaddy.yml` deploys every push to
-`web-hosting-delux-compatible` (`main` still targets MongoDB/Redis hosting and
-is not deployed here): it runs
-`npm run test:ci`, then over SSH uploads the files changed since the commit
-that is live (recorded in `~/connect-server/.deploy-revision`), removes files
-deleted in git, runs `npm install` inside the cPanel Node.js environment only
-when `package.json` / `package-lock.json` changed, and restarts the app.
-Files that are not in git (`.env`, `node_modules`, uploads, logs) are never
-touched. Do the manual setup above once first; the workflow needs the app to
-exist in **Setup Node.js App**.
+This app runs on GoDaddy's managed Node.js hosting (host.godaddy.com → My Apps →
+**connect-server**, app ID `oeazgm4zwn`), with **Settings → Integrations → GitHub Sync** pointed at
+this repo's `web-hosting-delux-compatible` branch.
+
+`.github/workflows/deploy-godaddy.yml` runs on every push to `web-hosting-delux-compatible`, after `npm run test:ci` passes (`main` still targets MongoDB/Redis hosting and is not deployed here) and calls
+the GoDaddy Hosting API: it imports the branch through GitHub Sync (what
+**Update Preview** does), waits for the preview build, then publishes it (what
+**Publish to Live** does). GoDaddy builds and runs the app itself, so build and
+runtime environment values belong in the app's **Settings → Secrets** on
+GoDaddy, not in GitHub.
 
 ### One-time setup
 
-1. GoDaddy → My Products → Web Hosting → **Manage** → Settings → **SSH Access**:
-   turn it on. Note the host (server IP or domain) and the cPanel username.
-2. On your computer, create a key without a passphrase:
-   `ssh-keygen -t ed25519 -N "" -C github-deploy -f godaddy_deploy`
-3. cPanel → **SSH Access** → Manage SSH Keys → **Import Key**: paste
-   `godaddy_deploy.pub`, then **Manage** → **Authorize** it.
-4. Pin the host key: `ssh-keyscan -p 22 <host>` and keep the output.
-5. GitHub → this repo → Settings → Secrets and variables → **Actions**:
+1. developer.godaddy.com → **Personal Access Tokens**: create a token with the
+   scopes `hosting.application:read`, `hosting.source:write` and
+   `hosting.deployment:execute`. One token can serve all your apps.
+2. GitHub → this repo → Settings → Secrets and variables → **Actions** → New
+   repository secret: name `GODADDY_PAT`, value the token.
+3. Push to `web-hosting-delux-compatible`, or run the workflow from the **Actions** tab.
 
-   | Kind     | Name                      | Value                                                    |
-   | -------- | ------------------------- | -------------------------------------------------------- |
-   | Secret   | `GODADDY_SSH_HOST`        | server IP or domain                                      |
-   | Secret   | `GODADDY_SSH_USER`        | cPanel username                                          |
-   | Secret   | `GODADDY_SSH_KEY`         | contents of `godaddy_deploy` (the private key)           |
-   | Secret   | `GODADDY_SSH_KNOWN_HOSTS` | output of step 4 (recommended)                           |
-   | Secret   | `GODADDY_SSH_PORT`        | only if not 22                                           |
-   | Variable | `GODADDY_APP_DIR`         | application root, relative to home, e.g. `connect-server` |
-   | Variable | `GODADDY_HEALTHCHECK_URL` | e.g. `https://api.connect-bd.online/` (optional, checked after each deploy) |
-   | Variable | `GODADDY_NODE_VERSION`    | Node.js version chosen in cPanel, used for tests (default `22`) |
-   | Variable | `GODADDY_DB_PUSH`         | `true` to run `npm run db:push` when `prisma/` changes (needs the `DB_*` values in `.env` on the host) |
+### Rollback
 
-6. Push to `web-hosting-delux-compatible`.
-
-Without `GODADDY_DB_PUSH`, a change under `prisma/` regenerates the Prisma
-client and the run shows a warning; apply the schema yourself with
-`npm run db:push` in cPanel **Terminal**.
-
-### Manual runs and rollback
-
-- To redeploy or roll back, open the run of the commit you want live
-  (Actions → Deploy to GoDaddy) and click **Re-run all jobs**. Files added
-  after that commit are removed again.
-- GitHub only shows the **Run workflow** button (with *install_deps: always*
-  to force `npm install` and *full_upload* to re-upload every tracked file)
-  for workflows that are on the default branch. Until this workflow is on
-  `main`, use the re-run above; to force a full upload, temporarily delete
-  `~/connect-server/.deploy-revision` on the host and re-run.
+GitHub Sync always imports the head of `web-hosting-delux-compatible`, so re-running an old workflow
+run publishes the current code. To roll back, `git revert` the bad commit and
+push.
 
 ## Notes / limits of shared hosting
 

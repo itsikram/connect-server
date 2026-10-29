@@ -1,24 +1,16 @@
-# Deploys the API to GoDaddy Deluxe (cPanel "Setup Node.js App") on every push
-# to web-hosting-delux-compatible, the GoDaddy-compatible branch (main still
-# targets MongoDB/Redis hosting). Setup and rollback: GODADDY_DEPLOY.md.
+# Publishes this repo to the GoDaddy Node.js app "connect-server" (oeazgm4zwn) on every
+# push to web-hosting-delux-compatible: the GoDaddy Hosting API pulls the branch through the app's
+# GitHub Sync (same as "Update Preview"), then publishes it ("Publish to Live").
+# Needs one repository secret, GODADDY_PAT: a GoDaddy Personal Access Token with
+# hosting.application:read, hosting.source:write and hosting.deployment:execute.
 name: Deploy to GoDaddy
 
 on:
   push:
     branches: [web-hosting-delux-compatible]
   workflow_dispatch:
-    inputs:
-      install_deps:
-        description: Run npm install on the host
-        type: choice
-        options: [auto, always, never]
-        default: auto
-      full_upload:
-        description: Upload every tracked file, not only the ones changed since the last deploy
-        type: boolean
-        default: false
 
-# One deploy at a time; a newer push waits instead of cancelling an upload.
+# One deploy at a time; a newer push waits instead of cancelling a publish.
 concurrency:
   group: deploy-godaddy
   cancel-in-progress: false
@@ -26,187 +18,107 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  NODE_VERSION: ${{ vars.GODADDY_NODE_VERSION || '22' }}
-
 jobs:
   test:
     name: Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
-
       - uses: actions/setup-node@v5
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: "22"
           cache: npm
-
       - run: npm ci --no-audit --no-fund
-
       - run: npm run test:ci
 
   deploy:
-    name: Deploy
+    name: Sync and publish
     needs: test
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     env:
-      SSH_HOST: ${{ secrets.GODADDY_SSH_HOST }}
-      SSH_PORT: ${{ secrets.GODADDY_SSH_PORT }}
-      SSH_USER: ${{ secrets.GODADDY_SSH_USER }}
-      APP_DIR: ${{ vars.GODADDY_APP_DIR }}
-      HEALTHCHECK_URL: ${{ vars.GODADDY_HEALTHCHECK_URL }}
-      DB_PUSH: ${{ vars.GODADDY_DB_PUSH == 'true' }}
-      INSTALL_DEPS: ${{ inputs.install_deps || 'auto' }}
-      FULL_UPLOAD: ${{ inputs.full_upload && 'true' || 'false' }}
+      APP_ID: oeazgm4zwn
+      BRANCH: web-hosting-delux-compatible
+      GODADDY_PAT: ${{ secrets.GODADDY_PAT }}
     steps:
-      - uses: actions/checkout@v5
-        with:
-          # The full history lets the deploy upload only what changed since
-          # the commit that is live on the host.
-          fetch-depth: 0
-
-      - name: Check configuration
-        env:
-          SSH_KEY: ${{ secrets.GODADDY_SSH_KEY }}
+      - name: Import from GitHub and publish
         run: |
-          missing=()
-          [ -n "$SSH_HOST" ] || missing+=("secret GODADDY_SSH_HOST")
-          [ -n "$SSH_USER" ] || missing+=("secret GODADDY_SSH_USER")
-          [ -n "$SSH_KEY" ] || missing+=("secret GODADDY_SSH_KEY")
-          [ -n "$APP_DIR" ] || missing+=("variable GODADDY_APP_DIR")
-          if [ ${#missing[@]} -gt 0 ]; then
-            echo "::error::Missing $(IFS=,; echo "${missing[*]}"). Add them under Settings > Secrets and variables > Actions (see GODADDY_DEPLOY.md)."
-            exit 1
-          fi
-          if ! [[ $APP_DIR =~ ^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$ ]] || [[ /$APP_DIR/ == */../* || /$APP_DIR/ == */./* ]]; then
-            echo "::error::GODADDY_APP_DIR must be the app root relative to the home folder, e.g. connect-server."
+          set -euo pipefail
+          API=https://api.godaddy.com/v1/hosting
+          RESP="$RUNNER_TEMP/godaddy-response.json"
+
+          if [ -z "${GODADDY_PAT:-}" ]; then
+            echo "::error::Missing secret GODADDY_PAT. Create a GoDaddy Personal Access Token with the scopes hosting.application:read, hosting.source:write and hosting.deployment:execute, then add it under Settings > Secrets and variables > Actions."
             exit 1
           fi
 
-      - name: Configure SSH
-        env:
-          SSH_KEY: ${{ secrets.GODADDY_SSH_KEY }}
-          SSH_KNOWN_HOSTS: ${{ secrets.GODADDY_SSH_KNOWN_HOSTS }}
-        run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/godaddy_deploy
-          chmod 600 ~/.ssh/godaddy_deploy
-          if [ -n "$SSH_KNOWN_HOSTS" ]; then
-            printf '%s\n' "$SSH_KNOWN_HOSTS" | tr -d '\r' > ~/.ssh/known_hosts
-          else
-            echo "::warning::GODADDY_SSH_KNOWN_HOSTS is not set, so the host key is trusted on first use. Set it to pin the key."
-            ssh-keyscan -p "${SSH_PORT:-22}" -H "$SSH_HOST" > ~/.ssh/known_hosts
-          fi
-          cat > ~/.ssh/config <<EOF
-          Host godaddy
-            HostName $SSH_HOST
-            Port ${SSH_PORT:-22}
-            User $SSH_USER
-            IdentityFile ~/.ssh/godaddy_deploy
-            IdentitiesOnly yes
-            BatchMode yes
-            StrictHostKeyChecking yes
-            ConnectTimeout 30
-            ServerAliveInterval 30
-          EOF
-          ssh godaddy true
-
-      - name: Read the deployed revision
-        id: live
-        run: |
-          previous=$(ssh godaddy "cat $APP_DIR/.deploy-revision 2>/dev/null || true" | tr -d '[:space:]')
-          echo "Live revision: ${previous:-none}"
-          echo "previous=$previous" >> "$GITHUB_OUTPUT"
-
-      - name: Build the release bundle
-        id: bundle
-        env:
-          PREVIOUS: ${{ steps.live.outputs.previous }}
-        run: |
-          sha=$(git rev-parse HEAD)
-          # Never uploaded: CI files, the local debug log and ytdl-core dumps.
-          pathspec=(. ':(exclude).github' ':(exclude)debug.log' ':(exclude)*-player-script.js')
-          bundle="$RUNNER_TEMP/bundle"
-          mkdir -p "$bundle/payload" "$bundle/meta"
-          : > "$bundle/meta/deleted"
-          echo 1 > "$bundle/meta/deps-changed"
-          echo 1 > "$bundle/meta/schema-changed"
-
-          known=false
-          if [ -n "$PREVIOUS" ] && git cat-file -e "$PREVIOUS^{commit}" 2>/dev/null; then
-            known=true
-            # Files removed in git are removed on the host, except ones that are
-            # git-ignored now (a key or config that was untracked on purpose).
-            git diff -z --name-only --no-renames --diff-filter=D "$PREVIOUS" HEAD -- "${pathspec[@]}" |
-              while IFS= read -r -d '' file; do
-                git check-ignore -q --no-index -- "$file" || printf '%s\0' "$file"
-              done > "$bundle/meta/deleted"
-            if git diff --quiet "$PREVIOUS" HEAD -- package.json package-lock.json; then
-              echo 0 > "$bundle/meta/deps-changed"
+          # call METHOD PATH [JSON_BODY [IDEMPOTENCY_KEY]] -> prints the HTTP status, body in $RESP
+          call() {
+            local args=(-sS -o "$RESP" -w '%{http_code}' -X "$1" "$API$2"
+              -H "Authorization: Bearer $GODADDY_PAT" -H "Accept: application/json")
+            if [ $# -ge 3 ]; then
+              args+=(-H "Content-Type: application/json" -H "Idempotency-Key: $4" -d "$3")
             fi
-            if git diff --quiet "$PREVIOUS" HEAD -- prisma; then
-              echo 0 > "$bundle/meta/schema-changed"
+            curl "${args[@]}" 2>/dev/null || echo 000
+          }
+
+          # post PATH JSON_BODY -> retries busy/rate-limited/server errors with one idempotency key
+          post() {
+            local key code
+            key=$(cat /proc/sys/kernel/random/uuid)
+            for attempt in $(seq 1 12); do
+              code=$(call POST "$1" "$2" "$key")
+              case $code in
+                2??) return 0 ;;
+                000|409|429|5??) echo "POST $1: HTTP $code (attempt $attempt), retrying in 30s"; sleep 30 ;;
+                *) echo "::error::POST $1 failed with HTTP $code: $(cat "$RESP")"; exit 1 ;;
+              esac
+            done
+            echo "::error::POST $1 still failing (HTTP $code): $(cat "$RESP")"; exit 1
+          }
+
+          # wait_for PATH LABEL -> polls until status is COMPLETED (ok) or a failure state
+          wait_for() {
+            local code status
+            for _ in $(seq 1 160); do
+              code=$(call GET "$1")
+              if [[ $code == 2?? ]]; then
+                status=$(jq -r '.status // "UNKNOWN"' "$RESP")
+                case $status in
+                  COMPLETED|SUCCEEDED) echo "$2: $status (git $(jq -r '.gitHash // "?"' "$RESP" | cut -c1-7))"; return 0 ;;
+                  FAILED|ERROR|CANCELED|CANCELLED|REJECTED)
+                    echo "::error::$2 $status: $(jq -c '.error // .' "$RESP")"; return 1 ;;
+                  *) echo "$2: $status" ;;
+                esac
+              else
+                echo "$2: status check returned HTTP $code"
+              fi
+              sleep 15
+            done
+            echo "::error::$2 did not finish within 40 minutes."; return 1
+          }
+
+          echo "Importing $GITHUB_REPOSITORY@$BRANCH into GoDaddy app $APP_ID"
+          post "/apps/$APP_ID/imports" "$(jq -nc --arg r "$GITHUB_REPOSITORY" --arg b "$BRANCH" '{repositoryFullName:$r, branch:$b}')"
+          import_id=$(jq -r '.importId' "$RESP")
+          wait_for "/apps/$APP_ID/imports/$import_id" "Preview import"
+          imported=$(jq -r '.gitHash // ""' "$RESP")
+          if [ -n "$imported" ] && [ "$GITHUB_EVENT_NAME" = push ] && [[ $GITHUB_SHA != "$imported"* ]]; then
+            echo "::warning::GoDaddy imported ${imported:0:7}, this push was ${GITHUB_SHA:0:7} (a newer push may have landed first)."
+          fi
+
+          echo "Publishing to live"
+          post "/apps/$APP_ID/deployments" '{}'
+          deployment_id=$(jq -r '.deploymentId' "$RESP")
+          if ! wait_for "/apps/$APP_ID/deployments/$deployment_id" "Publish"; then
+            if [[ $(call GET "/apps/$APP_ID/deployments/$deployment_id/logs") == 2?? ]]; then
+              echo "Build log (last 80 lines):"; jq -r '.. | strings' "$RESP" 2>/dev/null | tail -80 || tail -c 6000 "$RESP"
             fi
-          elif [ -n "$PREVIOUS" ]; then
-            echo "::warning::Live revision $PREVIOUS is not in this repository's history; uploading every file."
+            exit 1
           fi
 
-          if [ "$known" = true ] && [ "$FULL_UPLOAD" != true ]; then
-            mode=changed
-            git diff -z --name-only --no-renames --diff-filter=d "$PREVIOUS" HEAD -- "${pathspec[@]}" > "$RUNNER_TEMP/files"
-          else
-            mode=full
-            git ls-files -z -- "${pathspec[@]}" > "$RUNNER_TEMP/files"
-          fi
-          tar --null -T "$RUNNER_TEMP/files" -cf - | tar -xf - -C "$bundle/payload"
-          tar -czf "$RUNNER_TEMP/release.tar.gz" -C "$bundle" payload meta
-
-          uploaded=$(tr -cd '\0' < "$RUNNER_TEMP/files" | wc -c)
-          deleted=$(tr -cd '\0' < "$bundle/meta/deleted" | wc -c)
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "checksum=$(sha256sum "$RUNNER_TEMP/release.tar.gz" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           {
-            echo "### Deploying \`${sha:0:7}\` to \`~/$APP_DIR\`"
-            echo "- Live before: \`${PREVIOUS:-none}\`"
-            echo "- Upload: $mode, $uploaded file(s), $(du -h "$RUNNER_TEMP/release.tar.gz" | cut -f1)"
-            echo "- Deleted on host: $deleted file(s)"
-            echo "- Dependencies changed: $(cat "$bundle/meta/deps-changed"), Prisma schema changed: $(cat "$bundle/meta/schema-changed")"
+            echo "### Published \`${imported:0:7}\` from \`$BRANCH\` to GoDaddy app \`$APP_ID\`"
+            echo "- Import \`$import_id\`, deployment \`$deployment_id\`"
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload the bundle
-        id: upload
-        env:
-          SHA: ${{ steps.bundle.outputs.sha }}
-        run: |
-          remote=".deploy/incoming/${APP_DIR//\//_}-$SHA.tar.gz"
-          ssh godaddy "mkdir -p .deploy/incoming && cat > $remote" < "$RUNNER_TEMP/release.tar.gz"
-          echo "path=$remote" >> "$GITHUB_OUTPUT"
-
-      - name: Activate the release
-        env:
-          SHA: ${{ steps.bundle.outputs.sha }}
-          CHECKSUM: ${{ steps.bundle.outputs.checksum }}
-          REMOTE_BUNDLE: ${{ steps.upload.outputs.path }}
-        run: |
-          ssh godaddy bash -s -- "$APP_DIR" "$SHA" "$REMOTE_BUNDLE" "$CHECKSUM" "$INSTALL_DEPS" - "$DB_PUSH" \
-            < .github/deploy/godaddy-remote.sh
-
-      - name: Health check
-        if: env.HEALTHCHECK_URL != ''
-        run: |
-          for attempt in $(seq 1 12); do
-            code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 "$HEALTHCHECK_URL" || true)
-            case $code in
-              2??) echo "$HEALTHCHECK_URL answered HTTP $code"; exit 0 ;;
-            esac
-            echo "Attempt $attempt: HTTP ${code:-no response}; retrying in 10s"
-            sleep 10
-          done
-          echo "::error::$HEALTHCHECK_URL did not answer with HTTP 2xx after the deploy. Check stderr.log in ~/$APP_DIR."
-          exit 1
-
-      - name: Remove the SSH key
-        if: always()
-        run: rm -f ~/.ssh/godaddy_deploy
