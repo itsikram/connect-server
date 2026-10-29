@@ -7,11 +7,7 @@ const MODES = ["multi", "single"];
 const STRATEGIES = ["random", "priority"];
 
 // Used until an admin saves a list. SERVER_URLS="https://a,https://b" overrides.
-const DEFAULT_SERVER_URLS = [
-  "https://connect-server-nhaw.onrender.com",
-  "https://connect-server-u85b.onrender.com",
-  "https://connect-server-k1if.onrender.com",
-];
+const DEFAULT_SERVER_URLS = ["https://onlinestorefrontsigns.com"];
 
 // https only (plain http allowed for localhost during development), optional
 // port and path prefix, no query or fragment.

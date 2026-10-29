@@ -12,8 +12,13 @@ const connectData = (body = {}) => {
     return data
 }
 
+// Admin saves used to add a new row each time (they checked the Mongo-era
+// `_id`, which Prisma rows do not have), so read and update the newest row:
+// that is the one holding the admin's latest settings (APK URL, version...).
+const findCurrent = () => prisma.connect.findFirst({ orderBy: { updatedAt: 'desc' } })
+
 exports.getData=async(req,res,next)=>{
-    let connect = await prisma.connect.findFirst()
+    let connect = await findCurrent()
     if(connect) {
         return res.json(connect).status(200)
     }
@@ -21,8 +26,8 @@ exports.getData=async(req,res,next)=>{
 }
 
 exports.updateData=async(req,res,next)=>{
-    let connect = await prisma.connect.findFirst()
-    if(connect?._id) {
+    let connect = await findCurrent()
+    if(connect?.id) {
         let updatedConnect = await prisma.connect.update({ where: { id: connect.id }, data: connectData(req.body) })
         if(updatedConnect) {
             return res.json(updatedConnect).status(200)
