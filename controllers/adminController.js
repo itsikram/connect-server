@@ -882,7 +882,7 @@ exports.forgotPassword = async (req, res, next) => {
             data: { resetPasswordToken: hashedResetToken, resetPasswordExpire: new Date(Date.now() + 15 * 60 * 1000) },
         });
 
-        const resetUrl = `${getAdminAppUrl()}/reset-password/${resetToken}`;
+        const resetUrl = `${getAdminAppUrl()}/reset-password/?token=${resetToken}`;
         const text = [
             `Hello ${admin.fullName || 'Admin'},`,
             '',
