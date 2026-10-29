@@ -981,3 +981,128 @@ exports.resetPassword = async (req, res, next) => {
         next(error);
     }
 };
+
+// Bulk admin actions. Each takes { ids: [...] } (max BULK_LIMIT) and reports per-id outcome.
+const BULK_LIMIT = 200
+
+const bulkIds = (req, res) => {
+    const ids = Array.isArray(req.body?.ids)
+        ? [...new Set(req.body.ids.map(String).filter((id) => isValidId(id)))]
+        : []
+    if (!ids.length) {
+        res.status(400).json({ message: 'ids must be a non-empty array of valid ids' })
+        return null
+    }
+    if (ids.length > BULK_LIMIT) {
+        res.status(400).json({ message: `At most ${BULK_LIMIT} items can be changed at once` })
+        return null
+    }
+    return ids
+}
+
+const parseAudience = (value) => {
+    const audience = Number(value)
+    return [1, 2, 3].includes(audience) ? audience : null
+}
+
+/** Run fn on each id one at a time so one failure does not stop the rest. */
+const runBulk = async (ids, fn) => {
+    const succeeded = []
+    const failed = []
+    for (const id of ids) {
+        try {
+            if (await fn(id)) succeeded.push(id)
+            else failed.push({ id, message: 'Not found' })
+        } catch (error) {
+            console.error('Bulk admin action failed for', id, error)
+            failed.push({ id, message: 'Failed' })
+        }
+    }
+    return { succeeded, failed }
+}
+
+const bulkDeleteContent = (kind, model, mediaFields) => async (req, res, next) => {
+    try {
+        const ids = bulkIds(req, res)
+        if (!ids) return
+        const select = Object.fromEntries(['id', ...mediaFields].map((field) => [field, true]))
+        const result = await runBulk(ids, async (id) => {
+            const row = await prisma[model].findUnique({ where: { id }, select })
+            if (!row) return false
+            const removed = await deleteContentWithComments(kind, row.id)
+            await deleteCloudinaryResources([...mediaFields.map((field) => row[field]), ...removed.attachments])
+            return true
+        })
+        return res.status(200).json(result)
+    } catch (error) {
+        next(error)
+    }
+}
+
+exports.bulkDeletePosts = bulkDeleteContent('post', 'post', ['photos'])
+exports.bulkDeleteWatches = bulkDeleteContent('watch', 'watch', ['videoUrl', 'thumbnail'])
+exports.bulkDeleteStories = bulkDeleteContent('story', 'story', ['image', 'music'])
+
+const bulkSetAudience = (model) => async (req, res, next) => {
+    try {
+        const ids = bulkIds(req, res)
+        if (!ids) return
+        const audience = parseAudience(req.body?.audience)
+        if (!audience) {
+            return res.status(400).json({ message: 'audience must be 1 (public), 2 (friends) or 3 (only me)' })
+        }
+        const { count } = await prisma[model].updateMany({ where: { id: { in: ids } }, data: { audience } })
+        return res.status(200).json({ updated: count, audience })
+    } catch (error) {
+        next(error)
+    }
+}
+
+exports.bulkUpdatePosts = bulkSetAudience('post')
+exports.bulkUpdateWatches = bulkSetAudience('watch')
+
+exports.bulkUpdateProfiles = async (req, res, next) => {
+    try {
+        const ids = bulkIds(req, res)
+        if (!ids) return
+        if (typeof req.body?.isVerified !== 'boolean') {
+            return res.status(400).json({ message: 'isVerified must be true or false' })
+        }
+        const { isVerified } = req.body
+        const { count } = await prisma.profile.updateMany({ where: { id: { in: ids } }, data: { isVerified } })
+        return res.status(200).json({ updated: count, isVerified })
+    } catch (error) {
+        next(error)
+    }
+}
+
+exports.bulkDeleteProfiles = async (req, res, next) => {
+    try {
+        const ids = bulkIds(req, res)
+        if (!ids) return
+        const result = await runBulk(ids, async (id) => {
+            const profile = await prisma.profile.findUnique({ where: { id }, select: { id: true, user: true } })
+            if (!profile?.user) return false
+            await deleteUserData(id)
+            return true
+        })
+        return res.status(200).json(result)
+    } catch (error) {
+        next(error)
+    }
+}
+
+exports.bulkUpdateReportStatus = async (req, res, next) => {
+    try {
+        const ids = bulkIds(req, res)
+        if (!ids) return
+        const { status } = req.body || {}
+        if (!['open', 'reviewed', 'dismissed'].includes(status)) {
+            return res.status(400).json({ message: 'Invalid status' })
+        }
+        const { count } = await prisma.report.updateMany({ where: { id: { in: ids } }, data: { status } })
+        return res.status(200).json({ updated: count, status })
+    } catch (error) {
+        next(error)
+    }
+}
