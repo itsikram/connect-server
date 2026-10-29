@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      APP_ID: oeazgm4zwn
+      APP_ID: NODEJS-oeazgm4zwn
       BRANCH: web-hosting-delux-compatible
       GODADDY_PAT: ${{ secrets.GODADDY_PAT }}
     steps:
