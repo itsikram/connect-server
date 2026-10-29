@@ -294,6 +294,8 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             acceptedAt: null,
             timer: null,
             logged: false,
+            callerInfo: null,
+            calleeInfo: null,
         };
         activeCalls.set(call.channelName, call);
         // Clients reuse `${caller}-${callee}` as the channel for every call
@@ -302,10 +304,14 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
         // Cancelled (or replaced) while we were awaiting.
         const isStillRinging = () => activeCalls.get(call.channelName) === call && !call.accepted;
 
-        let myProfileData = null;
-        try {
-            myProfileData = await findCallProfile(me);
-        } catch (e) { }
+        // Both profiles are looked up once, here, so answering the call can
+        // relay "call-accepted" instantly instead of waiting on the database.
+        const [myProfileData, calleeProfileData] = await Promise.all([
+            findCallProfile(me).catch(() => null),
+            findCallProfile(calleeId).catch(() => null),
+        ]);
+        call.callerInfo = { fullName: myProfileData?.fullName, profilePic: myProfileData?.profilePic };
+        call.calleeInfo = { fullName: calleeProfileData?.fullName, profilePic: calleeProfileData?.profilePic };
         if (!isStillRinging()) return;
         const callerName = myProfileData?.fullName || 'Someone';
         const callerProfilePic = myProfileData?.profilePic || '';
@@ -482,10 +488,15 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                 clearCallTimer(call);
             }
 
-            const [calleeProfileData, callerProfileData] = await Promise.all([
-                findCallProfile(me).catch(() => null),
-                findCallProfile(callerId).catch(() => null),
-            ]);
+            // Profiles cached when the call started; look them up only when
+            // the call record (or its lookup) is missing, e.g. the server
+            // restarted mid-ring or the callee answered instantly.
+            const [calleeProfileData, callerProfileData] = call?.calleeInfo && call?.callerInfo
+                ? [call.calleeInfo, call.callerInfo]
+                : await Promise.all([
+                    findCallProfile(me).catch(() => null),
+                    findCallProfile(callerId).catch(() => null),
+                ]);
 
             // Only the device that placed the call should join. Other idle
             // devices of the caller (e.g. a web tab while calling from the
