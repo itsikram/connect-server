@@ -12,6 +12,9 @@
 //   presence:subscribe  { profileIds: [], connects?: true } -> ack/emit presence_snapshot
 //   presence:away       (app backgrounded / tab hidden for long)
 //   presence:active     (app foregrounded / tab visible)
+//   presence:focus      { focused } (app in foreground / tab visible and
+//                       focused; while any socket is focused, pushes are
+//                       skipped, see isProfileFocused)
 // Server -> client:
 //   presence_update     { profileId, isActive, lastSeen }
 //   presence_snapshot   { statuses: { [profileId]: { isActive, lastSeen } } }
@@ -31,7 +34,7 @@ const MAX_SUBSCRIBE_IDS = 500;
 
 const room = (profileId) => `presence:${profileId}`;
 
-// profileId -> Map<socketId, { away: boolean }>
+// profileId -> Map<socketId, { away: boolean, focused: boolean }>
 const localSockets = new Map();
 // profileId -> last state we published (true/false)
 const published = new Map();
@@ -47,6 +50,18 @@ const isLocallyOnline = (profileId) => {
     if (!sockets) return false;
     for (const state of sockets.values()) {
         if (!state.away) return true;
+    }
+    return false;
+};
+
+// True while the user is looking at the app on some device/tab connected to
+// this server. Sockets that never report focus (older clients) count as not
+// focused, so they keep getting pushes.
+const isProfileFocused = (profileId) => {
+    const sockets = profileId ? localSockets.get(String(profileId)) : null;
+    if (!sockets) return false;
+    for (const state of sockets.values()) {
+        if (state.focused && !state.away) return true;
     }
     return false;
 };
@@ -199,7 +214,7 @@ function attachSocket(io, socket, profileId) {
     if (id) {
         if (!localSockets.has(id)) localSockets.set(id, new Map());
         const initiallyAway = String(socket.handshake.query?.presence || socket.handshake.auth?.presence || '') === 'away';
-        localSockets.get(id).set(socket.id, { away: initiallyAway });
+        localSockets.get(id).set(socket.id, { away: initiallyAway, focused: false });
         // This socket learns about its own profile's changes too.
         socket.join(room(id));
         reconcile(id);
@@ -220,6 +235,10 @@ function attachSocket(io, socket, profileId) {
         };
         socket.on('presence:away', () => setAway(true));
         socket.on('presence:active', () => setAway(false));
+        socket.on('presence:focus', (payload) => {
+            const state = localSockets.get(id)?.get(socket.id);
+            if (state) state.focused = payload === true || payload?.focused === true;
+        });
     }
 
     socket.on('presence:subscribe', async (payload, ack) => {
@@ -279,4 +298,5 @@ module.exports = {
     statusFromProfile,
     isDbProfileOnline,
     isLocallyOnline,
+    isProfileFocused,
 };

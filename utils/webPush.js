@@ -5,6 +5,7 @@
 const webpush = require('web-push');
 const { prisma, jsonArray, editProfileJsonArray } = require('./db');
 const { resolvePushImageUrl, lookupSenderImage } = require('./pushImage');
+const { isProfileFocused } = require('../sockets/presence');
 
 const VAPID_PUBLIC = (process.env.VAPID_PUBLIC_KEY || '').trim();
 const VAPID_PRIVATE = (process.env.VAPID_PRIVATE_KEY || '').trim();
@@ -42,6 +43,11 @@ function isWebPushReady() {
 async function sendWebPushToProfile(profileId, payload = {}) {
   if (!ensureConfigured() || !profileId) {
     return { successCount: 0, failureCount: 0, skipped: true };
+  }
+  // The user is in the app right now; calls still ring, `force` always sends.
+  const type = payload.type || payload.data?.type;
+  if (payload.force !== true && type !== 'incoming_call' && isProfileFocused(profileId)) {
+    return { successCount: 0, failureCount: 0, skipped: 'focused' };
   }
 
   const profile = await prisma.profile.findUnique({

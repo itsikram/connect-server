@@ -18,6 +18,15 @@ const findProfileByIdOrUser = (id, select) => {
 const { getIncomingCallAlertForProfile } = require('./ringtone');
 const { messagePreview } = require('./messagePreview');
 const { resolvePushImageUrl, lookupSenderImage } = require('./pushImage');
+const { isProfileFocused } = require('../sockets/presence');
+
+// Calls still ring through push, and `force` (test pushes) always sends;
+// anything else is skipped while the user has the app focused, since they
+// see it in-app already.
+const skipWhileFocused = (profileId, notification = {}) =>
+  notification.force !== true &&
+  notification.data?.type !== 'incoming_call' &&
+  isProfileFocused(profileId);
 
 function ensureFirebaseAdminInitialized() {
   if (admin.apps && admin.apps.length > 0) return;
@@ -519,7 +528,10 @@ async function sendPushToTokens(tokens = [], notification = {}) {
 async function sendPushToProfile(profileId, notification = {}) {
 
   if (!profileId) return { successCount: 0, failureCount: 0 };
-  const profile = await findProfileByIdOrUser(profileId, { deviceTokens: true });
+  const profile = await findProfileByIdOrUser(profileId, { id: true, deviceTokens: true });
+  if (skipWhileFocused(profile?.id || profileId, notification)) {
+    return { successCount: 0, failureCount: 0, skipped: 'focused' };
+  }
   const tokens = jsonArray(profile?.deviceTokens);
 
   let nextNotification = notification;
@@ -817,7 +829,10 @@ async function sendChatMessageDataPush(receiverId, payload) {
     image: imageUrl,
   });
 
-  const profile = await findProfileByIdOrUser(receiverId, { deviceTokens: true });
+  const profile = await findProfileByIdOrUser(receiverId, { id: true, deviceTokens: true });
+  if (skipWhileFocused(profile?.id || receiverId, { data })) {
+    return { successCount: 0, failureCount: 0, skipped: 'focused' };
+  }
   const tokens = jsonArray(profile?.deviceTokens);
 
   if (!tokens.length) {

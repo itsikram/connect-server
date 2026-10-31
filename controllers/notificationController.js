@@ -477,6 +477,7 @@ exports.sendTestPush = async (req, res, next) => {
       title,
       body,
       data,
+      force: true,
     });
     return res.status(200).json({ message: "Sent", result });
   } catch (err) {
