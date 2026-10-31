@@ -8,6 +8,7 @@ const findCallProfile = (id) =>
 const { sendPushToProfile } = require('../utils/pushNotifications')
 const { sendWebPushToProfile } = require('../utils/webPush')
 const { getIncomingCallAlertForProfile } = require('../utils/ringtone')
+const { peerServersConfigured } = require('../utils/peerSocketAdapter')
 const config = require('../config/config.json');
 
 // How long an unanswered call rings before it becomes a missed call.
@@ -71,11 +72,12 @@ const removeCall = (channelName) => {
     return call;
 };
 
-// Resolve the call a client event refers to. Clients normally send the
-// channelName; fall back to the most recent call between the pair.
 const wasFinished = (channelName) => !!channelName && finishedCalls.has(String(channelName));
 
 const roomHasSockets = (io, room) => (io.sockets.adapter.rooms.get(String(room))?.size || 0) > 0;
+
+const isParticipant = (call, profileId) =>
+    !!call && (call.callerId === String(profileId) || call.calleeId === String(profileId));
 
 // Another live call that `profileId` is part of (other than `exceptChannel`).
 // A ringing call always counts. An accepted call only counts while the other
@@ -93,16 +95,22 @@ const findBusyCall = (io, profileId, exceptChannel) => {
     return null;
 };
 
-const findCall = (channelName, a, b) => {
-    if (channelName && activeCalls.has(String(channelName))) {
-        return activeCalls.get(String(channelName));
+// The call a client event refers to, if `me` takes part in it. Clients send
+// the channelName of their call; an event for a channel that is not (or no
+// longer) registered is a late event of an earlier call and must not touch
+// the call the same two people are in now. Only events without a channel
+// (very old clients) fall back to the most recent call between the pair.
+const findCall = (channelName, me, other) => {
+    if (channelName) {
+        const call = activeCalls.get(String(channelName)) || null;
+        return isParticipant(call, me) ? call : null;
     }
-    if (!a || !b) return null;
+    if (!me || !other) return null;
     let latest = null;
     for (const call of activeCalls.values()) {
         const samePair =
-            (call.callerId === String(a) && call.calleeId === String(b)) ||
-            (call.callerId === String(b) && call.calleeId === String(a));
+            (call.callerId === String(me) && call.calleeId === String(other)) ||
+            (call.callerId === String(other) && call.calleeId === String(me));
         if (samePair && (!latest || call.createdAt > latest.createdAt)) latest = call;
     }
     return latest;
@@ -168,6 +176,7 @@ async function sendMissedCallPush(calleeId, callerId, isAudio, channelName) {
                 isVideo: isAudio ? 'false' : 'true',
                 callerId: String(callerId),
                 senderId: String(callerId),
+                channelName: String(channelName || ''),
             }
         });
     } catch (e) { }
@@ -183,6 +192,7 @@ async function sendMissedCallPush(calleeId, callerId, isAudio, channelName) {
                 isVideo: isAudio ? 'false' : 'true',
                 callerId: String(callerId),
                 senderId: String(callerId),
+                channelName: String(channelName || ''),
                 url: `/message/${callerId}`,
             },
         });
@@ -249,8 +259,119 @@ async function logCallMessage(io, { callerId, calleeId, isAudio, callEvent, dura
     }
 }
 
+// Close a call this server holds after it ended somewhere else (another
+// server, see applyCallSync): send the missed-call push and write the log.
+async function closeCallRecord(io, call, reason) {
+    removeCall(call.channelName);
+    const accepted = !!call.accepted;
+    if (!accepted && reason !== 'declined') {
+        await sendMissedCallPush(call.calleeId, call.callerId, call.isAudio, call.channelName);
+    }
+    const duration = accepted && call.acceptedAt
+        ? Math.round((Date.now() - call.acceptedAt) / 1000)
+        : undefined;
+    await logCallMessage(io, {
+        callerId: call.callerId,
+        calleeId: call.calleeId,
+        isAudio: call.isAudio,
+        callEvent: accepted ? 'ended' : 'missed',
+        duration,
+        call,
+    });
+}
+
+// A call is registered on the server its caller is connected to. Behind a
+// load balancer (or with PEER_SERVERS) the other person's answer or hang-up
+// can reach a different server, which has no record of the call. That server
+// still relays the event to the people in the call (the peer adapter carries
+// it) and tells the other servers, so the one holding the record stops its
+// ring timer (otherwise it ended every such call a minute in) or closes and
+// logs the call.
+const CALL_SYNC_EVENT = 'calls:sync';
+const syncedServers = new WeakSet();
+
+const publishCallSync = (io, message) => {
+    if (!peerServersConfigured()) return;
+    try {
+        io.serverSideEmit(CALL_SYNC_EVENT, message);
+    } catch (err) {
+        console.warn('Call sync to peer servers failed:', err?.message || err);
+    }
+};
+
+async function applyCallSync(io, { type, channelName, by, reason, isAudio } = {}) {
+    if (!channelName || !by) return;
+    const call = activeCalls.get(String(channelName));
+    if (!call) {
+        // Answered on another server after the call ended here (cancelled,
+        // timed out): close the answering device's call screen.
+        if (type === 'answered' && wasFinished(channelName)) {
+            io.to(String(by)).emit(`${callTypeOf(isAudio)}-call-cancelled`, {
+                to: String(by), channelName: String(channelName), reason: 'ended',
+            });
+        }
+        return;
+    }
+    if (!isParticipant(call, by)) return;
+    if (type === 'answered') {
+        if (call.accepted) return;
+        call.accepted = true;
+        call.acceptedAt = call.acceptedAt || Date.now();
+        clearCallTimer(call);
+        return;
+    }
+    if (type === 'finished') {
+        await closeCallRecord(io, call, reason);
+    }
+}
+
+const listenForCallSync = (io) => {
+    if (syncedServers.has(io)) return;
+    syncedServers.add(io);
+    io.on(CALL_SYNC_EVENT, (message) => {
+        applyCallSync(io, message).catch((err) => {
+            console.error('Applying call sync failed:', err?.message || err);
+        });
+    });
+};
+
+// The callee declines (or auto-declines because they are busy). `socket` is
+// the declining device's socket, or null when the decline came over HTTP
+// from a push notification's Decline button.
+async function rejectCallAs(io, me, { to, channelName, reason } = {}, isAudioHint, socket = null) {
+    if (!to) return;
+    const call = findCall(channelName, me, to);
+    // A duplicate push/socket delivery can make one of the callee's
+    // devices send reject after another device answered. Never
+    // invalidate an accepted call.
+    if (call && call.accepted) return;
+    // Late duplicate: the call was already declined, cancelled or timed out
+    // and the caller was told.
+    if (!call && wasFinished(channelName)) return;
+    const isAudio = call ? call.isAudio : isAudioHint;
+    const type = callTypeOf(isAudio);
+    if (call) removeCall(call.channelName);
+    const channel = channelName || call?.channelName;
+    const payload = { to, connectId: me, channelName: channel };
+    io.to(String(to)).emit(`${type}-call-rejected`, {
+        ...payload,
+        reason: reason === 'busy' ? 'busy' : 'declined',
+    });
+    // Stop ringing on the callee's other devices (web tab + phone). A decline
+    // from a push has no socket, so every device of the callee is told.
+    (socket ? socket.to(me) : io.to(me)).emit(`${type}-call-cancelled`, {
+        ...payload, connectId: String(to), reason: 'rejected_elsewhere',
+    });
+    if (call) {
+        await logCallMessage(io, { callerId: call.callerId, calleeId: call.calleeId, isAudio, callEvent: 'missed', call });
+    } else if (channel) {
+        publishCallSync(io, { type: 'finished', channelName: String(channel), by: me, reason: 'declined' });
+    }
+}
+
 module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
     const me = String(profileId);
+    listenForCallSync(io);
 
     const startCall = async ({ to, channelName } = {}, isAudio) => {
         const type = callTypeOf(isAudio);
@@ -298,8 +419,9 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             calleeInfo: null,
         };
         activeCalls.set(call.channelName, call);
-        // Clients reuse `${caller}-${callee}` as the channel for every call
-        // between a pair, so a new call must clear the previous call's marker.
+        // Older clients reuse `${caller}-${callee}` as the channel for every
+        // call between a pair, so a new call must clear the previous call's
+        // marker. (Current clients add a per-call suffix.)
         finishedCalls.delete(call.channelName);
         // Cancelled (or replaced) while we were awaiting.
         const isStillRinging = () => activeCalls.get(call.channelName) === call && !call.accepted;
@@ -383,18 +505,24 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
     const cancelCall = async ({ to, channelName } = {}, isAudioHint) => {
         if (!to) return;
         const call = findCall(channelName, me, to);
-        const isAudio = call ? call.isAudio : isAudioHint;
-        const type = callTypeOf(isAudio);
         if (call && call.accepted) {
             // Already answered: treat as a normal hang-up.
-            return endCall({ to, channelName: call.channelName }, isAudio);
+            return endCall({ to, channelName: call.channelName }, call.isAudio);
         }
-        if (call) removeCall(call.channelName);
-        io.to(String(to)).emit(`${type}-call-cancelled`, {
-            to, connectId: me, channelName: channelName || call?.channelName,
-        });
+        // Late duplicate for a call that already ended; the callee was told.
         if (!call && wasFinished(channelName)) return;
-        if (call && call.callerId === me) {
+        const isAudio = call ? call.isAudio : isAudioHint;
+        const type = callTypeOf(isAudio);
+        if (call) removeCall(call.channelName);
+        const channel = channelName || call?.channelName;
+        io.to(String(to)).emit(`${type}-call-cancelled`, {
+            to, connectId: me, channelName: channel,
+        });
+        if (!call) {
+            if (channel) publishCallSync(io, { type: 'finished', channelName: String(channel), by: me, reason: 'cancelled' });
+            return;
+        }
+        if (call.callerId === me) {
             await sendMissedCallPush(call.calleeId, me, isAudio, call.channelName);
             await logCallMessage(io, { callerId: me, calleeId: call.calleeId, isAudio, callEvent: 'missed', call });
         }
@@ -402,28 +530,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
     socket.on('video-call-cancel', (data) => cancelCall(data, false));
     socket.on('audio-call-cancel', (data) => cancelCall(data, true));
 
-    // Callee declines (or auto-declines because they are busy).
-    const rejectCall = async ({ to, channelName, reason } = {}, isAudioHint) => {
-        if (!to) return;
-        const call = findCall(channelName, me, to);
-        // A duplicate push/socket delivery can make one of the callee's
-        // devices send reject after another device answered. Never
-        // invalidate an accepted call.
-        if (call && call.accepted) return;
-        const isAudio = call ? call.isAudio : isAudioHint;
-        const type = callTypeOf(isAudio);
-        if (call) removeCall(call.channelName);
-        const payload = { to, connectId: me, channelName: channelName || call?.channelName };
-        io.to(String(to)).emit(`${type}-call-rejected`, {
-            ...payload,
-            reason: reason === 'busy' ? 'busy' : 'declined',
-        });
-        // Stop ringing on the callee's other devices (web tab + phone).
-        socket.to(me).emit(`${type}-call-cancelled`, { ...payload, connectId: String(to), reason: 'rejected_elsewhere' });
-        if (call) {
-            await logCallMessage(io, { callerId: call.callerId, calleeId: call.calleeId, isAudio, callEvent: 'missed', call });
-        }
-    };
+    const rejectCall = (data, isAudioHint) => rejectCallAs(io, me, data, isAudioHint, socket);
     socket.on('video-call-reject', (data) => rejectCall(data, false));
     socket.on('audio-call-reject', (data) => rejectCall(data, true));
 
@@ -432,34 +539,41 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
         if (!to) return;
         const connectId = String(to);
         const call = findCall(channelName, me, connectId);
+        // Late duplicate for a call that was already cancelled/ended/timed out
+        // (both apps send an end when they see the other side leave).
+        if (!call && wasFinished(channelName)) return;
         const isAudio = call ? call.isAudio : isAudioHint;
         const type = callTypeOf(isAudio);
         const accepted = !!call?.accepted;
         if (call) removeCall(call.channelName);
+        const channel = channelName || call?.channelName;
 
         io.to(connectId).emit(`${type}-call-ended`, {
             from: me,
-            channelName: channelName || call?.channelName,
+            channelName: channel,
         });
-        // Late duplicate for a call that was already cancelled/ended/timed out.
-        if (!call && wasFinished(channelName)) return;
+        if (!call) {
+            // This server has no record of the call: another server holds it
+            // (it closes and logs the call), or this one restarted mid-call.
+            // Who called whom is unknown here, so no missed-call push or log.
+            if (channel) publishCallSync(io, { type: 'finished', channelName: String(channel), by: me, reason: 'ended' });
+            return;
+        }
 
-        const callerId = call ? call.callerId : me;
-        const calleeId = call ? call.calleeId : connectId;
         if (!accepted) {
             // Stop the callee ringing on every device and tell them they missed it.
-            if (callerId === me) {
-                io.to(calleeId).emit(`${type}-call-cancelled`, {
-                    to: calleeId, connectId: me, channelName: channelName || call?.channelName,
+            if (call.callerId === me) {
+                io.to(call.calleeId).emit(`${type}-call-cancelled`, {
+                    to: call.calleeId, connectId: me, channelName: call.channelName,
                 });
             }
-            await sendMissedCallPush(calleeId, callerId, isAudio, channelName || call?.channelName);
+            await sendMissedCallPush(call.calleeId, call.callerId, isAudio, call.channelName);
         }
-        const duration = accepted && call?.acceptedAt
+        const duration = accepted && call.acceptedAt
             ? Math.round((Date.now() - call.acceptedAt) / 1000)
             : undefined;
         await logCallMessage(io, {
-            callerId, calleeId, isAudio, callEvent: accepted ? 'ended' : 'missed', duration, call,
+            callerId: call.callerId, calleeId: call.calleeId, isAudio, callEvent: accepted ? 'ended' : 'missed', duration, call,
         });
     };
     socket.on('video-call-end', (data) => endCall(data, false));
@@ -474,8 +588,23 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             const type = callTypeOf(isAudio);
             const channel = channelName || call?.channelName;
 
+            if (!call && wasFinished(channel)) {
+                // The caller hung up (or the call timed out / was declined on
+                // another device) before this answer arrived. Close this
+                // device's call screen instead of leaving it in an empty call.
+                socket.emit(`${type}-call-cancelled`, {
+                    to: me, connectId: callerId, channelName: channel, reason: 'ended',
+                });
+                return;
+            }
+
             if (call) {
-                if (call.accepted && call.answeredSocketId && call.answeredSocketId !== socket.id) {
+                const answeredElsewhere =
+                    call.accepted &&
+                    call.answeredSocketId &&
+                    call.answeredSocketId !== socket.id &&
+                    io.sockets.sockets.has(call.answeredSocketId);
+                if (answeredElsewhere) {
                     // Another of my devices already answered — close this one.
                     socket.emit(`${type}-call-cancelled`, {
                         to: me, connectId: callerId, channelName: channel, reason: 'answered_elsewhere',
@@ -486,6 +615,8 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                 call.answeredSocketId = socket.id;
                 call.acceptedAt = call.acceptedAt || Date.now();
                 clearCallTimer(call);
+            } else if (channel) {
+                publishCallSync(io, { type: 'answered', channelName: String(channel), by: me, isAudio });
             }
 
             // Profiles cached when the call started; look them up only when
@@ -498,12 +629,12 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
                     findCallProfile(callerId).catch(() => null),
                 ]);
 
-            // Only the device that placed the call should join. Other idle
-            // devices of the caller (e.g. a web tab while calling from the
-            // phone) must not auto-join the channel.
-            const callerSocketConnected = call?.callerSocketId && io.sockets.sockets.has(call.callerSocketId);
-            const callerTarget = callerSocketConnected ? call.callerSocketId : callerId;
-            io.to(callerTarget).emit('call-accepted', {
+            // Every device of the caller hears it: the socket that placed the
+            // call may have reconnected (new id), and its old id can look
+            // connected until the server notices it is gone. Clients only join
+            // when the channel is the call they are placing, so idle devices
+            // (e.g. a web tab while calling from the phone) stay out.
+            io.to(callerId).emit('call-accepted', {
                 channelName: channel,
                 isAudio,
                 callerName: calleeProfileData?.fullName,
@@ -581,3 +712,12 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
         });
     });
 };
+
+// Decline pressed on an incoming-call push (app in the background, often no
+// socket): same as the socket `*-call-reject`, so the call record is closed,
+// the callee's other devices stop ringing and the missed call is logged.
+module.exports.rejectCallFromPush = (io, calleeId, { callerId, channelName }, isAudio) =>
+    rejectCallAs(io, String(calleeId), { to: String(callerId), channelName }, !!isAudio, null);
+
+// Exposed for tests.
+module.exports.applyCallSync = applyCallSync;

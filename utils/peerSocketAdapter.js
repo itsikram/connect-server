@@ -68,7 +68,20 @@ class HttpPeerAdapter extends Adapter {
       },
     });
   }
+
+  // io.serverSideEmit(event, data): sibling servers run the handlers
+  // registered with io.on(event). Keeps per-server state (calls in progress)
+  // in step. Acknowledgements are not supported.
+  serverSideEmit(packet) {
+    const args = (Array.isArray(packet) ? packet : []).filter(
+      (arg) => typeof arg !== "function",
+    );
+    if (!args.length) return;
+    publishToPeers({ nsp: this.nsp.name, serverSideEmit: args });
+  }
 }
+
+const peerServersConfigured = () => getPeerUrls().length > 0;
 
 const attachPeerAdapter = (io) => {
   if (!getPeerUrls().length) {
@@ -94,6 +107,15 @@ const attachPeerRelayRoute = (app, io) => {
     const packet = req.body && req.body.packet;
     const opts = (req.body && req.body.opts) || {};
     const nsp = io.of(nspName || "/");
+    const serverSideArgs = req.body && req.body.serverSideEmit;
+    if (nsp && Array.isArray(serverSideArgs) && serverSideArgs.length) {
+      try {
+        nsp._onServerSideEmit(serverSideArgs);
+      } catch (err) {
+        console.error("[sockets] peer server-side event failed:", err?.message || err);
+      }
+      return res.json({ ok: true });
+    }
     if (!nsp || !packet) {
       return res.status(400).json({ ok: false });
     }
@@ -111,4 +133,5 @@ module.exports = {
   INTERNAL_PATH,
   attachPeerAdapter,
   attachPeerRelayRoute,
+  peerServersConfigured,
 };

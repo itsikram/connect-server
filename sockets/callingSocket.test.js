@@ -277,6 +277,152 @@ test('caller reconnecting within the grace period keeps the call ringing', async
     await once(callee, 'audio-call-ended');
 });
 
+test('a late end for an earlier call does not end the next call between the same pair', async () => {
+    const caller = await connect('a11');
+    const callee = await connect('b11');
+    const first = 'a11-b11-first';
+    const second = 'a11-b11-second';
+
+    const ring1 = once(callee, 'incoming-video-call');
+    caller.emit('video-call', { to: 'b11', channelName: first, isAudio: false });
+    await ring1;
+    callee.emit('answer-call', { to: 'a11', channelName: first, isAudio: false });
+    await once(caller, 'call-accepted');
+    caller.emit('video-call-end', { to: 'b11', channelName: first });
+    await once(callee, 'video-call-ended');
+
+    const ring2 = once(callee, 'incoming-video-call');
+    caller.emit('video-call', { to: 'b11', channelName: second, isAudio: false });
+    assert.equal((await ring2).channelName, second);
+
+    // The callee's app also saw the first call's peer leave and sends its own
+    // end for it, late (e.g. queued while its socket reconnected).
+    await Promise.all([
+        noEvent(caller, 'video-call-ended', 300),
+        noEvent(callee, 'video-call-cancelled', 300),
+        callee.emit('video-call-end', { to: 'a11', channelName: first }),
+    ]);
+
+    const accepted = once(caller, 'call-accepted');
+    callee.emit('answer-call', { to: 'a11', channelName: second, isAudio: false });
+    assert.equal((await accepted).channelName, second);
+    caller.emit('video-call-end', { to: 'b11', channelName: second });
+    await once(callee, 'video-call-ended');
+});
+
+test('decline from a push notification closes the call like a socket decline', async () => {
+    const caller = await connect('a12');
+    const calleeWeb = await connect('b12');
+    const channelName = 'a12-b12-push';
+    const ring = once(calleeWeb, 'incoming-audio-call');
+    caller.emit('audio-call', { to: 'b12', channelName, isAudio: true });
+    await ring;
+
+    const rejected = once(caller, 'audio-call-rejected');
+    const webStops = once(calleeWeb, 'audio-call-cancelled');
+    await callingSocket.rejectCallFromPush(io, 'b12', { callerId: 'a12', channelName }, true);
+    assert.equal((await rejected).reason, 'declined');
+    assert.equal((await webStops).reason, 'rejected_elsewhere');
+
+    // The phone also sends the socket reject; the ring timer was cleared, so
+    // the caller is neither told twice nor timed out later.
+    await Promise.all([
+        noEvent(caller, 'audio-call-rejected', 600),
+        noEvent(caller, 'call-not-accepted', 600),
+        calleeWeb.emit('audio-call-reject', { to: 'a12', channelName }),
+    ]);
+    await sleep(50);
+    const logs = savedMessages.filter((m) => m.room === 'a12_b12');
+    assert.equal(logs.length, 1);
+    assert.equal(logs[0].callEvent, 'missed');
+});
+
+test('a decline from a push never ends a call that was answered', async () => {
+    const caller = await connect('a13');
+    const callee = await connect('b13');
+    const channelName = 'a13-b13-answered';
+    const ring = once(callee, 'incoming-video-call');
+    caller.emit('video-call', { to: 'b13', channelName, isAudio: false });
+    await ring;
+    callee.emit('answer-call', { to: 'a13', channelName, isAudio: false });
+    await once(caller, 'call-accepted');
+    await Promise.all([
+        noEvent(caller, 'video-call-rejected', 300),
+        callingSocket.rejectCallFromPush(io, 'b13', { callerId: 'a13', channelName }, false),
+    ]);
+    caller.emit('video-call-end', { to: 'b13', channelName });
+    await once(callee, 'video-call-ended');
+});
+
+test('answering a call that already ended closes the answering device', async () => {
+    const caller = await connect('a14');
+    const callee = await connect('b14');
+    const channelName = 'a14-b14-gone';
+    const ring = once(callee, 'incoming-audio-call');
+    caller.emit('audio-call', { to: 'b14', channelName, isAudio: true });
+    await ring;
+    caller.emit('audio-call-cancel', { to: 'b14', channelName });
+    await once(callee, 'audio-call-cancelled');
+
+    const closed = once(callee, 'audio-call-cancelled');
+    await Promise.all([
+        noEvent(caller, 'call-accepted', 300),
+        callee.emit('answer-call', { to: 'a14', channelName, isAudio: true }),
+    ]);
+    assert.equal((await closed).reason, 'ended');
+});
+
+test('the callee answering again from a reconnected socket keeps the call', async () => {
+    const caller = await connect('a15');
+    const phone = await connect('b15');
+    const channelName = 'a15-b15-reconnect';
+    const ring = once(phone, 'incoming-video-call');
+    caller.emit('video-call', { to: 'b15', channelName, isAudio: false });
+    await ring;
+    phone.emit('answer-call', { to: 'a15', channelName, isAudio: false });
+    await once(caller, 'call-accepted');
+
+    // The phone's socket dropped and came back with a new id; its queued
+    // answer is sent again.
+    phone.close();
+    await sleep(100);
+    const back = await connect('b15');
+    await Promise.all([
+        noEvent(back, 'video-call-cancelled', 300),
+        back.emit('answer-call', { to: 'a15', channelName, isAudio: false }),
+    ]);
+    caller.emit('video-call-end', { to: 'b15', channelName });
+    await once(back, 'video-call-ended');
+});
+
+test('another server answering the call stops this server\'s ring timer', async () => {
+    const caller = await connect('a16');
+    const callee = await connect('b16');
+    const channelName = 'a16-b16-peer';
+    const ring = once(callee, 'incoming-video-call');
+    caller.emit('video-call', { to: 'b16', channelName, isAudio: false });
+    await ring;
+
+    // The answer reached a sibling server, which relays call-accepted itself
+    // and syncs this server.
+    await callingSocket.applyCallSync(io, { type: 'answered', channelName, by: 'b16' });
+    await noEvent(caller, 'call-not-accepted', 700);
+
+    // The hang-up also lands on the sibling: this server closes and logs it.
+    await callingSocket.applyCallSync(io, { type: 'finished', channelName, by: 'b16', reason: 'ended' });
+    await sleep(50);
+    const log = savedMessages.filter((m) => m.room === 'a16_b16').pop();
+    assert.equal(log.callEvent, 'ended');
+
+    // Strangers cannot change someone else's call.
+    const ring2 = once(callee, 'incoming-audio-call');
+    caller.emit('audio-call', { to: 'b16', channelName: 'a16-b16-peer2', isAudio: true });
+    await ring2;
+    await callingSocket.applyCallSync(io, { type: 'answered', channelName: 'a16-b16-peer2', by: 'zz' });
+    const timedOut = await once(caller, 'call-not-accepted', 1500);
+    assert.equal(timedOut.channelName, 'a16-b16-peer2');
+});
+
 test('offline callee: caller sees "Calling..." and the callee gets a push', async () => {
     const caller = await connect('a10');
     const status = once(caller, 'updated-call-status');

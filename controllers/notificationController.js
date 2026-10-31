@@ -487,7 +487,9 @@ exports.sendTestPush = async (req, res, next) => {
 
 /**
  * Reject an incoming call when the callee presses Decline on the push (app killed — no socket).
- * Authenticated callee emits the same socket events as `video-call-reject` / `audio-call-reject`.
+ * Same as the socket `video-call-reject` / `audio-call-reject`: the call record is closed (so its
+ * ring timer cannot end a later call), the callee's other devices stop ringing and the missed call
+ * is logged. A decline for a call that was already answered is ignored.
  */
 exports.rejectIncomingCallFromPush = async (req, res, next) => {
   try {
@@ -503,19 +505,9 @@ exports.rejectIncomingCallFromPush = async (req, res, next) => {
         .json({ message: "callerId and channelName are required" });
     }
     if (io) {
-      if (isAudio) {
-        io.to(callerId).emit("audio-call-rejected", {
-          to: callerId,
-          connectId: calleeId,
-          channelName,
-        });
-      } else {
-        io.to(callerId).emit("video-call-rejected", {
-          to: callerId,
-          connectId: calleeId,
-          channelName,
-        });
-      }
+      // Required here: callingSocket loads push helpers this module also uses.
+      const { rejectCallFromPush } = require("../sockets/callingSocket");
+      await rejectCallFromPush(io, calleeId, { callerId, channelName }, isAudio);
     }
     return res.status(200).json({ ok: true });
   } catch (err) {
