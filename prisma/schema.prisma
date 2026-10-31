@@ -594,6 +594,10 @@ model Message {
   reacts                           Json?
   tempId                           String?   @db.VarChar(191)
   isSeen                           Boolean   @default(false)
+  // Set by POST /message/edit. Live databases get these columns at startup
+  // (utils/messageEditColumns.js).
+  isEdited                         Boolean   @default(false)
+  editedAt                         DateTime?
   unseenReminderEmailSentAt        DateTime?
   unseenReminderEmailProcessingKey String?   @db.VarChar(191)
   unseenReminderEmailProcessingAt  DateTime?

@@ -148,6 +148,11 @@ async function connectMySQL() {
   try {
     await prisma.$connect();
     await prisma.$queryRaw`SELECT 1`;
+    try {
+      await require("../utils/messageEditColumns").ensureMessageEditColumns(prisma);
+    } catch (e) {
+      console.error("Could not add the message edit columns:", e.message || e);
+    }
     mysqlReady = true;
     console.log("MySQL connected (Prisma)");
   } catch (e) {

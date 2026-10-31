@@ -716,6 +716,63 @@ exports.deleteMessage = async (req, res, next) => {
     }
 };
 
+// Same rules as canEditMessage on the clients: my own plain text messages.
+exports.editMessage = async (req, res, next) => {
+    try {
+        const { messageId } = req.body;
+        const text = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+
+        if (!messageId) {
+            return res.status(400).json({ message: 'Message ID is required' });
+        }
+        if (!text) {
+            return res.status(400).json({ message: 'Message text is required' });
+        }
+
+        const message = await findMessage(messageId);
+        if (!message) {
+            return res.status(404).json({ message: 'Message not found' });
+        }
+        if (String(message.senderId) !== viewerId(req)) {
+            return res.status(403).json({ message: 'You can only edit your own messages' });
+        }
+        if ((message.messageType || 'text') !== 'text' || !String(message.message || '').trim()) {
+            return res.status(400).json({ message: 'Only text messages can be edited' });
+        }
+
+        const unchanged = text === String(message.message || '').trim();
+        if (!unchanged) {
+            await prisma.message.update({
+                where: { id: message.id },
+                data: { message: text, isEdited: true, editedAt: new Date() },
+            });
+        }
+        const updatedMessage = await findMessageWithParent({ id: message.id });
+
+        const io = req.app.get('io');
+        if (io && !unchanged) {
+            // Room + both participants: open chats, chat-list previews and
+            // every other device of either side.
+            io.to([message.room, String(message.senderId), String(message.receiverId)].filter(Boolean))
+                .emit('messageEdited', {
+                    messageId: String(message.id),
+                    _id: String(message.id),
+                    room: message.room,
+                    senderId: String(message.senderId),
+                    receiverId: String(message.receiverId),
+                    message: updatedMessage.message,
+                    isEdited: Boolean(updatedMessage.isEdited),
+                    editedAt: updatedMessage.editedAt,
+                });
+        }
+
+        return res.status(200).json({ message: 'Message edited successfully', data: updatedMessage });
+    } catch (error) {
+        console.error('Error editing message:', error);
+        next(error);
+    }
+};
+
 exports.deleteConversation = async (req, res, next) => {
     try {
         const profileId = String(req.profile?._id || '');
