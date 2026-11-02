@@ -118,13 +118,13 @@ Router.get('/gdrive/callback', driveSettings.connectCallback);
 Router.patch('/gdrive/accounts/:name', isAdminAuth, driveSettings.setAccountEnabled);
 Router.delete('/gdrive/accounts/:name', isAdminAuth, driveSettings.removeAccount);
 
-// APKs are large, so keep them on disk until they are streamed to Drive
-const apkUpload = multer({
-  storage: multer.diskStorage({ destination: require('os').tmpdir() }),
-  limits: { fileSize: 500 * 1024 * 1024 },
-});
-const { uploadApk } = require('../controllers/connectController');
-Router.post('/apk', isAdminAuth, apkUpload.single('apk'), uploadApk);
+// Latest APK, stored in Google Drive: the browser uploads straight to Drive,
+// or the server copies it from a link
+const apk = require('../controllers/apkController');
+Router.post('/apk/upload-session', isAdminAuth, apk.startApkUpload);
+Router.post('/apk/complete', isAdminAuth, apk.finishApkUpload);
+Router.post('/apk/from-url', isAdminAuth, apk.copyApkFromUrl);
+Router.get('/apk/status', isAdminAuth, apk.getApkJob);
 
 Router.get('/ai-auto-post/config', isAdminRole, aiAutoPostController.getConfig);
 Router.get('/ai-auto-post/author-profiles', isAdminRole, aiAutoPostController.searchAuthorProfiles);

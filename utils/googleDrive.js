@@ -38,6 +38,7 @@ const getAccounts = async () => {
             client.setCredentials({ refresh_token: refreshToken })
             account = {
                 name,
+                auth: client,
                 drive: createDrive({ version: 'v3', auth: client }),
                 folderId: null,
                 quota: null,
@@ -168,6 +169,41 @@ const uploadToDrive = async ({ buffer, filePath, size = buffer?.length, mimeType
     throw lastError
 }
 
+// Starts a resumable upload the browser sends straight to Google, so big
+// files (APKs) skip our proxy's body size and response time limits. Google
+// only allows the browser's PUT when the session names the page's Origin.
+const createResumableUpload = async ({ name, mimeType, size, origin }) => {
+    const { candidates, failures } = await pickAccounts(size)
+    const account = candidates[0]
+    if (!account) {
+        const error = new Error(failures.length
+            ? `Google Drive unavailable: ${failures.map((f) => `${f.account} (${f.reason})`).join(', ')}`
+            : 'No Google Drive account has enough free space for this upload')
+        error.code = failures.length ? 'MEDIA_STORAGE_UNAVAILABLE' : 'MEDIA_STORAGE_FULL'
+        throw error
+    }
+    const folderId = await ensureFolder(account)
+    const { token } = await account.auth.getAccessToken()
+    const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,mimeType,size', {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json; charset=UTF-8',
+            'X-Upload-Content-Type': mimeType,
+            'X-Upload-Content-Length': String(size),
+            ...(origin ? { Origin: origin } : {}),
+        },
+        body: JSON.stringify({ name, parents: [folderId] }),
+    })
+    const uploadUrl = response.headers.get('location')
+    if (!response.ok || !uploadUrl) {
+        const detail = await response.text().catch(() => '')
+        throw new Error(`Google Drive refused the upload (HTTP ${response.status}) ${detail.slice(0, 200)}`.trim())
+    }
+    account.quotaCheckedAt = 0
+    return { account: account.name, uploadUrl }
+}
+
 // Returns the Drive response stream for a file, honouring an optional Range header
 const getDriveFileStream = async (accountName, fileId, range) => {
     const account = await getAccount(accountName)
@@ -229,6 +265,7 @@ module.exports = {
     getGoogleErrorReason,
     isDriveStorageEnabled,
     uploadToDrive,
+    createResumableUpload,
     getDriveFileStream,
     getDriveFileMeta,
     deleteFromDrive,
