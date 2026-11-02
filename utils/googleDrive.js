@@ -1,3 +1,4 @@
+const fs = require('fs')
 const { Readable } = require('stream')
 const { drive: createDrive, auth: driveAuth } = require('@googleapis/drive')
 
@@ -127,8 +128,9 @@ const isQuotaError = (error) => {
     return reasons.includes('storageQuotaExceeded') || /storage quota/i.test(String(error?.message || ''))
 }
 
-const uploadToDrive = async ({ buffer, mimeType, name }) => {
-    const { candidates, failures } = await pickAccounts(buffer.length)
+// Pass `buffer`, or `filePath` + `size` for large files (APKs) kept on disk
+const uploadToDrive = async ({ buffer, filePath, size = buffer?.length, mimeType, name }) => {
+    const { candidates, failures } = await pickAccounts(size)
     if (!candidates.length) {
         // Only call it full when every account answered; otherwise Google rejected us
         const unreachable = failures.length > 0
@@ -146,14 +148,14 @@ const uploadToDrive = async ({ buffer, mimeType, name }) => {
             const folderId = await ensureFolder(account)
             const { data } = await account.drive.files.create({
                 requestBody: { name, parents: [folderId] },
-                media: { mimeType, body: Readable.from(buffer) },
+                media: { mimeType, body: buffer ? Readable.from(buffer) : fs.createReadStream(filePath) },
                 fields: 'id,name,mimeType,size',
             })
             if (account.quota) {
-                account.quota.usage += buffer.length
-                account.quota.free -= buffer.length
+                account.quota.usage += size
+                account.quota.free -= size
             }
-            return { account: account.name, fileId: data.id, name: data.name, mimeType: data.mimeType, size: Number(data.size || buffer.length) }
+            return { account: account.name, fileId: data.id, name: data.name, mimeType: data.mimeType, size: Number(data.size || size) }
         } catch (error) {
             lastError = error
             if (isQuotaError(error)) {
