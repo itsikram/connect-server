@@ -1,6 +1,7 @@
 const { prisma, isValidId: isValidObjectId, populated } = require('../utils/db')
 const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
 const { notifyNewChatMessage } = require('../utils/chatNotifications')
+const { deliverIfReceiverOnline, markDeliveredWithSeen, markAllSeen } = require('../utils/messageStatus')
 const { senderDisplayName } = require('../utils/messagePreview')
 const presence = require('../sockets/presence')
 const {
@@ -447,6 +448,10 @@ exports.sendMessage = async (req, res, next) => {
         const connectProfile = profileData;
         io.to(String(receiverId)).emit('newMessageToUser', { updatedMessage, senderName, senderPP, chatPage: false, connectProfile, isRealTime: true });
 
+        // Receiver has the app open right now: delivered (double check).
+        deliverIfReceiverOnline(io, updatedMessage).catch((e) =>
+            console.error('deliver on send failed:', e?.message || e));
+
         // Same mobile + web notification fan-out as the socket path
         await notifyNewChatMessage(io, {
             updatedMessage,
@@ -641,6 +646,8 @@ exports.markMessageAsSeen = async (req, res, next) => {
                 data: { isSeen: true },
             });
             result = { modifiedCount: count, matchedCount: toUpdate.length };
+            // Seen implies delivered.
+            await markDeliveredWithSeen(toUpdate.map((m) => m.id));
         }
 
         if (result.modifiedCount > 0) {
@@ -672,6 +679,34 @@ exports.markMessageAsSeen = async (req, res, next) => {
     } catch (error) {
         console.error('Error marking message as seen:', error);
         return res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+};
+
+// "Mark all as read": every unseen message to me becomes seen, or only the
+// ones from `connectId` when it is given. Senders see the eye icon and my
+// other devices clear their unread badges (utils/messageStatus.js).
+exports.markAllMessagesAsSeen = async (req, res, next) => {
+    try {
+        const myId = viewerId(req);
+        const connectId = req.body?.connectId || null;
+        if (!myId) {
+            return res.status(401).json({ message: 'Not signed in' });
+        }
+        if (connectId && !isValidObjectId(connectId)) {
+            return res.status(400).json({ message: 'Invalid connectId' });
+        }
+
+        const result = await markAllSeen(req.app.get('io'), { receiverId: myId, connectId });
+        res.set('Cache-Control', 'no-store');
+        return res.status(200).json({
+            message: 'Messages marked as read',
+            updatedCount: result.count,
+            senderIds: result.senderIds,
+            seenAt: result.seenAt,
+        });
+    } catch (error) {
+        console.error('Error marking all messages as read:', error);
+        return res.status(500).json({ message: 'Could not mark messages as read' });
     }
 };
 

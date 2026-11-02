@@ -1,6 +1,6 @@
 const Router = require('express').Router()
 const isAuth = require('../middlewares/isAuth')
-const {addMessageReact,removeMessageReact,getMedia,getChatList,getChatHistory,getOldMessages,sendMessage,getNewMessages,getNewMessagesCount,getMessageReactions,markMessageAsSeen,deleteMessage,editMessage,deleteConversation,sendBump,openSecureMessage} = require('../controllers/messageController')
+const {addMessageReact,removeMessageReact,getMedia,getChatList,getChatHistory,getOldMessages,sendMessage,getNewMessages,getNewMessagesCount,getMessageReactions,markMessageAsSeen,markAllMessagesAsSeen,deleteMessage,editMessage,deleteConversation,sendBump,openSecureMessage} = require('../controllers/messageController')
 const uploadAttachment = require('../middlewares/photosUpload')
 const { cacheResponse, GRAPH_TAGS, CONTENT_TAGS, MESSAGE_TAGS, NOTIFICATION_TAGS } = require('../utils/cacheResponse')
 
@@ -16,6 +16,7 @@ Router.get('/new-messages',isAuth,getNewMessages);
 Router.get('/new-messages-count',isAuth,getNewMessagesCount);
 Router.get('/reactions',isAuth,getMessageReactions);
 Router.post('/seen',isAuth,markMessageAsSeen);
+Router.post('/seen-all',isAuth,markAllMessagesAsSeen);
 Router.post('/delete',isAuth,deleteMessage);
 Router.post('/edit',isAuth,editMessage);
 Router.post('/deleteConversation',isAuth,deleteConversation);

@@ -6,6 +6,12 @@ const axios = require("axios");
 
 const { sendDataPushToProfile } = require("../utils/pushNotifications");
 const { notifyNewChatMessage } = require("../utils/chatNotifications");
+const {
+  deliverPending,
+  deliverIfReceiverOnline,
+  markDelivered,
+  markDeliveredWithSeen,
+} = require("../utils/messageStatus");
 const { senderDisplayName } = require("../utils/messagePreview");
 const config = require("../config/config.json");
 const {
@@ -42,6 +48,47 @@ module.exports = function messageSocket(io, socket, profileId) {
     return ids.length === 2 && ids.every(isValidObjectId) && ids.includes(me);
   };
   const roomWith = (otherId) => [me, String(otherId)].sort().join("_");
+
+  // Delivery status (utils/messageStatus.js): messages waiting for this
+  // profile count as delivered once its app is open - when this socket
+  // connects in the foreground and whenever the app returns to it.
+  if (me) {
+    const startsAway =
+      String(socket.handshake?.query?.presence || socket.handshake?.auth?.presence || "") === "away";
+    if (!startsAway) deliverPending(io, me);
+    socket.on("presence:active", () => {
+      deliverPending(io, me);
+    });
+  }
+
+  // The app confirms messages it received while open ({ messageIds }), or
+  // asks for everything pending (no ids) when it opens.
+  socket.on("markDelivered", async (payload = {}, ack) => {
+    const respond = (data) => {
+      if (typeof ack === "function") {
+        try {
+          ack(data);
+        } catch (_e) {
+          /* client went away */
+        }
+      }
+    };
+    try {
+      if (!me) return respond({ ok: false, count: 0 });
+      const ids = Array.isArray(payload?.messageIds)
+        ? payload.messageIds
+        : payload?.messageId
+          ? [payload.messageId]
+          : null;
+      const result = ids
+        ? await markDelivered(io, { receiverId: me, messageIds: ids })
+        : await deliverPending(io, me);
+      respond({ ok: true, count: result.count, messageIds: result.messageIds });
+    } catch (error) {
+      console.error("markDelivered failed:", error?.message || error);
+      respond({ ok: false, count: 0 });
+    }
+  });
 
   // Room management for real-time messaging
   socket.on("joinRoom", (roomId) => {
@@ -558,6 +605,11 @@ module.exports = function messageSocket(io, socket, profileId) {
         isRealTime: true, // Flag indicates this is a real-time notification, not from initial load
       });
 
+      // Receiver has the app open right now: delivered (double check).
+      deliverIfReceiverOnline(io, updatedMessage).catch((e) =>
+        console.error("deliver on send failed:", e?.message || e),
+      );
+
       // Push (mobile) + bell / Web Push (web). Runs after the ack so sending
       // never waits on notification delivery.
       await notifyNewChatMessage(io, {
@@ -806,6 +858,8 @@ module.exports = function messageSocket(io, socket, profileId) {
         data: { isSeen: true },
       });
       if (!count) return;
+      // Seen implies delivered.
+      await markDeliveredWithSeen([messageId]);
       const msg = await findMessage(messageId);
       if (!msg) return;
       // Deliver to both participants on every device, once per socket.
