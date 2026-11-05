@@ -21,21 +21,25 @@ const {
   createSecureMessage,
   withSecureState,
 } = require("../utils/secureMessages");
-
-const conversationWhere = (a, b) => ({
-  OR: [
-    { senderId: String(a), receiverId: String(b) },
-    { senderId: String(b), receiverId: String(a) },
-  ],
-});
+const { findConversationPage, latestMessageIdsByPeer } = require("../utils/conversationPage");
 
 // Message rows with `parent` populated (Mongoose .populate("parent")).
-const findMessagesWithParent = async (args) =>
-  populated(await prisma.message.findMany({ ...args, include: { parentDoc: true } }), "parent");
 const findMessageWithParent = async (where) =>
   populated(await prisma.message.findFirst({ where, include: { parentDoc: true } }), "parent");
 const findMessage = async (id) =>
   (isValidObjectId(id) ? prisma.message.findUnique({ where: { id: String(id) } }) : null);
+// Newest-first page of a conversation, read in index order (utils/conversationPage.js).
+const findConversationPageWithParent = async (a, b, { skip, take }) =>
+  populated(await findConversationPage(a, b, { skip, take, include: { parentDoc: true } }), "parent");
+// Sender profile sent along with a new message; never the password hash or reset token.
+const findSenderProfile = async (senderId) =>
+  populated(
+    await prisma.profile.findUnique({
+      where: { id: String(senderId) },
+      include: { userDoc: { omit: { password: true, resetPasswordToken: true, resetPasswordExpire: true } } },
+    }),
+    "user",
+  );
 
 module.exports = function messageSocket(io, socket, profileId) {
   const me = String(profileId || "");
@@ -114,17 +118,21 @@ module.exports = function messageSocket(io, socket, profileId) {
       connects: myProfileRow.connects.map((c) => c.connectDoc).filter(Boolean),
     };
     if (myProfile?.connects !== null) {
-      for (const connectProfile of myProfile.connects) {
-        // Only fetch the most recent message from each connect
-        // and mark it as 'fromInitialLoad' so frontend doesn't show notification
-        const messages = await prisma.message.findMany({
-          where: { senderId: connectProfile.id, receiverId: String(profileId) },
-          take: 1,
-          orderBy: { timestamp: "desc" },
-        });
-
+      // Only the most recent message each connect sent to this profile, read
+      // in one query (not one per connect), marked as 'fromInitialLoad' so
+      // frontend doesn't show notification
+      const latestIds = await latestMessageIdsByPeer(String(profileId), "received");
+      const latestRows = latestIds.length
+        ? await prisma.message.findMany({ where: { id: { in: latestIds } } })
+        : [];
+      const latestBySender = new Map();
+      for (const row of latestRows) {
+        if (!latestBySender.has(row.senderId)) latestBySender.set(row.senderId, row);
+      }
+      myProfile.connects.forEach((connectProfile) => {
+        const latest = latestBySender.get(connectProfile.id);
         // Add flag to indicate these are from initial load (not real-time)
-        const messagesWithFlag = messages.map((msg) => ({
+        const messagesWithFlag = (latest ? [latest] : []).map((msg) => ({
           ...(msg.toObject ? msg.toObject() : msg),
           fromInitialLoad: true,
         }));
@@ -133,7 +141,7 @@ module.exports = function messageSocket(io, socket, profileId) {
           person: connectProfile,
           messages: messagesWithFlag,
         });
-      }
+      });
       // Emit as 'initialMessages' to distinguish from real-time 'newMessageToUser'
       // Frontend should NOT show notifications for messages with fromInitialLoad flag
       io.to(profileId).emit("initialMessages", profileContacts);
@@ -149,11 +157,9 @@ module.exports = function messageSocket(io, socket, profileId) {
       const room = roomWith(otherId); // Ensures consistent room ID
       socket.join(room);
 
-      const messages = await withSecureState(await findMessagesWithParent({
-        where: conversationWhere(me, otherId),
-        orderBy: [{ timestamp: "desc" }, { id: "desc" }],
-        take: 20,
-      }));
+      const messages = await withSecureState(
+        await findConversationPageWithParent(me, otherId, { take: 20 }),
+      );
       socket.emit("previousMessages", messages.reverse());
       socket.emit("roomJoined", { room });
     } catch (error) {
@@ -169,12 +175,9 @@ module.exports = function messageSocket(io, socket, profileId) {
         .to(me)
         .emit("loadMessages", { loadedMessages: [], hasNewMessage: false });
     }
-    const loadedMessages = await withSecureState(await findMessagesWithParent({
-      where: conversationWhere(me, connectId),
-      skip: Number(skip) || 0,
-      take: limit,
-      orderBy: [{ timestamp: "desc" }, { id: "desc" }],
-    }));
+    const loadedMessages = await withSecureState(
+      await findConversationPageWithParent(me, connectId, { skip: Number(skip) || 0, take: limit }),
+    );
     // (Same skip as above, as before: true whenever this page had rows.)
     let messagesLeft = loadedMessages;
     let hasNewMessage = messagesLeft.length < 1 ? false : true;
@@ -197,26 +200,21 @@ module.exports = function messageSocket(io, socket, profileId) {
         // Parse the room to get both user IDs
         const [user1, user2] = room.split("_");
 
-        // Build query for messages between these users before the given timestamp
-        const query = {
-          ...conversationWhere(user1, user2),
-          timestamp: { lt: new Date(beforeTimestamp) },
-        };
-
         // Calculate skip based on page
         const skip = (page - 1) * limit;
 
-        // Fetch old messages
-        const oldMessages = await withSecureState(await findMessagesWithParent({
-          where: query,
-          orderBy: [{ timestamp: "desc" }, { id: "desc" }],
-          skip: Math.max(0, Number(skip) || 0),
-          take: Math.min(Number(limit) || 20, 100),
-        }));
-
-        // Check if there are more messages available
-        const totalOldMessages = await prisma.message.count({ where: query });
-        const hasMore = skip + limit < totalOldMessages;
+        // Fetch old messages: between these users, before the given timestamp
+        const oldMessages = await withSecureState(
+          populated(
+            await findConversationPage(user1, user2, {
+              before: new Date(beforeTimestamp),
+              skip: Math.max(0, Number(skip) || 0),
+              take: Math.min(Number(limit) || 20, 100),
+              include: { parentDoc: true },
+            }),
+            "parent",
+          ),
+        );
 
         // Emit the old messages (pagination - should NOT trigger notifications)
         // Frontend should not create notifications for old paginated messages
@@ -464,18 +462,32 @@ module.exports = function messageSocket(io, socket, profileId) {
         }
       }
 
+      // The block check, duplicate (tempId) lookup and sender profile don't
+      // depend on each other: start them together instead of one after
+      // another. allSettled keeps each failure reported where it was before.
+      const checkBlocks = senderId && receiverId && String(senderId) !== String(receiverId);
+      const validTarget = Boolean(senderId) && isValidObjectId(receiverId);
+      const [blocksResult, existingResult, senderResult] = await Promise.allSettled([
+        checkBlocks
+          ? prisma.block.findMany({
+              where: {
+                OR: [
+                  { profile: String(senderId), blocked: String(receiverId) },
+                  { profile: String(receiverId), blocked: String(senderId) },
+                ],
+              },
+              select: { profile: true },
+            })
+          : [],
+        validTarget && tempId ? findMessageWithParent({ senderId, tempId: String(tempId) }) : null,
+        validTarget ? findSenderProfile(senderId) : null,
+      ]);
+
       // Prevent messaging if either user has blocked the other
       try {
-        if (senderId && receiverId && String(senderId) !== String(receiverId)) {
-          const blocks = await prisma.block.findMany({
-            where: {
-              OR: [
-                { profile: String(senderId), blocked: String(receiverId) },
-                { profile: String(receiverId), blocked: String(senderId) },
-              ],
-            },
-            select: { profile: true },
-          });
+        if (checkBlocks) {
+          if (blocksResult.status === "rejected") throw blocksResult.reason;
+          const blocks = blocksResult.value;
           const senderBlockedReceiver = blocks.some((b) => b.profile === String(senderId));
           const receiverBlockedSender = blocks.some((b) => b.profile === String(receiverId));
           if (senderBlockedReceiver || receiverBlockedSender) {
@@ -499,7 +511,7 @@ module.exports = function messageSocket(io, socket, profileId) {
         return;
       }
 
-      if (!senderId || !isValidObjectId(receiverId)) {
+      if (!validTarget) {
         reply({ ok: false, error: "senderId and receiverId are required", tempId });
         return;
       }
@@ -518,7 +530,8 @@ module.exports = function messageSocket(io, socket, profileId) {
       // Idempotency: a retry / reconnect flush of the same optimistic message
       // (same tempId) must not create a second copy.
       if (tempId) {
-        const existing = await findMessageWithParent({ senderId, tempId: String(tempId) });
+        if (existingResult.status === "rejected") throw existingResult.reason;
+        const existing = existingResult.value;
         if (existing) {
           const existingMessage = serializeMessage(await withSecureState(existing));
           reply({ ok: true, updatedMessage: existingMessage, tempId, duplicate: true });
@@ -557,16 +570,17 @@ module.exports = function messageSocket(io, socket, profileId) {
           tempId: tempId == null ? undefined : String(tempId),
           reacts: [],
         },
+        // Returned with its reply parent, so it needs no second read.
+        include: { parentDoc: true },
       });
 
-      // Update last active time for sending message
-      await updateLastActive(senderId);
-
-      let updatedMessage = await withSecureState(await findMessageWithParent({ id: newMessage.id }));
-      let profileData = populated(
-        await prisma.profile.findUnique({ where: { id: senderId }, include: { userDoc: true } }),
-        "user",
+      let updatedMessage = await withSecureState(
+        secureContent
+          ? await findMessageWithParent({ id: newMessage.id })
+          : populated(newMessage, "parent"),
       );
+      if (senderResult.status === "rejected") throw senderResult.reason;
+      const profileData = senderResult.value;
       if (!profileData) {
         reply({ ok: false, error: "Sender profile not found" });
         return;
@@ -592,6 +606,9 @@ module.exports = function messageSocket(io, socket, profileId) {
       // even if they are not currently in the chat room.
       io.to(String(senderId)).emit("messageSent", messagePayload);
       reply({ ok: true, updatedMessage, tempId });
+
+      // Last-active bookkeeping never delays delivery (and is throttled).
+      updateLastActive(senderId);
 
       const connectProfile = profileData;
       // Emit newMessageToUser only for real-time messages (isRealTime: true)

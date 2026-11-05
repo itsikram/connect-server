@@ -12,25 +12,19 @@ exports.getDigest = async (req, res, next) => {
     const soon = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
 
     const me = String(profileId);
-    const [connectsList, pendingConnectReqs] = await Promise.all([
+    // Everything except the connects' top post is independent: one round trip.
+    const [connectsList, pendingConnectReqs, myPosts, notesThisWeek, upcomingEvents] = await Promise.all([
       graphIds.connects(me),
       prisma.connectRequest.count({ where: { profile: me } }),
-    ]);
-
-    const myPosts = await prisma.post.findMany({
-      where: { author: me, createdAt: { gte: weekAgo } },
-      select: {
-        id: true,
-        caption: true,
-        createdAt: true,
-        _count: { select: { reacts: true, comments: true } },
-      },
-    });
-
-    const reactsReceived = myPosts.reduce((n, post) => n + post._count.reacts, 0);
-    const commentsReceived = myPosts.reduce((n, post) => n + post._count.comments, 0);
-
-    const [notesThisWeek, upcomingEvents, topConnectPost] = await Promise.all([
+      prisma.post.findMany({
+        where: { author: me, createdAt: { gte: weekAgo } },
+        select: {
+          id: true,
+          caption: true,
+          createdAt: true,
+          _count: { select: { reacts: true, comments: true } },
+        },
+      }),
       prisma.note.count({
         where: { user: me, updatedAt: { gte: weekAgo } },
       }),
@@ -40,18 +34,22 @@ exports.getDigest = async (req, res, next) => {
         take: 5,
         select: { id: true, title: true, date: true, time: true },
       }),
-      connectsList.length
-        ? prisma.post.findFirst({
-            where: {
-              author: { in: connectsList },
-              audience: { in: [1, 2] },
-              createdAt: { gte: weekAgo },
-            },
-            orderBy: { createdAt: "desc" },
-            select: { id: true, caption: true, author: true, createdAt: true },
-          })
-        : null,
     ]);
+
+    const reactsReceived = myPosts.reduce((n, post) => n + post._count.reacts, 0);
+    const commentsReceived = myPosts.reduce((n, post) => n + post._count.comments, 0);
+
+    const topConnectPost = connectsList.length
+      ? await prisma.post.findFirst({
+          where: {
+            author: { in: connectsList },
+            audience: { in: [1, 2] },
+            createdAt: { gte: weekAgo },
+          },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, caption: true, author: true, createdAt: true },
+        })
+      : null;
 
     return res.status(200).json({
       postsThisWeek: myPosts.length,

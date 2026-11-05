@@ -3,6 +3,7 @@ const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
 const { notifyNewChatMessage } = require('../utils/chatNotifications')
 const { deliverIfReceiverOnline, markDeliveredWithSeen, markAllSeen } = require('../utils/messageStatus')
 const { senderDisplayName } = require('../utils/messagePreview')
+const { findConversationPage, latestMessageIdsByPeer } = require('../utils/conversationPage')
 const presence = require('../sockets/presence')
 const {
     isSecureRequest,
@@ -32,6 +33,12 @@ const findMessage = async (id) =>
     (isValidObjectId(id) ? prisma.message.findUnique({ where: { id: String(id) } }) : null);
 const findMessageWithParent = async (where) =>
     populated(await prisma.message.findFirst({ where, include: { parentDoc: true } }), 'parent');
+// Sender profile sent along with a new message; never the password hash or reset token.
+const findSenderProfile = async (senderId) =>
+    populated(await prisma.profile.findUnique({
+        where: { id: String(senderId) },
+        include: { userDoc: { omit: { password: true, resetPasswordToken: true, resetPasswordExpire: true } } },
+    }), 'user');
 
 // The signed-in profile is always one side of a conversation. `profileId`
 // query params are ignored: trusting them let any user read anyone's chats.
@@ -134,14 +141,33 @@ exports.getChatList = async(req,res,next) => {
     try {
         const profileId = viewerId(req);
 
-        // Use two indexed scans instead of a single $or (which cannot use both indexes)
         const profileIdStr = String(profileId);
-        // Latest message id per peer, one indexed scan per direction.
-        const [sentIds, receivedIds] = await Promise.all([
-            prisma.$queryRaw`SELECT id FROM (SELECT id, ROW_NUMBER() OVER (PARTITION BY receiverId ORDER BY timestamp DESC) AS rn FROM messages WHERE senderId = ${profileIdStr}) t WHERE rn = 1`,
-            prisma.$queryRaw`SELECT id FROM (SELECT id, ROW_NUMBER() OVER (PARTITION BY senderId ORDER BY timestamp DESC) AS rn FROM messages WHERE receiverId = ${profileIdStr}) t WHERE rn = 1`,
+        // Latest message id per peer (one indexed scan per direction) and the
+        // profile's connects don't depend on each other: load them together.
+        const [sentIds, receivedIds, myProfileRow] = await Promise.all([
+            latestMessageIdsByPeer(profileIdStr, 'sent'),
+            latestMessageIdsByPeer(profileIdStr, 'received'),
+            prisma.profile.findUnique({
+                where: { id: profileIdStr },
+                // Slim connect fields (avoid shipping tokens, push subs, nested connects)
+                select: {
+                    id: true,
+                    _id: true,
+                    connects: {
+                        select: {
+                            connectDoc: {
+                                select: {
+                                    id: true, _id: true, fullName: true, displayName: true, username: true, nickname: true,
+                                    profilePic: true, isActive: true, lastActive: true, user: true,
+                                    userDoc: { select: { id: true, _id: true, firstName: true, surname: true } },
+                                },
+                            },
+                        },
+                    },
+                },
+            }),
         ]);
-        const latestIds = [...sentIds, ...receivedIds].map((row) => row.id);
+        const latestIds = [...new Set([...sentIds, ...receivedIds])];
         const latestMessages = latestIds.length
             ? await withSecureState(await prisma.message.findMany({ where: { id: { in: latestIds } }, omit: REMINDER_OMIT }))
             : [];
@@ -166,25 +192,6 @@ exports.getChatList = async(req,res,next) => {
         sentAgg.forEach((row) => consider(row._id, row.lastMessage));
         receivedAgg.forEach((row) => consider(row._id, row.lastMessage));
 
-        // Get profile with slim connect fields (avoid shipping tokens, push subs, nested connects)
-        const myProfileRow = await prisma.profile.findUnique({
-            where: { id: profileIdStr },
-            select: {
-                id: true,
-                _id: true,
-                connects: {
-                    select: {
-                        connectDoc: {
-                            select: {
-                                id: true, _id: true, fullName: true, displayName: true, username: true, nickname: true,
-                                profilePic: true, isActive: true, lastActive: true, user: true,
-                                userDoc: { select: { id: true, _id: true, firstName: true, surname: true } },
-                            },
-                        },
-                    },
-                },
-            },
-        });
         const myProfile = myProfileRow && {
             _id: myProfileRow._id,
             connects: myProfileRow.connects
@@ -256,10 +263,8 @@ exports.getChatHistory = async(req,res,next) => {
         }
 
         // Fetch one extra row instead of a separate count query
-        const messages = populated(await prisma.message.findMany({
-            where: conversationWhere(profileId, connectId),
+        const messages = populated(await findConversationPage(profileId, connectId, {
             omit: REMINDER_OMIT,
-            orderBy: [{ timestamp: 'desc' }, { id: 'desc' }],
             skip,
             take: limit + 1,
             include: { parentDoc: { select: PARENT_SELECT } },
@@ -318,13 +323,10 @@ exports.getOldMessages = async(req,res,next) => {
             });
         }
         
-// Build query for messages between these users before the given timestamp
-        const query = { ...conversationWhere(profileId, connectId), timestamp: { lt: timestamp } };
-
-        const messages = populated(await prisma.message.findMany({
-            where: query,
+        // Messages between these users before the given timestamp
+        const messages = populated(await findConversationPage(profileId, connectId, {
+            before: timestamp,
             omit: REMINDER_OMIT,
-            orderBy: [{ timestamp: 'desc' }, { id: 'desc' }],
             take: limit + 1,
             include: { parentDoc: { select: PARENT_SELECT } },
         }), 'parent');
@@ -374,27 +376,33 @@ exports.sendMessage = async (req, res, next) => {
         // Same canonical room the socket path and both clients use.
         const room = [senderId, String(receiverId)].sort().join('_');
 
+        // The duplicate check, block check and sender profile don't depend on
+        // each other: one round trip instead of three.
+        const checkBlocks = senderId && receiverId && String(senderId) !== String(receiverId);
+        const [existing, blocks, profileData] = await Promise.all([
+            tempId ? findMessageWithParent({ senderId, tempId: String(tempId) }) : null,
+            checkBlocks
+                ? prisma.block.findMany({
+                    where: {
+                        OR: [
+                            { profile: senderId, blocked: String(receiverId) },
+                            { profile: String(receiverId), blocked: senderId },
+                        ],
+                    },
+                    select: { profile: true },
+                })
+                : [],
+            findSenderProfile(senderId),
+        ]);
+
         // Idempotent retries: return the existing copy of this optimistic message.
-        if (tempId) {
-            const existing = await findMessageWithParent({ senderId, tempId: String(tempId) });
-            if (existing) {
-                await withSecureState(existing);
-                return res.status(200).json({ message: 'Message sent successfully', data: existing, duplicate: true });
-            }
+        if (existing) {
+            await withSecureState(existing);
+            return res.status(200).json({ message: 'Message sent successfully', data: existing, duplicate: true });
         }
 
         // Prevent messaging if either user has blocked the other
-        if (senderId && receiverId && String(senderId) !== String(receiverId)) {
-            const blocks = await prisma.block.findMany({
-                where: {
-                    OR: [
-                        { profile: senderId, blocked: String(receiverId) },
-                        { profile: String(receiverId), blocked: senderId },
-                    ],
-                },
-                select: { profile: true },
-            });
-
+        if (checkBlocks) {
             const senderBlockedReceiver = blocks.some((b) => b.profile === senderId);
             const receiverBlockedSender = blocks.some((b) => b.profile === String(receiverId));
 
@@ -422,17 +430,14 @@ exports.sendMessage = async (req, res, next) => {
                     tempId: tempId == null ? undefined : String(tempId),
                     reacts: [],
                 },
+                // Returned with its reply parent, so it needs no second read.
+                include: { parentDoc: true },
             });
 
-        // Update last active time for sending message
-        await updateLastActive(senderId);
-
-        let updatedMessage = await withSecureState(await findMessageWithParent({ id: newMessage.id }));
-        let profileData = populated(
-            await prisma.profile.findUnique({ where: { id: senderId }, include: { userDoc: true } }),
-            'user',
+        let updatedMessage = await withSecureState(
+            secureContent ? await findMessageWithParent({ id: newMessage.id }) : populated(newMessage, 'parent'),
         );
-        
+
         if (!profileData) {
             return res.status(404).json({ message: 'Sender profile not found' });
         }
@@ -452,8 +457,15 @@ exports.sendMessage = async (req, res, next) => {
         deliverIfReceiverOnline(io, updatedMessage).catch((e) =>
             console.error('deliver on send failed:', e?.message || e));
 
-        // Same mobile + web notification fan-out as the socket path
-        await notifyNewChatMessage(io, {
+        res.status(200).json({
+            message: 'Message sent successfully',
+            data: updatedMessage
+        });
+
+        // After the response, as on the socket path: the sender never waits
+        // for push / web notification delivery or the last-active write.
+        updateLastActive(senderId);
+        notifyNewChatMessage(io, {
             updatedMessage,
             senderId,
             receiverId,
@@ -461,12 +473,8 @@ exports.sendMessage = async (req, res, next) => {
             senderPP,
             senderProfile: profileData,
             room,
-        });
-
-        return res.status(200).json({
-            message: 'Message sent successfully',
-            data: updatedMessage
-        });
+        }).catch((e) => console.error('chat notification failed:', e?.message || e));
+        return;
 
     } catch (error) {
         console.error('Error sending message:', error);

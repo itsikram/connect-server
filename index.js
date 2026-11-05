@@ -14,6 +14,7 @@ if (process.env.USE_PUBLIC_DNS !== "false") {
 }
 
 const express = require("express");
+const compression = require("compression");
 const PORT = process.env.PORT || 4000;
 const { connectMySQL, isMySQLReady } = require("./config/prisma");
 const socketIo = require("socket.io");
@@ -516,6 +517,23 @@ socketHandler(io);
 initializeSpeechWebSocketServer(httpServer);
 startCpuSampler();
 attachPeerAdapter(io);
+
+// gzip / brotli for JSON, HTML, JS and CSS responses: feeds, chat lists and
+// notifications leave this server 70-90% smaller (to the CDN in front of it,
+// or straight to clients that call it directly).
+// Left uncompressed: Server-Sent Events (they must flush per event), Range
+// requests (a partial body must stay byte-exact) and Drive media passthrough.
+app.use(
+  compression({
+    threshold: 1024,
+    filter: (req, res) => {
+      if (req.headers["x-no-compression"] || req.headers.range) return false;
+      if ((req.originalUrl || req.url || "").startsWith("/api/media")) return false;
+      if (String(res.getHeader("Content-Type") || "").startsWith("text/event-stream")) return false;
+      return compression.filter(req, res);
+    },
+  }),
+);
 
 // Per-request query count / DB time (QUERY_STATS=1), before every route.
 app.use(require("./utils/requestStats").requestStatsMiddleware);

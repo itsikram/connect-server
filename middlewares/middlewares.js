@@ -21,6 +21,11 @@ const noCacheForLocalhost = (req, res, next) => {
     next();
 };
 
+// API calls never map to a file, so don't make every one of them stat the
+// disk in each static folder before reaching its route.
+const staticExceptApi = (handler) => (req, res, next) =>
+    (req.path.startsWith('/api/') ? next() : handler(req, res, next));
+
 const middilewares = [
     morgan("dev", {
         skip: (req) => {
@@ -33,8 +38,8 @@ const middilewares = [
         },
     }),
     noCacheForLocalhost, // Add no-cache headers for localhost before static files
-    express.static('public'),
-    express.static(path.join(__dirname, "/routes/build")),
+    staticExceptApi(express.static('public')),
+    staticExceptApi(express.static(path.join(__dirname, "/routes/build"))),
     bodyParser.urlencoded({extended: true, limit: '25mb'}),
     bodyParser.json({limit: '25mb'}),
     cors({
