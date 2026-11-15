@@ -611,12 +611,20 @@ exports.faceLogin = async (req, res, next) => {
             });
         }
 
-        const profile = await prisma.profile.findFirst({
-            where: { username: data.username },
-            include: { userDoc: true },
-        });
-        const user = profile?.userDoc;
-        if (!user) {
+        // Faces are enrolled by username. Only sign in when exactly one
+        // account has that username and it turned face login on itself.
+        const matches = data.username
+            ? await prisma.profile.findMany({
+                where: { username: String(data.username) },
+                include: { userDoc: true },
+                take: 2,
+            })
+            : [];
+        const user = matches.length === 1 ? matches[0].userDoc : null;
+        if (!user || !user.faceLoginEnabled) {
+            if (matches.length > 1) {
+                console.warn('[face-auth] face login refused: username is shared by several profiles');
+            }
             return res.status(404).json({
                 success: false,
                 message: 'No matching Connect account was found',
@@ -657,12 +665,14 @@ exports.faceLogin = async (req, res, next) => {
 };
 
 exports.googleSignIn = async (req, res, next) => {
-    const { googleId, email, name, photo, familyName, givenName, idToken } = req.body;
+    const { googleId, idToken } = req.body || {};
     const startedAt = Date.now();
     console.log('[google] sign-in attempt', {
-        email,
         googleIdPresent: Boolean(googleId)
     });
+    if (!idToken) {
+        return res.status(400).json({ message: 'Google idToken is required' });
+    }
 
     try {
         // Verify the Google ID token
@@ -676,20 +686,39 @@ exports.googleSignIn = async (req, res, next) => {
         const googleUserId = payload['sub'];
 
         // Verify that the Google ID matches what we received
-        if (googleUserId !== googleId) {
+        if (googleId && googleUserId !== googleId) {
             return res.status(401).json({
                 message: 'Invalid Google authentication'
             });
         }
 
-        // Check if user already exists
-        let user = await prisma.user.findFirst({ where: { email: email.toLowerCase() } });
+        // Identity comes only from the verified token, never from the request
+        // body: a body email would let anyone sign in to someone else's account.
+        const email = String(payload.email || '').toLowerCase();
+        if (!email || payload.email_verified === false) {
+            return res.status(401).json({
+                message: 'Your Google account email is not verified'
+            });
+        }
+        const name = String(payload.name || req.body?.name || email.split('@')[0]);
+        const givenName = payload.given_name || req.body?.givenName;
+        const familyName = payload.family_name || req.body?.familyName;
+        const photo = payload.picture || req.body?.photo;
+
+        // Check if user already exists: by Google account first, then by email
+        let user = await prisma.user.findFirst({ where: { googleId: googleUserId } })
+            || await prisma.user.findFirst({ where: { email } });
 
         if (user) {
-            // User exists, check if they have Google ID associated
+            if (user.googleId && user.googleId !== googleUserId) {
+                // This email's account is linked to a different Google account
+                return res.status(401).json({
+                    message: 'This account is linked to a different Google account'
+                });
+            }
             if (!user.googleId) {
                 // Add Google ID to existing user
-                user = await prisma.user.update({ where: { id: user.id }, data: { googleId } });
+                user = await prisma.user.update({ where: { id: user.id }, data: { googleId: googleUserId } });
             }
 
             // Generate JWT token
@@ -711,8 +740,8 @@ exports.googleSignIn = async (req, res, next) => {
             let userData = await prisma.user.create({ data: {
                 firstName: givenName || name.split(' ')[0],
                 surname: familyName || name.split(' ').slice(1).join(' ') || '',
-                email: email.toLowerCase(),
-                googleId: googleId,
+                email,
+                googleId: googleUserId,
                 // No password for Google users
                 password: null,
                 // Set default values for required fields

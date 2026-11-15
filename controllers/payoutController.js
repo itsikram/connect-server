@@ -81,6 +81,8 @@ exports.createPayoutRequest = async (req, res, next) => {
   }
 };
 
+// Not mounted on any route (see Routes/walletRoutes.js): it trusts any
+// client-sent actionKey/referenceId, which lets a script mint coins.
 exports.claimActionReward = async (req, res, next) => {
   const actionKey = typeof req.body?.actionKey === "string" ? req.body.actionKey.trim() : "";
   const referenceId = typeof req.body?.referenceId === "string" ? req.body.referenceId.trim() : "";

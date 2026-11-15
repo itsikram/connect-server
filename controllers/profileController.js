@@ -271,7 +271,8 @@ exports.profilePost = async (req, res, next) => {
   }
 };
 exports.updateCoverPost = async (req, res, next) => {
-  let profileId = req.body.profile;
+  // Always the signed-in user's own profile; a profile id in the body is ignored.
+  let profileId = req.profile._id;
   let coverPicUrl = req.body.coverPicUrl;
   try {
   const previous = isValidId(profileId)
@@ -285,9 +286,12 @@ exports.updateCoverPost = async (req, res, next) => {
     if (previous?.coverPic && previous.coverPic !== coverPicUrl) {
       await deleteCloudinaryResources([previous.coverPic]);
     }
-    res.json(updateProfile);
+    if (!updateProfile) {
+      return res.status(404).json({ message: "Profile not found" });
+    }
+    return res.json(updateProfile);
   } catch (error) {
-    console.log(error);
+    return next(error);
   }
 };
 
@@ -353,6 +357,22 @@ exports.updateProfile = async (req, res, next) => {
       reqData.appMenuOrder = [...new Set(req.body.appMenuOrder)];
     }
 
+    // Usernames identify accounts (public profile URLs, face login), so two
+    // profiles must never share one.
+    if (reqData.username !== undefined && reqData.username !== req.profile.username) {
+      const username = typeof reqData.username === "string" ? reqData.username.trim() : "";
+      if (!username || username.length > 64) {
+        return res.status(400).json({ message: "Username must be 1-64 characters" });
+      }
+      const taken = await prisma.profile.count({
+        where: { username, NOT: { id: String(req.profile._id) } },
+      });
+      if (taken) {
+        return res.status(409).json({ message: "That username is already taken" });
+      }
+      reqData.username = username;
+    }
+
     if (req.body.firstName && req.body.surname) {
       reqData.fullName = req.body.firstName + " " + req.body.surname;
 
@@ -371,11 +391,12 @@ exports.updateProfile = async (req, res, next) => {
     });
     let updateProfile = await loadOwnProfile(req.profile._id);
 
-    if (updateProfile) {
-      res.json(updateProfile);
+    if (!updateProfile) {
+      return res.status(404).json({ message: "Profile not found" });
     }
+    return res.json(updateProfile);
   } catch (error) {
-    console.log(error);
+    return next(error);
   }
 };
 

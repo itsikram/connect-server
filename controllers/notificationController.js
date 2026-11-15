@@ -205,8 +205,10 @@ exports.getNotifications = async (req, res, next) => {
     Expires: "0",
   });
 
-  let receverId = req.query.receverId || req.query.profileId || req.profile._id;
+  // Only the signed-in user's own notifications; ids in the query are ignored.
+  let receverId = req.profile._id;
   let limit = Math.min(Number(req.query.limit) || 50, 100);
+  try {
   // Mongo's $ne also matched documents without a type.
   let notifications = await prisma.notification.findMany({
     where: {
@@ -221,6 +223,9 @@ exports.getNotifications = async (req, res, next) => {
     return res.status(200).json(notifications);
   }
   return res.status(400).json({ message: "Failed to get notificaiton" });
+  } catch (error) {
+    return next(error);
+  }
 };
 
 // HTTP-based new notifications polling
@@ -232,11 +237,8 @@ exports.getNewNotifications = async (req, res, next) => {
       Expires: "0",
     });
 
-    const { profileId } = req.query;
-
-    if (!profileId) {
-      return res.status(400).json({ notifications: [] });
-    }
+    // Only the signed-in user's own notifications; a profileId in the query is ignored.
+    const profileId = req.profile._id;
 
     const notifications = await prisma.notification.findMany({
       where: {

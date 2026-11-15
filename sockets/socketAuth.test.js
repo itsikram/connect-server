@@ -54,6 +54,27 @@ test("strict mode refuses a claimed profile without a valid token", async () => 
   assert.equal(expired.error.data.reason, "expired");
 });
 
+test("strict is the default: without SOCKET_AUTH_MODE=grace a claimed profile needs a token", async () => {
+  const saved = process.env.SOCKET_AUTH_MODE;
+  try {
+    for (const value of [undefined, "", "STRICT", "something-else"]) {
+      if (value === undefined) delete process.env.SOCKET_AUTH_MODE;
+      else process.env.SOCKET_AUTH_MODE = value;
+      const auth = createSocketAuth({
+        verifyToken: (token) => jwt.verify(token, SECRET).user_id,
+        loadProfileId: async (userId) => (userId === ALICE_USER ? ALICE : null),
+        log: () => {},
+      });
+      const { error } = await run(auth, fakeSocket({ query: { profile: ALICE } }));
+      assert.ok(error, `SOCKET_AUTH_MODE=${value}`);
+      assert.equal(error.data.code, "unauthorized");
+    }
+  } finally {
+    if (saved === undefined) delete process.env.SOCKET_AUTH_MODE;
+    else process.env.SOCKET_AUTH_MODE = saved;
+  }
+});
+
 test("grace mode keeps old clients (no token) working on their claimed profile", async () => {
   const { error, data } = await run(makeAuth("grace"), fakeSocket({ query: { profile: ALICE } }));
   assert.equal(error, undefined);

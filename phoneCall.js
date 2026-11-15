@@ -1,36 +1,45 @@
-exports.phoneCall =  (to, from = null, text = null, voice = { name: "Joanna", gender: "female" }) => {
+// Text-to-speech phone calls through Infobip. The API key comes from the
+// environment (INFOBIP_API_KEY); it must never be written in source code.
+const INFOBIP_TTS_URL = "https://api.infobip.com/tts/3/advanced";
+
+const isConfigured = () => Boolean(String(process.env.INFOBIP_API_KEY || "").trim());
+
+exports.isConfigured = isConfigured;
+
+exports.phoneCall = (to, from = null, text = null, voice = { name: "Joanna", gender: "female" }) => {
+    const apiKey = String(process.env.INFOBIP_API_KEY || "").trim();
+    if (!apiKey) {
+        console.warn("[phone-call] INFOBIP_API_KEY is not set; call skipped");
+        return;
+    }
+    if (!to) {
+        console.warn("[phone-call] no destination number; call skipped");
+        return;
+    }
     try {
-        let myHeaders = new Headers();
-        myHeaders.append("Authorization", "App 4f60e600bb12fd9541288438ae4a4cc9-99c88824-5ca1-45c3-9064-16ab465862be");
-        myHeaders.append("Content-Type", "application/json");
-        myHeaders.append("Accept", "application/json");
-
-        const raw = JSON.stringify({
-            "messages": [
-                {
-                    "destinations": [{ "to": to || "8801581400711" }],
-                    "from": from || "38515507799",
-                    "language": "en",
-                    "text": text || "You have a new call from " + from,
-                    "voice": voice
-                }
-            ]
-        });
-
-        const requestOptions = {
-            method: "POST",
-            headers: myHeaders,
-            body: raw,
-            redirect: "follow"
+        const sender = from || process.env.INFOBIP_FROM || null;
+        const message = {
+            destinations: [{ to: String(to) }],
+            language: "en",
+            text: text || (sender ? "You have a new call from " + sender : "You have a new call"),
+            voice,
         };
+        if (sender) message.from = String(sender);
 
-        fetch("https://api.infobip.com/tts/3/advanced", requestOptions)
+        fetch(INFOBIP_TTS_URL, {
+            method: "POST",
+            headers: {
+                Authorization: `App ${apiKey}`,
+                "Content-Type": "application/json",
+                Accept: "application/json",
+            },
+            body: JSON.stringify({ messages: [message] }),
+            redirect: "follow",
+        })
             .then((response) => response.text())
-            .then((result) => console.log(result))
-            .catch((error) => console.error(error));
-
-
+            .then((result) => console.log("[phone-call] infobip response", result))
+            .catch((error) => console.error("[phone-call] infobip error", error));
     } catch (error) {
         console.error(error);
     }
-}
+};

@@ -110,7 +110,17 @@ module.exports = function messageSocket(io, socket, profileId) {
     if (!isValidObjectId(profileId)) return;
     const myProfileRow = await prisma.profile.findUnique({
       where: { id: String(profileId) },
-      select: { id: true, connects: { select: { connectDoc: true } } },
+      // Push tokens and browser ids belong to the connect, not to us.
+      select: {
+        id: true,
+        connects: {
+          select: {
+            connectDoc: {
+              omit: { deviceTokens: true, browserIds: true, webPushSubscriptions: true, pendingConnectRelations: true, settings: true },
+            },
+          },
+        },
+      },
     });
 
     if (!myProfileRow) return;

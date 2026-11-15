@@ -131,35 +131,34 @@ exports.deletePost = async (req, res, next) => {
     try {
         let profileId = req.profile._id
         let postId = req.body.postId
-        let authorId = req.body.authorId;
 
-        if (sameId(profileId, authorId) && isValidId(postId)) {
-            const { comments, replies, commentIds } = await deleteCommentsWhere({ post: String(postId) })
-            const deletePost = await prisma.post.findUnique({ where: { id: String(postId) } })
-
-            if (deletePost) {
-                await removeContent('post', deletePost.id)
-                await prisma.$transaction([
-                    prisma.cmntReply.deleteMany({ where: { parent: { in: commentIds } } }),
-                    prisma.comment.deleteMany({ where: { post: deletePost.id } }),
-                ])
-                await deleteCloudinaryResources([
-                    deletePost.photos,
-                    ...(Array.isArray(deletePost.gallery) ? deletePost.gallery : []),
-                    ...comments.map((comment) => comment.attachment),
-                    ...replies.map((reply) => reply.attachment),
-                ])
-                res.status(200).json({
-                    message: 'Post Deleted Successfully'
-                })
-            }
-
-
+        if (!isValidId(postId)) {
+            return res.status(400).json({ message: 'Invalid post id' })
+        }
+        // Ownership comes from the post itself, never from the request body.
+        const deletePost = await prisma.post.findUnique({ where: { id: String(postId) } })
+        if (!deletePost) {
+            return res.status(404).json({ message: 'Post not found' })
+        }
+        if (!sameId(deletePost.author, profileId)) {
+            return res.status(403).json({ message: 'You can only delete your own posts' })
         }
 
-
-
-
+        const { comments, replies, commentIds } = await deleteCommentsWhere({ post: deletePost.id })
+        await removeContent('post', deletePost.id)
+        await prisma.$transaction([
+            prisma.cmntReply.deleteMany({ where: { parent: { in: commentIds } } }),
+            prisma.comment.deleteMany({ where: { post: deletePost.id } }),
+        ])
+        await deleteCloudinaryResources([
+            deletePost.photos,
+            ...(Array.isArray(deletePost.gallery) ? deletePost.gallery : []),
+            ...comments.map((comment) => comment.attachment),
+            ...replies.map((reply) => reply.attachment),
+        ])
+        return res.status(200).json({
+            message: 'Post Deleted Successfully'
+        })
     } catch (error) {
         next(error)
     }
@@ -249,6 +248,14 @@ exports.getSinglePost = async (req, res, next) => {
 exports.updatePost = async (req, res, next) => {
     let { postId, caption, feelings, location, photos, audience, gallery } = req.body
     try {
+        const existing = isValidId(postId) ? await prisma.post.findUnique({ where: { id: String(postId) }, select: { id: true, author: true } }) : null
+        if (!existing) {
+            return res.status(404).json({ message: 'Post not found' })
+        }
+        if (!sameId(existing.author, req.profile._id)) {
+            return res.status(403).json({ message: 'You can only edit your own posts' })
+        }
+
         let updateData = {}
         let mentions = null
 
@@ -291,10 +298,6 @@ exports.updatePost = async (req, res, next) => {
             updateData.audience = parseInt(audience, 10)
         }
 
-        const existing = isValidId(postId) ? await prisma.post.findUnique({ where: { id: String(postId) }, select: { id: true } }) : null
-        if (!existing) {
-            return res.status(404).json({ message: 'Post not found' })
-        }
         await prisma.post.update({ where: { id: existing.id }, data: updateData })
         if (mentions) await replaceMentions(existing.id, mentions)
         enqueueCategorization(existing.id, 'post')

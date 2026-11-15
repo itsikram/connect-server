@@ -92,12 +92,12 @@ const escapeHtml = (value) =>
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
 
-exports.signUp = async (req, res, next) => {
-    console.log('SignUp endpoint hit');
-    console.log('Request body:', req.body);
-    console.log('JWT_SECRET_KEY exists:', !!process.env.JWT_SECRET_KEY);
+const ADMIN_ACCOUNT_ROLES = ['superAdmin', 'admin', 'moderator', 'viewer'];
 
-    let { fullName, email, password, role } = req.body
+// Runs after canCreateAdmin: the caller is a superAdmin, or this is the first
+// admin on an empty database (req.bootstrapAdmin), which is always a superAdmin.
+exports.signUp = async (req, res, next) => {
+    let { fullName, email, password, role } = req.body || {}
 
     try {
         // Validate required fields
@@ -105,6 +105,14 @@ exports.signUp = async (req, res, next) => {
             return res.status(400).json({
                 message: 'Full name, email, and password are required'
             });
+        }
+
+        if (req.bootstrapAdmin) {
+            role = 'superAdmin';
+        } else if (role === undefined || role === null || role === '') {
+            role = 'admin';
+        } else if (!ADMIN_ACCOUNT_ROLES.includes(role)) {
+            return res.status(400).json({ message: `Role must be one of: ${ADMIN_ACCOUNT_ROLES.join(', ')}` });
         }
 
         // Check if admin already exists
@@ -124,9 +132,21 @@ exports.signUp = async (req, res, next) => {
                 fullName,
                 email: email.toLowerCase(),
                 password: hashPassword,
-                role: role || 'admin'
+                role
             }
         });
+
+        // A super admin creating someone else keeps their own session, so
+        // the new admin's token is only returned for the first account.
+        if (!req.bootstrapAdmin) {
+            return res.status(201).json({
+                message: 'Admin account created successfully',
+                admin_id: adminData._id,
+                fullName: adminData.fullName,
+                email: adminData.email,
+                role: adminData.role,
+            });
+        }
 
         // Generate JWT token
         let accessToken = jwt.sign({
@@ -151,10 +171,7 @@ exports.signUp = async (req, res, next) => {
 }
 
 exports.login = async (req, res, next) => {
-    console.log('Login endpoint hit');
-    console.log('Request body:', req.body);
-
-    let { email, password } = req.body
+    let { email, password } = req.body || {}
 
     try {
         // Validate required fields

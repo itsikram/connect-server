@@ -4,6 +4,7 @@ const {uploadImage} = require('../controllers/uploadControllers')
 const {listResources, deleteResources, migrateResources, migrateConfiguredResources, getMigrationStatus} = require('../controllers/cloudinaryController')
 const isAdminAuth = require('../middlewares/isAdminAuth');
 const isAdminRole = require('../middlewares/isAdminRole');
+const canCreateAdmin = require('../middlewares/canCreateAdmin');
 const {
   listPayments,
   approvePayment,
@@ -21,9 +22,10 @@ const {
 } = require('../controllers/adminSubscriptionController');
 const { listPayouts, approvePayout, rejectPayout } = require("../controllers/adminPayoutController");
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
-Router.post('/signup',signUp)
+// Only a logged-in superAdmin can create admins (or anyone on an empty database)
+Router.post('/signup', canCreateAdmin, signUp)
 Router.post('/login',login)
 Router.post('/forgot-password', forgotPassword)
 Router.post('/reset-password/:token', resetPassword)
@@ -37,25 +39,25 @@ Router.post('/watches/bulk-update', isAdminAuth, bulkUpdateWatches)
 Router.post('/watches/bulk-delete', isAdminAuth, bulkDeleteWatches)
 Router.post('/stories/bulk-delete', isAdminAuth, bulkDeleteStories)
 Router.post('/reports/bulk-status', isAdminAuth, bulkUpdateReportStatus)
-Router.get('/profiles',getProfiles)
-Router.get('/profile/:id',getProfile)
-Router.put('/profile/:id',updateProfile)
+Router.get('/profiles', isAdminAuth, getProfiles)
+Router.get('/profile/:id', isAdminAuth, getProfile)
+Router.put('/profile/:id', isAdminRole, updateProfile)
 // Admin set password for a user (by profile id) without current password
-Router.post('/profile/:id/set-password', setUserPassword)
-Router.delete('/profile/:id',deleteProfile)
-Router.get('/posts',getPosts)
-Router.get('/posts/:id',getPost)
-Router.put('/posts/:id',updatePost)
-Router.delete('/posts/:id',deletePost)
-Router.get('/watches',getWatches)
-Router.get('/watches/:id',getWatch)
-Router.put('/watches/:id',updateWatch)
-Router.delete('/watches/:id',deleteWatch)
-Router.get('/stories',getStories)
-Router.delete('/stories/:id',deleteStory)
-Router.post('/upload',upload.single('image'),uploadImage)
+Router.post('/profile/:id/set-password', isAdminRole, setUserPassword)
+Router.delete('/profile/:id', isAdminRole, deleteProfile)
+Router.get('/posts', isAdminAuth, getPosts)
+Router.get('/posts/:id', isAdminAuth, getPost)
+Router.put('/posts/:id', isAdminAuth, updatePost)
+Router.delete('/posts/:id', isAdminAuth, deletePost)
+Router.get('/watches', isAdminAuth, getWatches)
+Router.get('/watches/:id', isAdminAuth, getWatch)
+Router.put('/watches/:id', isAdminAuth, updateWatch)
+Router.delete('/watches/:id', isAdminAuth, deleteWatch)
+Router.get('/stories', isAdminAuth, getStories)
+Router.delete('/stories/:id', isAdminAuth, deleteStory)
+Router.post('/upload', isAdminAuth, upload.single('image'), uploadImage)
 // Admin summary stats and recent activities
-Router.get('/stats', getStats)
+Router.get('/stats', isAdminAuth, getStats)
 Router.get('/cloudinary/resources', isAdminAuth, listResources)
 Router.post('/cloudinary/resources/delete', isAdminAuth, deleteResources)
 Router.post('/cloudinary/migrate', isAdminAuth, (req, res, next) => {
@@ -72,9 +74,9 @@ Router.post('/cloudinary/migrate-configured', isAdminAuth, (req, res, next) => {
 })
 Router.get('/cloudinary/migrate/:jobId', isAdminAuth, getMigrationStatus)
 // Reports
-Router.get('/reports/posts', getReportedPosts)
-Router.get('/reports/profiles', getReportedProfiles)
-Router.put('/reports/:id/status', updateReportStatus)
+Router.get('/reports/posts', isAdminAuth, getReportedPosts)
+Router.get('/reports/profiles', isAdminAuth, getReportedProfiles)
+Router.put('/reports/:id/status', isAdminAuth, updateReportStatus)
 Router.get('/payments', isAdminRole, listPayments)
 Router.post('/payments/:id/approve', isAdminRole, approvePayment)
 Router.post('/payments/:id/reject', isAdminRole, rejectPayment)

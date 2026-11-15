@@ -88,8 +88,11 @@ module.exports = function socketHandler(io) {
             presence.attachSocket(io, socket, null);
         }
 
-        // View post tracking
-        socket.on('viewPost', async ({ visitorId, postId }) => {
+        // View post tracking. The viewer is always this socket's own
+        // profile; a visitorId sent by the client is ignored.
+        socket.on('viewPost', async ({ postId } = {}) => {
+            const visitorId = profileId;
+            if (!visitorId) return;
             try {
                 if (isValidId(postId) && isValidId(visitorId)) {
                     const postExists = await prisma.post.count({ where: { id: String(postId) } });
@@ -108,10 +111,11 @@ module.exports = function socketHandler(io) {
         });
 
         // bump notification
-        socket.on('bump', async ({ connectProfile, myProfile }) => {
+        socket.on('bump', async ({ connectProfile } = {}) => {
+            if (!profileId) return;
             try {
-                const fromId = myProfile || profileId;
-                await sendBump(io, { connectProfile, myProfile: fromId });
+                // Always from this socket's own profile
+                await sendBump(io, { connectProfile, myProfile: profileId });
             } catch (err) {
                 console.error('bump emit error', err);
             }
@@ -132,9 +136,14 @@ module.exports = function socketHandler(io) {
         });
 
         // Location update handler
-        socket.on('location_update', async ({ profileId: senderProfileId, location }) => {
+        // Only this socket's own profile can update its location; a
+        // profileId sent by the client is ignored.
+        socket.on('location_update', async ({ location } = {}) => {
+            const senderProfileId = profileId;
             try {
-                if (!senderProfileId || !location) {
+                if (!senderProfileId || !location
+                    || !Number.isFinite(Number(location.latitude))
+                    || !Number.isFinite(Number(location.longitude))) {
                     console.error('Invalid location_update data:', { senderProfileId, location });
                     return;
                 }

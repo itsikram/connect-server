@@ -4,11 +4,13 @@
 // query is never trusted over it.
 //
 // SOCKET_AUTH_MODE:
-//   grace (default)  sockets without a valid token keep the old behaviour (the
-//                    claimed `profile` id), so app builds from before tokens
-//                    were sent keep working. Each such profile is logged once.
-//   strict           a claimed profile without a valid token is refused
+//   strict (default) a claimed profile without a valid token is refused
 //                    (connect_error "unauthorized", err.data.code set).
+//   grace            sockets without a valid token keep the old behaviour (the
+//                    claimed `profile` id), so app builds from before tokens
+//                    were sent (before Oct 17 2026) keep working. Unsafe:
+//                    anyone can then connect as any profile and read its
+//                    messages. Only set it briefly, on purpose.
 // Sockets that claim no profile at all connect anonymously in both modes.
 
 const jwt = require("jsonwebtoken");
@@ -43,7 +45,7 @@ const reasonOf = (error) => {
 function createSocketAuth({
   verifyToken = (token) => jwt.verify(token, process.env.JWT_SECRET_KEY).user_id,
   loadProfileId = defaultLoadProfileId,
-  mode = () => String(process.env.SOCKET_AUTH_MODE || "grace").toLowerCase(),
+  mode = () => (String(process.env.SOCKET_AUTH_MODE || "").trim().toLowerCase() === "grace" ? "grace" : "strict"),
   log = (message, data) => console.warn(message, data),
 } = {}) {
   const graceLogged = new Set();

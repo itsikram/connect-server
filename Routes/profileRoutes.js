@@ -36,14 +36,14 @@ Router.get("/online", isAuth, getOnlineStatus); // Backwards-compatible online s
 Router.post("/", isAuth, profilePost);
 Router.post(
   "/update/coverPic",
-  upload.single("image"),
   isAuth,
+  upload.single("image"),
   updateCoverPost,
 );
 Router.post(
   "/update/profilePic",
-  upload.single("image"),
   isAuth,
+  upload.single("image"),
   updateProfilePic,
 );
 Router.post("/update/bio", isAuth, updateBioPost);

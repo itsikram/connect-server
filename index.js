@@ -45,6 +45,8 @@ const {
   attachPeerRelayRoute,
 } = require("./utils/peerSocketAdapter");
 const isAuth = require("./middlewares/isAuth");
+// Diagnostics and test pushes below need an admin token (Authorization header).
+const isAdminRole = require("./middlewares/isAdminRole");
 const { sendBump } = require("./controllers/messageController");
 const {
   getCobaltConfig,
@@ -561,7 +563,7 @@ app.get("/egress-ip", async (req, res) => {
 // Shows which environment variables the server actually sees and where each
 // came from (host panel vs server/.env). Values are masked; URLs show only
 // scheme and host so no credentials are exposed.
-app.get("/env-check", (req, res) => {
+app.get("/env-check", isAdminRole, (req, res) => {
   const fs = require("fs");
   const envPath = path.join(__dirname, ".env");
   let fileVars = {};
@@ -618,7 +620,7 @@ app.get("/env-check", (req, res) => {
 
 // Step-by-step MySQL reachability check (DNS, TCP, query) so a host that
 // blocks the database shows which step fails. No credentials are returned.
-app.get("/db-diag", async (req, res) => {
+app.get("/db-diag", isAdminRole, async (req, res) => {
   const net = require("net");
   const withTimeout = (promise, ms) =>
     Promise.race([
@@ -715,14 +717,18 @@ app.post("/api/youtube/cobalt-url", (req, res) => {
   return res.json({ ok: true, ...getCobaltConfig() });
 });
 
-app.get("/api/face-service-config", (req, res) => {
+// Signed-in clients get the face service URL and the token for its
+// expression socket. That token is FACE_SERVICE_SOCKET_TOKEN, never
+// FACE_SERVICE_API_KEY: the API key lets its holder register faces for any
+// username, so only this server may hold it.
+app.get("/api/face-service-config", isAuth, (req, res) => {
   const config = getFaceServiceConfig();
   const url = config.url || "http://localhost:5001";
   res.json({
     ...config,
     url,
     source: config.source === "unset" ? "default" : config.source,
-    socketToken: String(process.env.FACE_SERVICE_API_KEY || "").trim(),
+    socketToken: String(process.env.FACE_SERVICE_SOCKET_TOKEN || "").trim(),
   });
 });
 
@@ -976,7 +982,7 @@ app.get("/connect.mobileconfig", (req, res) => {
 //   return res.json({ message: 'working fine' });
 // });
 
-app.get("/fcm", async (req, res) => {
+app.get("/fcm", isAdminRole, async (req, res) => {
   const token =
     (req.query.token && String(req.query.token).trim()) ||
     (process.env.TEST_FCM_TOKEN || "").trim();

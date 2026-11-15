@@ -7,8 +7,11 @@ dotenv.config();
 const {getData,updateData} = require('../controllers/connectController')
 const { getClientServerConfig } = require('../controllers/serverSettingsController')
 const phoneCall = require('../phoneCall')
+const isAdminRole = require('../middlewares/isAdminRole')
+const crypto = require('crypto')
 Router.get('/',getData)
-Router.put('/',updateData)
+// App-wide settings (APK link, maintenance mode...): admins only
+Router.put('/', isAdminRole, updateData)
 // Live servers the web and Expo clients should use (set in admin → Settings → Servers).
 Router.get('/server-config', getClientServerConfig)
 
@@ -49,7 +52,14 @@ Router.get('/ios-profile', (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     return res.end(profile);
 });
-Router.get('/phone-call',(req, res) => {
+// Places a paid phone call, so admins only.
+Router.get('/phone-call', isAdminRole, (req, res) => {
+    if (!phoneCall.isConfigured()) {
+        return res.status(503).json({ message: 'Phone calls are not configured (INFOBIP_API_KEY)' })
+    }
+    if (!req.query.to) {
+        return res.status(400).json({ message: 'to is required' })
+    }
     phoneCall.phoneCall(req.query.to, req.query.from || null, req.query.text)
     return res.status(200).json({message: 'Phone call sent'})
 });
@@ -63,9 +73,17 @@ Router.get("/passcheck", async (req, res) => {
                 message: "Password is required"
             });
         }
-        console.log('passes',pass, process.env.GOLDUPPASS)
+        const expected = String(process.env.GOLDUPPASS || '');
+        if (!expected) {
+            return res.status(503).json({
+                success: false,
+                message: "Password check is not configured"
+            });
+        }
 
-        if (pass === (process.env.GOLDUPPASS || 'testpass000')) {
+        const a = Buffer.from(String(pass));
+        const b = Buffer.from(expected);
+        if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
             return res.json({
                 success: true,
                 message: "Password matched"
