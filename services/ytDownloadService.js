@@ -3,7 +3,7 @@ const path = require("path");
 const axios = require("axios");
 const { v4: uuidv4 } = require("uuid");
 const ytdl = require("@distube/ytdl-core");
-const { withCloudinaryAccount } = require("../utils/cloudinary");
+const { storeMedia } = require("../utils/mediaStorage");
 const { prisma, isValidId, pickModelFields } = require("../utils/db");
 const { isMySQLReady } = require("../config/prisma");
 const generateAndUploadThumbnail = require("../utils/generateThumbnail");
@@ -222,19 +222,14 @@ const downloadToFileYtdlCore = (info, format, filePath, agent, onProgress) =>
     stream.pipe(writeStream);
   });
 
-const uploadVideoToCloudinary = (filePath, folder = "yt-downloads") =>
-  withCloudinaryAccount("video", (cloudinary) =>
-    new Promise((resolve, reject) => {
-      cloudinary.uploader.upload(
-        filePath,
-        { resource_type: "video", folder },
-        (error, result) => {
-          if (error) return reject(error);
-          resolve(result);
-        },
-      );
-    }),
-  );
+// Google Drive when Drive storage is on; Cloudinary only as the fallback
+const uploadDownloadedMedia = (filePath, folder = "yt-downloads", audioOnly = false) =>
+  storeMedia({
+    filePath,
+    folder,
+    kind: audioOnly ? "audio" : "video",
+    mimeType: audioOnly ? undefined : "video/mp4",
+  });
 
 const createWatchFromVideo = async (videoUrl, caption, profileId, youtubeId) => {
   const watchCaption =
@@ -705,15 +700,15 @@ const runDownloadJob = async ({
       download_title: finalTitle,
     });
 
-    // Always upload to Cloudinary — do not serve from local/public disk
+    // Upload to media storage (Google Drive, or Cloudinary if Drive is off) — not served from local disk
     const uploadFolder = shouldPostWatch
       ? "watch-videos"
       : audioOnly
         ? "yt-downloads-audio"
         : "yt-downloads";
-    const uploadResult = await uploadVideoToCloudinary(filePath, uploadFolder);
+    const uploadResult = await uploadDownloadedMedia(filePath, uploadFolder, audioOnly);
     if (!uploadResult?.secure_url) {
-      throw new Error("Failed to upload video to Cloudinary");
+      throw new Error("Failed to upload the downloaded file to media storage");
     }
 
     const fileUrl = uploadResult.secure_url;
@@ -766,7 +761,7 @@ const runDownloadJob = async ({
       watch_id: watchId,
       watch_caption: watchPosted ? finalTitle : undefined,
       source: result.source,
-      storage: "cloudinary",
+      storage: uploadResult.provider || "gdrive",
       download_type: audioOnly ? "audio" : "video",
     });
   } catch (error) {

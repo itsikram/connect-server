@@ -3,12 +3,11 @@ const path = require('path');
 const axios = require('axios');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
-const { withCloudinaryAccount } = require('./cloudinary');
+const { storeMedia } = require('./mediaStorage');
 const { v4: uuidv4 } = require('uuid');
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
-// Cloudinary config
 async function generateAndUploadThumbnail(videoUrl) {
   const tempDir = path.join(__dirname, 'temp');
   fs.mkdirSync(tempDir, { recursive: true });
@@ -43,13 +42,13 @@ try {
       });
   });
 
-  // Step 3: Upload to Cloudinary
-  const result = await withCloudinaryAccount('image', (cloudinary) =>
-    cloudinary.uploader.upload(thumbnailPath, {
-      folder: 'video-thumbnails',
-      resource_type: 'image',
-    }),
-  );
+  // Step 3: Upload to media storage (Google Drive, Cloudinary only if Drive is off)
+  const result = await storeMedia({
+    filePath: thumbnailPath,
+    mimeType: 'image/png',
+    kind: 'thumbnail',
+    folder: 'video-thumbnails',
+  });
 
   // Step 4: Cleanup
   fs.unlinkSync(videoPath);

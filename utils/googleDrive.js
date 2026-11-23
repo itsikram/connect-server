@@ -243,9 +243,14 @@ const parseDriveMediaUrl = (value) => {
     return match ? { account: match[1], fileId: match[2] } : null
 }
 
+// `req` may be null for background jobs; then the configured public base URL is used
 const buildMediaUrl = async (req, { account, fileId, name }) => {
     const { publicBaseUrl } = await getEffectiveDriveConfig()
-    const base = (publicBaseUrl || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '')
+    const fallback = req
+        ? `${req.protocol}://${req.get('host')}`
+        : (process.env.PUBLIC_SERVER_URL || '')
+    const base = (publicBaseUrl || fallback).replace(/\/+$/, '')
+    if (!base) throw new Error('Set the Drive public base URL (admin) or MEDIA_PUBLIC_BASE_URL to build media links')
     const safeName = encodeURIComponent(String(name || 'file').replace(/[\\/]/g, '_'))
     return `${base}/api/media/${account}/${fileId}/${safeName}`
 }

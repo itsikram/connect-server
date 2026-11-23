@@ -109,7 +109,8 @@ const getEffectiveDriveConfig = async () => {
     enabled:
       typeof doc?.uploadsEnabled === "boolean"
         ? doc.uploadsEnabled
-        : String(process.env.MEDIA_STORAGE || "").toLowerCase() === "gdrive",
+        : // Google Drive is the default; Cloudinary only when chosen explicitly
+          String(process.env.MEDIA_STORAGE || "gdrive").toLowerCase() !== "cloudinary",
     clientId: doc?.clientId || process.env.GDRIVE_CLIENT_ID || "",
     clientSecret: doc?.clientSecret || process.env.GDRIVE_CLIENT_SECRET || "",
     publicBaseUrl: doc?.publicBaseUrl || process.env.MEDIA_PUBLIC_BASE_URL || "",

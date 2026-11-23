@@ -1,5 +1,6 @@
 const axios = require("axios");
-const { withCloudinaryAccount } = require("../utils/cloudinary");
+const { storeMedia } = require("../utils/mediaStorage");
+const { isDriveStorageEnabled } = require("../utils/googleDrive");
 
 /**
  * Provider-neutral image generation boundary. A provider can be configured
@@ -32,15 +33,18 @@ const generateImage = async ({ prompt, provider = "configured" }) => {
   const hasCloudinary = process.env.CLOUDINARY_CLOUD_NAME &&
     process.env.CLOUDINARY_API_KEY &&
     process.env.CLOUDINARY_API_SECRET;
-  if (!hasCloudinary) return { imageUrl: String(sourceUrl).slice(0, 1000), provider: resolvedProvider };
+  const driveOn = await isDriveStorageEnabled().catch(() => false);
+  if (!driveOn && !hasCloudinary) return { imageUrl: String(sourceUrl).slice(0, 1000), provider: resolvedProvider };
 
-  const uploaded = await withCloudinaryAccount("image", (cloudinary) =>
-    cloudinary.uploader.upload(sourceUrl, {
-      folder: "ai-auto-posts",
-      resource_type: "image",
-    }),
-  );
-  if (!uploaded?.secure_url) throw new Error("Generated image could not be stored in Cloudinary");
+  // Google Drive when Drive storage is on; Cloudinary only as the fallback
+  const uploaded = await storeMedia({
+    sourceUrl,
+    mimeType: "image/jpeg",
+    name: "ai-image.jpg",
+    kind: "ai-image",
+    folder: "ai-auto-posts",
+  });
+  if (!uploaded?.secure_url) throw new Error("Generated image could not be stored in media storage");
   return { imageUrl: uploaded.secure_url, provider: resolvedProvider };
 };
 

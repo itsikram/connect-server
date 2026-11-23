@@ -121,6 +121,21 @@ Router.get('/gdrive/callback', driveSettings.connectCallback);
 Router.patch('/gdrive/accounts/:name', isAdminAuth, driveSettings.setAccountEnabled);
 Router.delete('/gdrive/accounts/:name', isAdminAuth, driveSettings.removeAccount);
 
+// Copy every Cloudinary file the database links to into Google Drive and relink it
+const cloudinaryToDrive = require('../utils/cloudinaryToDrive');
+Router.get('/gdrive/migrate-cloudinary', isAdminAuth, (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({ job: cloudinaryToDrive.getMigrationStatus() });
+});
+Router.post('/gdrive/migrate-cloudinary', isAdminAuth, async (req, res) => {
+    try {
+        const job = await cloudinaryToDrive.startMigration({ dryRun: req.body?.dryRun === true });
+        res.status(202).json({ job });
+    } catch (error) {
+        res.status(error.status || 500).json({ message: error.message || 'Could not start the migration' });
+    }
+});
+
 // Latest APK, stored in Google Drive: the browser uploads straight to Drive,
 // or the server copies it from a link
 const apk = require('../controllers/apkController');
