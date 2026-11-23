@@ -134,8 +134,12 @@ const pickFormat = (formats, targetHeight) => {
   );
 };
 
+// Behind the load balancer (PEER_SERVERS) a progress poll can reach another
+// server than the one downloading, so progress goes through the database.
+const sharesProgressInDb = () => isRenderHost() || Boolean(process.env.PEER_SERVERS);
+
 const persistProgressToDb = (progressId, data) => {
-  if (!isRenderHost() || !isMySQLReady()) return;
+  if (!sharesProgressInDb() || !isMySQLReady()) return;
 
   const id = String(progressId);
   const fields = pickModelFields("YtDownloadProgress", data);
@@ -159,7 +163,7 @@ const getProgress = async (progressId) => {
   const cached = JOB_PROGRESS.get(progressId);
   if (cached) return cached;
 
-  if (!isRenderHost() || !isMySQLReady()) {
+  if (!sharesProgressInDb() || !isMySQLReady()) {
     return null;
   }
 
@@ -168,9 +172,8 @@ const getProgress = async (progressId) => {
     if (!doc) return null;
 
     const { id: _rowId, _id, createdAt, updatedAt, ...stored } = doc;
-    const data = Object.fromEntries(Object.entries(stored).filter(([, value]) => value !== null));
-    JOB_PROGRESS.set(progressId, data);
-    return data;
+    // Not kept in JOB_PROGRESS: another server may still be updating this job.
+    return Object.fromEntries(Object.entries(stored).filter(([, value]) => value !== null));
   } catch (err) {
     console.warn("[yt-download] progress load failed:", err.message);
     return null;
@@ -372,7 +375,103 @@ const downloadViaCobaltBackend = async ({
   }
 };
 
+const DEFAULT_LIVE_YT_SERVER_URL = "https://mystorefrontsigns.com/ytv-dl";
+const getLiveYtServerUrl = () =>
+  String(process.env.YT_DL_LIVE_SERVER_URL || DEFAULT_LIVE_YT_SERVER_URL).replace(/\/+$/, "");
+
+// Admin setting (feature flag ytDownloadUseLiveServer): which server downloads from YouTube.
+const shouldUseLiveYtServer = async () => {
+  try {
+    const { loadFeatureFlags } = require("../controllers/monetizationSettingsController");
+    const flags = await loadFeatureFlags();
+    return flags.ytDownloadUseLiveServer === true;
+  } catch (err) {
+    console.warn("[yt-download] Could not read downloader server setting:", err.message);
+    return false;
+  }
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Download through the live ytv-dl server (FastAPI + yt-dlp on GoDaddy hosting):
+ * start a job there, poll its progress, then copy the finished file here so the
+ * normal Cloudinary upload / Watch posting continues unchanged.
+ */
+const downloadViaLiveYtServer = async ({ progressId, url, height, audioOnly }) => {
+  const base = getLiveYtServerUrl();
+  const report = (pct, stage = "downloading", extra = {}) =>
+    updateProgress(progressId, { status: "running", stage, pct, source: "live-server", ...extra });
+
+  console.log(`[yt-download] Downloading via live server ${base}`);
+  report(5, "starting");
+
+  const params = {
+    url,
+    ext: audioOnly ? "mp3" : "mp4",
+    link_only: true,
+    async_job: true,
+    fast: true,
+  };
+  if (height && !audioOnly) params.height = height;
+
+  const start = await axios.get(`${base}/download`, { params, timeout: 60000 });
+  const remoteId = start.data?.progress_id;
+  if (!remoteId) throw new Error("Live YouTube server did not return a job id");
+
+  const deadline = Date.now() + 30 * 60 * 1000;
+  let remote = null;
+  let failures = 0;
+  while (Date.now() < deadline) {
+    await sleep(2000);
+    try {
+      const res = await axios.get(`${base}/progress/${encodeURIComponent(remoteId)}`, {
+        timeout: 20000,
+        validateStatus: (s) => s < 500,
+      });
+      failures = 0;
+      remote = res.data || {};
+    } catch (err) {
+      if (++failures >= 5) throw new Error(`Live YouTube server not responding: ${err.message}`);
+      continue;
+    }
+    if (remote.status === "completed" && remote.file_url) break;
+    if (remote.status === "error" || remote.status === "failed" || remote.error) {
+      throw new Error(remote.error || remote.detail || "Live YouTube server download failed");
+    }
+    const remotePct = Number(remote.pct) || 0;
+    report(Math.min(80, 5 + Math.round(remotePct * 0.75)), remote.stage === "postprocessing" ? "processing" : "downloading");
+  }
+  if (!remote || remote.status !== "completed" || !remote.file_url) {
+    throw new Error("Live YouTube server timed out");
+  }
+
+  report(82, "transferring");
+  fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
+  const ext = path.extname(new URL(remote.file_url).pathname) || (audioOnly ? ".mp3" : ".mp4");
+  const filePath = path.join(DOWNLOAD_DIR, `${progressId}_live${ext}`);
+  const fileRes = await axios.get(remote.file_url, { responseType: "stream", timeout: 0 });
+  await new Promise((resolve, reject) => {
+    const out = fs.createWriteStream(filePath);
+    fileRes.data.on("error", reject);
+    out.on("error", reject);
+    out.on("finish", resolve);
+    fileRes.data.pipe(out);
+  });
+
+  const title = String(remote.filename || "")
+    .replace(/\.[a-z0-9]+$/i, "")
+    .replace(/-[0-9a-f]{8}$/i, "")
+    .replace(/_/g, " ")
+    .trim();
+  return { title: title || (audioOnly ? "audio" : "video"), source: "live-server", filePath };
+};
+
 const downloadVideo = async ({ progressId, url, height, audioOnly }) => {
+  if (await shouldUseLiveYtServer()) {
+    return downloadViaLiveYtServer({ progressId, url, height, audioOnly });
+  }
+
   let lastError = null;
   const cobaltEnabled = process.env.YT_DL_DISABLE_COBALT !== "true";
   const cobaltUrl = getCobaltUrl();
@@ -845,4 +944,5 @@ module.exports = {
   isRenderHost,
   searchYouTubeVideos,
   extractYouTubeVideoId,
+  downloadViaLiveYtServer,
 };

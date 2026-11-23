@@ -7,6 +7,9 @@ const FEATURE_FLAG_NAMES = [
   "manualPaymentEnabled",
   "recoveryEnabled",
   "ytDownloadEnabled",
+  // false: download on this server (yt-dlp / Cobalt). true: use the live ytv-dl
+  // server on GoDaddy hosting (YT_DL_LIVE_SERVER_URL).
+  "ytDownloadUseLiveServer",
 ];
 
 // Free, core features are on unless an admin turns them off.
