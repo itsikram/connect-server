@@ -33,12 +33,33 @@ const findMessage = async (id) =>
     (isValidObjectId(id) ? prisma.message.findUnique({ where: { id: String(id) } }) : null);
 const findMessageWithParent = async (where) =>
     populated(await prisma.message.findFirst({ where, include: { parentDoc: true } }), 'parent');
-// Sender profile sent along with a new message; never the password hash or reset token.
+// Sender profile sent along with a new message to the receiver, who may be a
+// stranger: public fields only (same as sockets/messageSocket.js).
+const SENDER_PROFILE_SELECT = {
+    id: true, fullName: true, displayName: true, username: true, nickname: true, profilePic: true,
+    isVerified: true, isOfficial: true, isActive: true, lastActive: true, user: true,
+    userDoc: { select: { id: true, firstName: true, surname: true } },
+};
 const findSenderProfile = async (senderId) =>
-    populated(await prisma.profile.findUnique({
-        where: { id: String(senderId) },
-        include: { userDoc: { omit: { password: true, resetPasswordToken: true, resetPasswordExpire: true } } },
-    }), 'user');
+    populated(await prisma.profile.findUnique({ where: { id: String(senderId) }, select: SENDER_PROFILE_SELECT }), 'user');
+// A reply's parent must belong to the same conversation.
+const findReplyParent = async (parent, a, b) =>
+    (parent && isValidObjectId(parent)
+        ? prisma.message.findFirst({ where: { id: String(parent), ...conversationWhere(a, b) }, select: { id: true } })
+        : null);
+// relationMode "prisma" refuses to delete a message that is still a reply's
+// parent, so replies to the deleted messages lose their link in the same transaction.
+const deleteMessagesWhere = async (where, ids) => {
+    const unlink = [];
+    for (let i = 0; i < ids.length; i += 1000) {
+        unlink.push(prisma.message.updateMany({
+            where: { parent: { in: ids.slice(i, i + 1000).map(String) } },
+            data: { parent: null },
+        }));
+    }
+    const results = await prisma.$transaction([...unlink, prisma.message.deleteMany({ where })]);
+    return results[results.length - 1];
+};
 
 // The signed-in profile is always one side of a conversation. `profileId`
 // query params are ignored: trusting them let any user read anyone's chats.
@@ -379,7 +400,7 @@ exports.sendMessage = async (req, res, next) => {
         // The duplicate check, block check and sender profile don't depend on
         // each other: one round trip instead of three.
         const checkBlocks = senderId && receiverId && String(senderId) !== String(receiverId);
-        const [existing, blocks, profileData] = await Promise.all([
+        const [existing, blocks, profileData, replyParent] = await Promise.all([
             tempId ? findMessageWithParent({ senderId, tempId: String(tempId) }) : null,
             checkBlocks
                 ? prisma.block.findMany({
@@ -393,7 +414,9 @@ exports.sendMessage = async (req, res, next) => {
                 })
                 : [],
             findSenderProfile(senderId),
+            findReplyParent(parent, senderId, receiverId),
         ]);
+        const replyTo = replyParent?.id || null;
 
         // Idempotent retries: return the existing copy of this optimistic message.
         if (existing) {
@@ -415,7 +438,7 @@ exports.sendMessage = async (req, res, next) => {
         }
 
         const newMessage = secureContent
-            ? await createSecureMessage({ room, senderId, receiverId, parent, tempId, content: secureContent })
+            ? await createSecureMessage({ room, senderId, receiverId, parent: replyTo, tempId, content: secureContent })
             : await prisma.message.create({
                 data: {
                     room,
@@ -423,7 +446,7 @@ exports.sendMessage = async (req, res, next) => {
                     receiverId: String(receiverId),
                     message: message == null ? undefined : String(message),
                     attachment: attachment || undefined,
-                    ...(parent && isValidObjectId(parent) ? { parent: String(parent) } : {}),
+                    ...(replyTo ? { parent: replyTo } : {}),
                     messageType,
                     callType,
                     callEvent,
@@ -550,7 +573,7 @@ exports.getNewMessages = async (req, res, next) => {
             senderIds.length > 0
                 ? await prisma.profile.findMany({
                       where: { id: { in: senderIds } },
-                      select: { id: true, _id: true, profilePic: true },
+                      select: { id: true, _id: true, fullName: true, profilePic: true },
                   })
                 : [];
         const senderMap = new Map(
@@ -561,7 +584,7 @@ exports.getNewMessages = async (req, res, next) => {
             const senderProfile = senderMap.get(String(msg.senderId));
             return {
                 ...msg,
-                senderName: senderProfile?.name || msg.senderName || 'Connect',
+                senderName: senderProfile?.fullName || msg.senderName || 'Connect',
                 senderPP:
                     senderProfile?.profilePic ||
                     msg.senderPP ||
@@ -739,7 +762,7 @@ exports.deleteMessage = async (req, res, next) => {
         }
         
         // Delete the message
-        await prisma.message.deleteMany({ where: { id: message.id } });
+        await deleteMessagesWhere({ id: message.id }, [message.id]);
         await deleteCloudinaryResources([message.attachment]);
         await deleteSecureContent([message.id]);
         
@@ -828,7 +851,7 @@ exports.deleteConversation = async (req, res, next) => {
         const conversationQuery = conversationWhere(profileId, connectId);
 
         const messages = await prisma.message.findMany({ where: conversationQuery, select: { id: true, attachment: true, messageType: true } });
-        const deleted = await prisma.message.deleteMany({ where: conversationQuery });
+        const deleted = await deleteMessagesWhere(conversationQuery, messages.map((message) => message.id));
         const result = { deletedCount: deleted.count };
         await deleteCloudinaryResources(messages.map((message) => message.attachment));
         await deleteSecureContent(messages.filter((message) => message.messageType === 'secure').map((message) => message.id));

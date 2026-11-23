@@ -423,6 +423,46 @@ test('another server answering the call stops this server\'s ring timer', async 
     assert.equal(timedOut.channelName, 'a16-b16-peer2');
 });
 
+test('a stranger who knows the channel cannot answer, end or take over the call', async () => {
+    const caller = await connect('a17');
+    const callee = await connect('b17');
+    const stranger = await connect('c17');
+    const channelName = 'a17-b17-hijack';
+    const ring = once(callee, 'incoming-audio-call');
+    caller.emit('audio-call', { to: 'b17', channelName, isAudio: true });
+    await ring;
+
+    await Promise.all([
+        noEvent(caller, 'call-accepted'),
+        noEvent(caller, 'audio-call-rejected'),
+        noEvent(callee, 'audio-call-cancelled'),
+        noEvent(callee, 'audio-call-ended'),
+        noEvent(stranger, 'updated-call-status'),
+        stranger.emit('answer-call', { to: 'a17', channelName, isAudio: true }),
+        stranger.emit('audio-call-end', { to: 'b17', channelName }),
+        stranger.emit('audio-call-cancel', { to: 'b17', channelName }),
+        stranger.emit('audio-call-reject', { to: 'a17', channelName }),
+        stranger.emit('audio-call', { to: 'd17', channelName, isAudio: true }),
+    ]);
+
+    // The real callee still answers the call.
+    const accepted = once(caller, 'call-accepted');
+    callee.emit('answer-call', { to: 'a17', channelName, isAudio: true });
+    assert.equal((await accepted).callerId, 'b17');
+
+    // Video filters reach the other participant only.
+    const filtered = once(caller, 'apply-video-filter');
+    callee.emit('filter-video', { to: 'a17', filter: 'video-vivid-warm' });
+    assert.deepEqual(await filtered, { friendId: 'b17', filter: 'video-vivid-warm' });
+    await Promise.all([
+        noEvent(caller, 'apply-video-filter'),
+        stranger.emit('filter-video', { to: 'a17', filter: 'video-vivid-cool' }),
+    ]);
+
+    caller.emit('audio-call-end', { to: 'b17', channelName });
+    await once(callee, 'audio-call-ended');
+});
+
 test('offline callee: caller sees "Calling..." and the callee gets a push', async () => {
     const caller = await connect('a10');
     const status = once(caller, 'updated-call-status');

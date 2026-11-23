@@ -1,4 +1,5 @@
-const { prisma, isValidId } = require("../utils/db");
+const { prisma, isValidId, toId } = require("../utils/db");
+const { audienceLists, audienceWhere, publicWhere } = require("../services/contentShape");
 const presence = require("../sockets/presence");
 const {
   USER_PUBLIC_SELECT,
@@ -63,6 +64,18 @@ const profileData = (body = {}) => {
 };
 
 const isMongoId = (value) => MONGO_ID_RE.test(String(value || ""));
+
+// Profile.bio is VARCHAR(255): a longer value is a database error, not a save.
+const BIO_MAX_LENGTH = 255;
+const bioTooLong = (bio) => bio != null && String(bio).length > BIO_MAX_LENGTH;
+
+// Posts `viewer` may see under the feed's audience rules (public only when
+// signed out); authors always see their own, including Connects-only ones.
+const visiblePostsWhere = async (viewer) => {
+  if (!viewer?._id) return publicWhere();
+  const viewerId = toId(viewer._id);
+  return { OR: [{ author: viewerId }, audienceWhere(viewerId, await audienceLists(viewer))] };
+};
 
 const isOwnProfileRequest = (req, profileId) => {
   const ownId = req.profile?._id;
@@ -135,26 +148,25 @@ exports.prefileHasStory = async function (req, res, next) {
 exports.getProfileImages = async function (req, res, next) {
   let { profileId } = req.query;
   try {
-    if (!isValidId(profileId)) return;
-    // Mongo's { $ne: "null" } also matched documents without photos.
+    if (!isValidId(profileId)) {
+      return res.status(400).json({ message: "Invalid profileId" });
+    }
     let profileImages = await prisma.post.findMany({
       where: {
-        author: String(profileId),
-        OR: [{ photos: null }, { photos: { not: "null" } }],
+        AND: [
+          { author: String(profileId) },
+          // Mongo's { $ne: "null" } also matched documents without photos.
+          { OR: [{ photos: null }, { photos: { not: "null" } }] },
+          await visiblePostsWhere(req.profile),
+        ],
       },
       orderBy: { id: "asc" },
     });
 
-    if (profileImages) {
-      return res.json(profileImages).status(200);
-    }
-
-    return next();
+    return res.status(200).json(profileImages);
   } catch (error) {
-    next(error);
+    return next(error);
   }
-
-  return next();
 };
 
 // Unauthenticated, search-engine-facing view of a profile (used by the web
@@ -275,17 +287,19 @@ exports.updateCoverPost = async (req, res, next) => {
   let profileId = req.profile._id;
   let coverPicUrl = req.body.coverPicUrl;
   try {
-  const previous = isValidId(profileId)
-    ? await prisma.profile.findUnique({ where: { id: String(profileId) }, select: { id: true, coverPic: true } })
-    : null
-  // findOneAndUpdate without { new: true } answered with the document before the update.
-  let updateProfile = previous ? await loadPlainProfile(profileId) : null;
-  if (previous) {
+    const previous = isValidId(profileId)
+      ? await prisma.profile.findUnique({ where: { id: String(profileId) }, select: { id: true, coverPic: true } })
+      : null;
+    if (!previous) {
+      return res.status(404).json({ message: "Profile not found" });
+    }
     await prisma.profile.update({ where: { id: previous.id }, data: { coverPic: coverPicUrl } });
-  }
-    if (previous?.coverPic && previous.coverPic !== coverPicUrl) {
+    if (previous.coverPic && previous.coverPic !== coverPicUrl) {
       await deleteCloudinaryResources([previous.coverPic]);
     }
+    // The web stores this answer as the signed-in profile, so send the updated
+    // one in the same shape updateProfile returns.
+    const updateProfile = await loadOwnProfile(previous.id);
     if (!updateProfile) {
       return res.status(404).json({ message: "Profile not found" });
     }
@@ -320,14 +334,18 @@ exports.updateProfilePic = async (req, res, next) => {
     if (savedPost && updatedProfile) {
       return res.json(updatedProfile);
     }
+    return res.status(404).json({ message: "Profile not found" });
   } catch (error) {
-    console.log(error);
+    return next(error);
   }
 };
 
 exports.updateBioPost = async (req, res, next) => {
   try {
     let bio = req.body.bio;
+    if (bioTooLong(bio)) {
+      return res.status(400).json({ message: `Bio must be ${BIO_MAX_LENGTH} characters or fewer` });
+    }
     await prisma.profile.update({
       where: { id: String(req.profile._id) },
       data: { bio },
@@ -335,10 +353,11 @@ exports.updateBioPost = async (req, res, next) => {
     let updateProfile = await loadPlainProfile(req.profile._id);
 
     if (updateProfile) {
-      res.json(updateProfile);
+      return res.json(updateProfile);
     }
+    return res.status(404).json({ message: "Profile not found" });
   } catch (error) {
-    console.log(error);
+    return next(error);
   }
 };
 exports.updateProfile = async (req, res, next) => {
@@ -355,6 +374,10 @@ exports.updateProfile = async (req, res, next) => {
         return res.status(400).json({ message: "Invalid app menu order" });
       }
       reqData.appMenuOrder = [...new Set(req.body.appMenuOrder)];
+    }
+
+    if (bioTooLong(reqData.bio)) {
+      return res.status(400).json({ message: `Bio must be ${BIO_MAX_LENGTH} characters or fewer` });
     }
 
     // Usernames identify accounts (public profile URLs, face login), so two

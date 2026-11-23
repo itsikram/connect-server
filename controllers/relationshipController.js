@@ -5,7 +5,14 @@ const {
   shapeProfile,
   GRAPH_INCLUDE,
   PRIVATE_OMIT,
+  CONNECT_PUBLIC_SELECT,
+  USER_PUBLIC_SELECT,
 } = require("../utils/profileGraph");
+
+// Suggestions go to anyone signed in: display fields only (no email, wallet,
+// location or block list).
+const { lastLocation: _location, ...SUGGESTION_SELECT } = CONNECT_PUBLIC_SELECT;
+const { blockedUsers: _blocked, ...SUGGESTION_GRAPH } = GRAPH_INCLUDE;
 const { saveNotification } = require("./notificationController");
 const { sendPushToProfile } = require("../utils/pushNotifications");
 const sendEmailNotification = require("../utils/sendEmailNotification.js");
@@ -507,17 +514,26 @@ exports.getProfileConnect = async (req, res, next) => {
 exports.getProfileSuggetions = async (req, res, next) => {
   try {
     let profile = req.profile;
+    const myId = String(profile._id);
     let myConnects = req.profile.connects || [];
+    const myBlocked = req.profile.blockedUsers || [];
 
-    const excluded = [...myConnects.map((id) => String(id?._id ?? id)), String(profile._id)];
+    const excluded = [...myConnects, ...myBlocked].map((id) => String(id?._id ?? id));
+    excluded.push(myId);
     let getConnectSuggetions = (
       await prisma.profile.findMany({
-        where: { id: { notIn: excluded } },
-        omit: PRIVATE_OMIT,
-        include: {
-          ...GRAPH_INCLUDE,
-          userDoc: { omit: { password: true, resetPasswordToken: true, resetPasswordExpire: true } },
+        where: {
+          id: { notIn: excluded },
+          // and nobody who blocked me
+          blockedUsers: { none: { blocked: myId } },
         },
+        select: {
+          ...SUGGESTION_SELECT,
+          ...SUGGESTION_GRAPH,
+          userDoc: { select: USER_PUBLIC_SELECT },
+        },
+        orderBy: [{ lastActive: "desc" }, { createdAt: "desc" }],
+        take: 50,
       })
     ).map(shapeProfile);
 

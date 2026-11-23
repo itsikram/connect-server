@@ -252,8 +252,12 @@ exports.resetPassword = async (req, res, next) => {
 }
 
 exports.signUp = async (req, res, next) => {
-    let { firstName, surname, password, DOB, gender, language = 'eng' } = req.body
-    let email = (req.body.email).toLowerCase();
+    let { firstName, surname, password, DOB, gender, language = 'eng' } = req.body || {}
+    let email = String(req.body?.email || '').toLowerCase();
+
+    if (!email || !password) {
+        return res.status(400).json({ message: 'Email and password are required' })
+    }
 
     try {
 
@@ -441,8 +445,9 @@ exports.changeEmail = async (req, res, next) => {
 }
 
 exports.login = async (req, res, next) => {
-    let password = req.body.password;
-    let email = (req.body.email)?.toLowerCase();
+    let password = req.body?.password;
+    // A missing email must not reach findFirst: `{ email: undefined }` matches any user.
+    let email = typeof req.body?.email === 'string' ? req.body.email.toLowerCase() : '';
 
     try {
 
@@ -806,14 +811,18 @@ exports.deleteAccount = async (req, res, next) => {
         let getUser = await prisma.user.findUnique({ where: { id: userId } })
 
         if (getUser) {
-            await prisma.user.deleteMany({ where: { id: userId } })
-            let profileId = getUser.profile
+            let profileId = getUser.profile || req.profile?._id
 
             if (profileId) {
+                // Deletes the profile, this user row and everything they own.
                 await deleteUserData(profileId)
-
-                return res.status(200).json({ message: 'Account Deleted Successfully' })
+            } else {
+                // Raw DELETE: with relationMode "prisma", prisma.user.delete is
+                // refused while any row (a profile, a payout) still points at the user.
+                await prisma.$executeRaw`DELETE FROM users WHERE id = ${userId}`
             }
+
+            return res.status(200).json({ message: 'Account Deleted Successfully' })
         }
 
         return res.status(404).json({ message: 'Account not found' })

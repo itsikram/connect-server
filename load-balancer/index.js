@@ -92,6 +92,18 @@ const isLbLocalPath = (req) => {
   return pathname === "/health" || pathname === "/lb/status";
 };
 
+// Server-to-server routes (/__internal/...): backends call each other directly
+// at their PEER_SERVERS addresses, never through this public entry point.
+const isInternalPath = (req) => {
+  let url = String(req.url || "");
+  try {
+    url = decodeURIComponent(url);
+  } catch {
+    /* keep the raw url */
+  }
+  return /^\/+__internal(\/|\?|$)/i.test(url);
+};
+
 const scoreBackend = (backend) =>
   backend.cpu +
   backend.systemCpu * 0.05 +
@@ -267,6 +279,11 @@ const server = http.createServer((req, res) => {
   if (isLbLocalPath(req)) {
     const status = lbStatus();
     json(res, status.ok ? 200 : 503, status);
+    return;
+  }
+
+  if (isInternalPath(req)) {
+    json(res, 404, { ok: false, error: "Not found" });
     return;
   }
 

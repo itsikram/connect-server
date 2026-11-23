@@ -17,6 +17,8 @@ const saveLastLocation = (profileId, lat, lon) =>
 const {
   getConnectsLocations,
   formatAIResponse,
+  isValidLocation,
+  locationHiddenIds,
 } = require("../services/ai/locationService");
 const { translate } = require("../utils/localization/translations");
 
@@ -53,8 +55,8 @@ exports.getConnectsNearby = async (req, res, next) => {
     const lon = parseFloat(longitude);
     const radiusKm = parseFloat(radius) || 50;
 
-    // Validate coordinates
-    if (isNaN(lat) || isNaN(lon)) {
+    // Validate coordinates (range too: they are saved as the user's location)
+    if (!isValidLocation(lat, lon)) {
       return res.status(400).json({
         error: true,
         message: translate("invalidLocation", lang),
@@ -120,7 +122,7 @@ exports.getConnectsLocationRaw = async (req, res, next) => {
     const lat = parseFloat(latitude);
     const lon = parseFloat(longitude);
 
-    if (isNaN(lat) || isNaN(lon)) {
+    if (!isValidLocation(lat, lon)) {
       return res.status(400).json({
         error: true,
         message: translate("invalidLocation", lang),
@@ -261,7 +263,8 @@ exports.getConnectLocation = async (req, res, next) => {
       });
     }
 
-    if (!connectProfile.lastLocation) {
+    const hidden = await locationHiddenIds([connectProfile.id]);
+    if (!connectProfile.lastLocation || hidden.has(String(connectProfile.id))) {
       return res.status(200).json({
         success: true,
         connect: {
@@ -311,7 +314,7 @@ exports.searchNearby = async (req, res, next) => {
     const lat = parseFloat(latitude);
     const lon = parseFloat(longitude);
 
-    if (isNaN(lat) || isNaN(lon)) {
+    if (!isValidLocation(lat, lon)) {
       return res.status(400).json({
         error: true,
         message: translate("invalidLocation", lang),

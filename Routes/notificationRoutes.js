@@ -3,7 +3,6 @@ const {
   getNotifications,
   deleteAllNotifications,
   deleteNotification,
-  postNotification,
   notificationView,
   notificationViewAll,
   registerDeviceToken,
@@ -19,7 +18,8 @@ const {
 const isAuth = require("../middlewares/isAuth");
 const { cacheResponse, GRAPH_TAGS, CONTENT_TAGS, MESSAGE_TAGS, NOTIFICATION_TAGS } = require('../utils/cacheResponse')
 
-Router.post("/", isAuth, postNotification);
+// No POST "/": it let any user put any text and link into anyone's feed, and
+// neither client called it. Notifications come from saveNotification only.
 Router.post("/view", isAuth, notificationView);
 Router.post("/token/register", isAuth, registerDeviceToken);
 Router.post("/token/unregister", isAuth, unregisterDeviceToken);

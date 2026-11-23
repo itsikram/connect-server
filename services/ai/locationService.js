@@ -138,6 +138,20 @@ function isValidLocation(latitude, longitude) {
 }
 
 /**
+ * Ids (from `profileIds`) of profiles that turned off "share my location".
+ * A profile without a settings row shares, as the setting defaults to on.
+ */
+async function locationHiddenIds(profileIds) {
+  const ids = profileIds.map(String).filter(Boolean);
+  if (!ids.length) return new Set();
+  const rows = await prisma.setting.findMany({
+    where: { profile: { in: ids }, isShareLocation: false },
+    select: { profile: true },
+  });
+  return new Set(rows.map((row) => String(row.profile)));
+}
+
+/**
  * Get connects' locations based on user's location
  * @param {object} userProfile - User's profile object
  * @param {number} latitude - User's latitude
@@ -156,11 +170,11 @@ async function getConnectsLocations(
 
   // Validate coordinates
   if (!isValidLocation(latitude, longitude)) {
-    throw {
+    throw Object.assign(new Error(translate("invalidLocation", lang)), {
       error: true,
-      message: translate("invalidLocation", lang),
+      status: 400,
       code: "INVALID_LOCATION",
-    };
+    });
   }
 
   // Check if user has connects
@@ -198,6 +212,10 @@ async function getConnectsLocations(
     }),
     "user",
   );
+  const hidden = await locationHiddenIds(connectIds);
+  connectsData.forEach((connect) => {
+    if (hidden.has(String(connect.id))) connect.lastLocation = null;
+  });
 
   const relationshipRows = await prisma.relationship.findMany({
     where: {
@@ -399,6 +417,7 @@ module.exports = {
   getDirectionName,
   categorizeDistance,
   isValidLocation,
+  locationHiddenIds,
   getConnectsLocations,
   formatAIResponse,
 };

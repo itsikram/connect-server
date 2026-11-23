@@ -14,6 +14,7 @@ const {
     unsubscribeWebPush,
 } = require('../controllers/webNotificationController');
 const isAuth = require('../middlewares/isAuth');
+const isAdminRole = require('../middlewares/isAdminRole');
 
 // VAPID public key (needed before PushManager.subscribe)
 router.get('/vapid-public-key', getVapidPublicKeyHandler);
@@ -41,7 +42,7 @@ router.post('/send-to-all-browsers', isAuth, sendNotificationToAllBrowsers);
 // Update browser activity (keep-alive)
 router.post('/update-activity', isAuth, updateBrowserActivity);
 
-// Send test notification
-router.post('/test', isAuth, sendTestNotification);
+// Send test notification to any profile (no app calls it): admins only
+router.post('/test', isAdminRole, sendTestNotification);
 
 module.exports = router;

@@ -347,10 +347,13 @@ const removeReactor = async (model, id, reactorId) => {
 
 exports.addCommentReact = async (req, res, next) => {
     try {
-        let reactorId = req.body.reactorId
+        // Reacts are always the signed-in user's; a reactorId in the body is ignored.
+        let reactorId = toId(req.profile._id)
         let commentId = req.body.commentId
 
-        if (!reactorId || !commentId) return;
+        if (!reactorId || !commentId) {
+            return res.status(400).json({ message: 'commentId is required' })
+        }
         let updatedComment = await addReactor('comment', commentId, reactorId)
         if (updatedComment) {
             // Notify the comment author (if not self)
@@ -397,7 +400,7 @@ exports.addCommentReact = async (req, res, next) => {
 
 exports.removeCommentReact = async (req, res, next) => {
     try {
-        let reactorId = req.body.reactorId
+        let reactorId = toId(req.profile._id)
         let commentId = req.body.commentId
         let updatedComment = await removeReactor('comment', commentId, reactorId)
 
@@ -566,7 +569,7 @@ exports.removeCommentReply = async (req, res, next) => {
 
 exports.addReplyReact = async (req, res, next) => {
     let replyId = req.body.replyId
-    let myId = req.body.myId
+    let myId = toId(req.profile._id)
     try {
         let addedReact = await addReactor('cmntReply', replyId, myId)
 
@@ -580,7 +583,7 @@ exports.addReplyReact = async (req, res, next) => {
 }
 exports.removeReplyReact = async (req, res, next) => {
     let replyId = req.body.replyId
-    let myId = req.body.myId
+    let myId = toId(req.profile._id)
     try {
 
         let removedReact = await removeReactor('cmntReply', replyId, myId)

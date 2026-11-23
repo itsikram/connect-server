@@ -28,6 +28,14 @@ function createNotification(data) {
     return prisma.notification.create({ data: { ...data, receiverId: String(data.receiverId) } });
 }
 
+// The signed-in profile. Browser ids and push subscriptions are only ever
+// changed for it, never for a profileId sent by the client.
+const ownProfileId = (req) => String(req.profile?._id || '');
+
+// Notification links open inside the app: keep same-site paths only.
+const safeLink = (link) =>
+    typeof link === 'string' && link.startsWith('/') && !link.startsWith('//') ? link : '/';
+
 // Public VAPID key for PushManager.subscribe (safe to expose)
 exports.getVapidPublicKeyHandler = async (req, res) => {
     try {
@@ -54,7 +62,8 @@ exports.getVapidPublicKeyHandler = async (req, res) => {
 // Save / refresh a PushManager subscription for background iOS/PWA notifications
 exports.subscribeWebPush = async (req, res) => {
     try {
-        const { profileId, subscription, browserId, userAgent } = req.body;
+        const { subscription, browserId, userAgent } = req.body;
+        const profileId = ownProfileId(req);
         const endpoint = subscription?.endpoint;
         const p256dh = subscription?.keys?.p256dh;
         const auth = subscription?.keys?.auth;
@@ -116,7 +125,8 @@ exports.subscribeWebPush = async (req, res) => {
 
 exports.unsubscribeWebPush = async (req, res) => {
     try {
-        const { profileId, endpoint } = req.body;
+        const { endpoint } = req.body;
+        const profileId = ownProfileId(req);
         if (!profileId || !endpoint) {
             return res.status(400).json({
                 success: false,
@@ -143,7 +153,8 @@ exports.unsubscribeWebPush = async (req, res) => {
 // Register browser ID for a profile
 exports.registerBrowserId = async (req, res, next) => {
     try {
-        const { profileId, browserId, userAgent } = req.body;
+        const { browserId, userAgent } = req.body;
+        const profileId = ownProfileId(req);
 
         if (!profileId || !browserId) {
             return res.status(400).json({
@@ -197,7 +208,8 @@ exports.registerBrowserId = async (req, res, next) => {
 // Unregister browser ID from a profile
 exports.unregisterBrowserId = async (req, res, next) => {
     try {
-        const { profileId, browserId } = req.body;
+        const { browserId } = req.body;
+        const profileId = ownProfileId(req);
 
         if (!profileId || !browserId) {
             return res.status(400).json({
@@ -294,6 +306,13 @@ exports.getBrowserIds = async (req, res, next) => {
             });
         }
 
+        if (String(profileId) !== ownProfileId(req)) {
+            return res.status(403).json({
+                success: false,
+                message: 'You can only list your own browsers'
+            });
+        }
+
         const profile = await loadProfile(profileId);
         if (!profile) {
             return res.status(404).json({
@@ -323,12 +342,21 @@ exports.getBrowserIds = async (req, res, next) => {
 // Send notification to specific browser IDs
 exports.sendNotificationToBrowsers = async (req, res, next) => {
     try {
-        const { profileId, browserIds, notificationData } = req.body;
+        const { profileId, browserIds } = req.body;
+        const notificationData = req.body.notificationData || {};
 
         if (!profileId || !browserIds || !Array.isArray(browserIds)) {
             return res.status(400).json({
                 success: false,
                 message: 'Profile ID and browser IDs array are required'
+            });
+        }
+
+        // Picking browsers is only for your own ones (the notification test page).
+        if (String(profileId) !== ownProfileId(req)) {
+            return res.status(403).json({
+                success: false,
+                message: 'You can only send to your own browsers'
             });
         }
 
@@ -362,7 +390,7 @@ exports.sendNotificationToBrowsers = async (req, res, next) => {
             text: notificationData.text || 'New notification',
             title: notificationData.title || 'Connect',
             icon: notificationData.icon || config?.logo,
-            link: notificationData.link || '/',
+            link: safeLink(notificationData.link),
             type: notificationData.type || 'general',
             data: {
                 ...notificationData.data,
@@ -399,12 +427,23 @@ exports.sendNotificationToBrowsers = async (req, res, next) => {
 // Send notification to all browsers of a profile
 exports.sendNotificationToAllBrowsers = async (req, res, next) => {
     try {
-        const { profileId, notificationData } = req.body;
+        const { profileId } = req.body;
+        const notificationData = req.body.notificationData || {};
 
         if (!profileId) {
             return res.status(400).json({
                 success: false,
                 message: 'Profile ID is required'
+            });
+        }
+
+        // Game invites go to connects; anyone else is off limits.
+        const isSelf = String(profileId) === ownProfileId(req);
+        const connects = (req.profile?.connects || []).map(String);
+        if (!isSelf && !connects.includes(String(profileId))) {
+            return res.status(403).json({
+                success: false,
+                message: 'You can only notify your connects'
             });
         }
 
@@ -435,7 +474,7 @@ exports.sendNotificationToAllBrowsers = async (req, res, next) => {
             text: notificationData.text || 'New notification',
             title: notificationData.title || 'Connect',
             icon: notificationData.icon || config?.logo,
-            link: notificationData.link || '/',
+            link: safeLink(notificationData.link),
             type: notificationData.type || 'general',
             data: {
                 ...notificationData.data,
@@ -446,7 +485,7 @@ exports.sendNotificationToAllBrowsers = async (req, res, next) => {
         // Emit to socket for real-time delivery
         const io = req.app.get('io');
         if (io) {
-            io.to(profileId).emit('newNotification', notification);
+            io.to(String(profileId)).emit('newNotification', notification);
         }
 
         res.json({
@@ -455,7 +494,8 @@ exports.sendNotificationToAllBrowsers = async (req, res, next) => {
             data: {
                 notificationId: notification._id,
                 sentToBrowsers: activeBrowserIds.length,
-                browserIds: activeBrowserIds
+                // A connect's browser ids are theirs; only list your own.
+                ...(isSelf ? { browserIds: activeBrowserIds } : {})
             }
         });
 
@@ -472,7 +512,8 @@ exports.sendNotificationToAllBrowsers = async (req, res, next) => {
 // Update browser activity
 exports.updateBrowserActivity = async (req, res, next) => {
     try {
-        const { profileId, browserId } = req.body;
+        const { browserId } = req.body;
+        const profileId = ownProfileId(req);
 
         if (!profileId || !browserId) {
             return res.status(400).json({

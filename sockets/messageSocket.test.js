@@ -37,7 +37,7 @@ const resetCounters = () => {
 const callsOf = (name) => calls.filter((call) => call.name === name);
 
 const users = {
-    [A]: { id: 'ua', firstName: 'Alice', surname: 'A', password: 'hash-a', resetPasswordToken: 'reset-a', resetPasswordExpire: new Date() },
+    [A]: { id: 'ua', firstName: 'Alice', surname: 'A', email: 'alice@example.com', password: 'hash-a', resetPasswordToken: 'reset-a', resetPasswordExpire: new Date() },
     [B]: { id: 'ub', firstName: 'Bob', surname: 'B', password: 'hash-b', resetPasswordToken: null, resetPasswordExpire: null },
 };
 const withParent = (row, include) => {
@@ -49,6 +49,12 @@ const withParent = (row, include) => {
     }
     return out;
 };
+// Prisma-style `where`: plain equality per field, plus OR.
+const matches = (row, where) =>
+    Object.entries(where).every(([k, v]) =>
+        k === 'OR' ? v.some((alt) => matches(row, alt)) : row[k] === v);
+const pick = (row, select) =>
+    Object.fromEntries(Object.entries(row).filter(([key]) => select[key] === true));
 const prisma = {
     block: {
         findMany: query('block.findMany', ({ where }) => {
@@ -59,8 +65,10 @@ const prisma = {
         }),
     },
     message: {
-        findFirst: query('message.findFirst', ({ where, include }) =>
-            withParent(db.messages.find((m) => Object.entries(where).every(([k, v]) => m[k] === v)), include)),
+        findFirst: query('message.findFirst', ({ where, include, select }) => {
+            const row = withParent(db.messages.find((m) => matches(m, where)), include);
+            return row && select ? pick(row, select) : row;
+        }),
         create: query('message.create', ({ data, include }) => {
             const row = {
                 id: String(db.messages.length + 1).padStart(24, 'c'),
@@ -74,11 +82,23 @@ const prisma = {
         }),
     },
     profile: {
-        findUnique: query('profile.findUnique', ({ where, include }) => {
+        findUnique: query('profile.findUnique', ({ where, include, select }) => {
             if (db.failProfile) throw new Error('profile table unavailable');
             const user = users[where.id];
             if (!user) return null;
-            const profile = { id: where.id, _id: where.id, profilePic: `${where.id}.png`, user: user.id, deviceTokens: [] };
+            const profile = {
+                id: where.id,
+                _id: where.id,
+                profilePic: `${where.id}.png`,
+                user: user.id,
+                deviceTokens: ['token'],
+                lastLocation: { latitude: 1, longitude: 2 },
+            };
+            if (select) {
+                const row = pick(profile, select);
+                if (select.userDoc) row.userDoc = pick(user, select.userDoc.select);
+                return row;
+            }
             if (include?.userDoc) {
                 const omit = include.userDoc.omit || {};
                 profile.userDoc = Object.fromEntries(Object.entries(user).filter(([key]) => !omit[key]));
@@ -230,19 +250,17 @@ test('a message is acked and delivered after one round of parallel lookups', asy
     assert.equal(notifications.length, 1);
 });
 
-test('the sender profile sent to the receiver never includes the password hash or reset token', async () => {
+test('the sender profile sent to the receiver has public fields only', async () => {
     const delivered = once(bob, 'newMessageToUser');
     await send(alice, { receiverId: B, message: 'secret?', tempId: 't-2' });
     const { connectProfile } = await delivered;
     assert.equal(connectProfile.user.firstName, 'Alice');
-    assert.equal('password' in connectProfile.user, false);
-    assert.equal('resetPasswordToken' in connectProfile.user, false);
-    assert.equal('resetPasswordExpire' in connectProfile.user, false);
-    assert.deepEqual(callsOf('profile.findUnique')[0].args.include.userDoc.omit, {
-        password: true,
-        resetPasswordToken: true,
-        resetPasswordExpire: true,
-    });
+    assert.equal(connectProfile.profilePic, `${A}.png`);
+    for (const key of ['password', 'resetPasswordToken', 'resetPasswordExpire', 'email']) {
+        assert.equal(key in connectProfile.user, false, key);
+    }
+    assert.equal('deviceTokens' in connectProfile, false);
+    assert.equal('lastLocation' in connectProfile, false);
 });
 
 test('a reply carries its parent message', async () => {
@@ -252,6 +270,21 @@ test('a reply carries its parent message', async () => {
     assert.equal(reply.updatedMessage.parent._id, first.updatedMessage._id);
     assert.equal(reply.updatedMessage.parent.message, 'original');
     assert.equal('parentDoc' in reply.updatedMessage, false);
+});
+
+test('a reply to a message of another conversation is sent without that parent', async () => {
+    const C = 'c'.repeat(24);
+    const D = 'd'.repeat(24);
+    const foreign = { id: 'f'.repeat(24), senderId: C, receiverId: D, message: 'private', parent: null };
+    db.messages.push(foreign);
+    const reply = await send(alice, { receiverId: B, message: 'peek', tempId: 't-10', parent: foreign.id });
+    assert.equal(reply.ok, true);
+    assert.equal(reply.updatedMessage.parent ?? null, null);
+    assert.equal(JSON.stringify(reply).includes('private'), false);
+
+    const viaHttp = await httpSend({ receiverId: B, message: 'peek', tempId: 'h-10', parent: foreign.id });
+    assert.equal(viaHttp.status, 200);
+    assert.equal(viaHttp.payload.data.parent ?? null, null);
 });
 
 test('a retried tempId returns the existing message instead of creating another', async () => {

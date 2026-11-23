@@ -2,10 +2,10 @@ const { Adapter } = require("socket.io-adapter");
 
 const INTERNAL_PATH = "/__internal/socket-broadcast";
 
+// Never a built-in default: the repo is public, so a constant would let anyone
+// broadcast any socket event to any room through the relay route.
 const getInternalSecret = () =>
-  process.env.LB_INTERNAL_SECRET ||
-  process.env.JWT_SECRET ||
-  "connect-local-lb";
+  String(process.env.LB_INTERNAL_SECRET || process.env.JWT_SECRET_KEY || "");
 
 const normalizeUrl = (value = "") => String(value).trim().replace(/\/+$/, "");
 
@@ -98,6 +98,10 @@ const attachPeerRelayRoute = (app, io) => {
   if (!getPeerUrls().length) return;
 
   const secret = getInternalSecret();
+  if (!secret) {
+    console.warn("[sockets] peer relay route disabled: set LB_INTERNAL_SECRET (or JWT_SECRET_KEY)");
+    return;
+  }
   app.post(INTERNAL_PATH, (req, res) => {
     if (req.get("x-connect-internal-secret") !== secret) {
       return res.status(403).json({ ok: false });

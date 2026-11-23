@@ -145,6 +145,19 @@ const clearProcessingState = async (messageIds, extraSet = {}) => {
 
 const processReminderGroup = async ({ senderId, receiverId, cutoffDate, staleLockDate }) => {
   if (!senderId || !receiverId || String(senderId) === String(receiverId)) {
+    // Never emailed. Settle them, or they take one of the run's groups
+    // forever (groups are scanned in a fixed order).
+    await prisma.message.updateMany({
+      where: {
+        ...reminderEligibilityFilter(cutoffDate, staleLockDate),
+        senderId: senderId == null ? null : String(senderId),
+        receiverId: receiverId == null ? null : String(receiverId),
+      },
+      data: {
+        unseenReminderEmailSentAt: new Date(),
+        unseenReminderEmailLastError: 'No reminder for this conversation',
+      },
+    });
     return;
   }
 
@@ -208,7 +221,9 @@ const processReminderGroup = async ({ senderId, receiverId, cutoffDate, staleLoc
 
     const receiverEmail = receiverProfile?.user?.email?.trim();
     if (!receiverEmail) {
+      // Retrying cannot help (no such profile, or no email): settle them.
       await clearProcessingState(messageIds, {
+        unseenReminderEmailSentAt: new Date(),
         unseenReminderEmailLastError: 'Recipient email unavailable',
       });
       return;
@@ -262,6 +277,9 @@ const processReminderGroup = async ({ senderId, receiverId, cutoffDate, staleLoc
     );
 
     await clearProcessingState(messageIds, {
+      // Retried once the stale-lock window has passed, not on every run, so
+      // a failing address does not hold back everyone else's reminders.
+      unseenReminderEmailProcessingAt: new Date(),
       unseenReminderEmailLastError:
         errorMessage.length > 500 ? `${errorMessage.slice(0, 497)}...` : errorMessage,
     });

@@ -157,6 +157,43 @@ router.get('/history', isAuth, async (req, res) => {
 });
 
 /**
+ * Clear all saved videos history (registered before /:videoId, which
+ * would otherwise catch DELETE /clear-all)
+ * DELETE /api/saved-videos/clear-all
+ */
+router.delete('/clear-all', isAuth, async (req, res) => {
+  try {
+    const userId = req.profile?.user?._id ? String(req.profile.user._id) : null;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'User not authenticated',
+      });
+    }
+
+    const { count } = await prisma.savedVideo.updateMany({
+      where: { userId, status: { not: 'deleted' } },
+      data: { status: 'deleted' },
+    });
+    const result = { modifiedCount: count };
+
+    console.log('[SavedVideo] ✓ Cleared all videos:', { count: result.modifiedCount });
+
+    res.status(200).json({
+      success: true,
+      message: 'All videos removed from history',
+    });
+  } catch (error) {
+    console.error('[SavedVideo] ❌ Error clearing videos:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to clear videos',
+    });
+  }
+});
+
+/**
  * Delete video from history
  * DELETE /api/saved-videos/:videoId
  */
@@ -242,42 +279,6 @@ router.post('/batch-delete', isAuth, async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to delete videos',
-    });
-  }
-});
-
-/**
- * Clear all saved videos history
- * DELETE /api/saved-videos/clear-all
- */
-router.delete('/clear-all', isAuth, async (req, res) => {
-  try {
-    const userId = req.profile?.user?._id ? String(req.profile.user._id) : null;
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        error: 'User not authenticated',
-      });
-    }
-
-    const { count } = await prisma.savedVideo.updateMany({
-      where: { userId, status: { not: 'deleted' } },
-      data: { status: 'deleted' },
-    });
-    const result = { modifiedCount: count };
-
-    console.log('[SavedVideo] ✓ Cleared all videos:', { count: result.modifiedCount });
-
-    res.status(200).json({
-      success: true,
-      message: 'All videos removed from history',
-    });
-  } catch (error) {
-    console.error('[SavedVideo] ❌ Error clearing videos:', error.message);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to clear videos',
     });
   }
 });

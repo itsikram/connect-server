@@ -10,9 +10,18 @@ const {
     shapeComment,
     audienceLists,
     audienceWhere,
+    publicWhere,
     deleteCommentsWhere,
     removeContent,
 } = require('../services/contentShape')
+
+// Posts `viewer` may see under the feed's audience rules (public only when
+// signed out); authors always see their own, including Connects-only ones.
+const visibleWhere = async (viewer) => {
+    if (!viewer?._id) return publicWhere()
+    const viewerId = toId(viewer._id)
+    return { OR: [{ author: viewerId }, audienceWhere(viewerId, await audienceLists(viewer))] }
+}
 
 const mentionTokenPattern = /@\[[^\]]+\]\(([a-f\d]{24})\)/gi
 const hashtagPattern = /(^|[^\p{L}\p{N}_])#([\p{L}\p{N}_]{1,50})/gu
@@ -213,7 +222,7 @@ exports.getMyPosts = async (req, res, next) => {
 
         if (!isValidId(profile_id)) return res.json().status(400)
         const posts = await prisma.post.findMany({
-            where: { author: toId(profile_id) },
+            where: { AND: [{ author: toId(profile_id) }, await visibleWhere(req.profile)] },
             include: fullPostInclude(),
             orderBy: { createdAt: 'desc' },
         })
@@ -230,18 +239,24 @@ exports.getSinglePost = async (req, res, next) => {
     try {
 
         let { postId } = req.query
-        if (!isValidId(postId)) return
-
-        const post = await findFullPost(String(postId), {
-            viewers: { select: { id: true, fullName: true, displayName: true, profilePic: true, username: true, isActive: true } },
-        })
-
-        if (post) {
-            return res.status(200).json(post)
+        if (!isValidId(postId)) {
+            return res.status(400).json({ message: 'Invalid post id' })
         }
+        postId = String(postId)
+
+        // A post the viewer may not see answers like a missing one.
+        const visible = await prisma.post.count({ where: { AND: [{ id: postId }, await visibleWhere(req.profile)] } })
+        const post = visible ? await findFullPost(postId, {
+            viewers: { select: { id: true, fullName: true, displayName: true, profilePic: true, username: true, isActive: true } },
+        }) : null
+
+        if (!post) {
+            return res.status(404).json({ message: 'Post not found' })
+        }
+        return res.status(200).json(post)
 
     } catch (error) {
-        console.log(error)
+        next(error)
     }
 }
 

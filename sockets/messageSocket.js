@@ -20,7 +20,9 @@ const {
   prepareSecureContent,
   createSecureMessage,
   withSecureState,
+  deleteSecureContent,
 } = require("../utils/secureMessages");
+const { deleteCloudinaryResources } = require("../utils/cloudinaryCleanup");
 const { findConversationPage, latestMessageIdsByPeer } = require("../utils/conversationPage");
 
 // Message rows with `parent` populated (Mongoose .populate("parent")).
@@ -31,15 +33,42 @@ const findMessage = async (id) =>
 // Newest-first page of a conversation, read in index order (utils/conversationPage.js).
 const findConversationPageWithParent = async (a, b, { skip, take }) =>
   populated(await findConversationPage(a, b, { skip, take, include: { parentDoc: true } }), "parent");
-// Sender profile sent along with a new message; never the password hash or reset token.
+// Sender profile sent along with a new message to the receiver, who may be a
+// stranger: public fields only (no tokens, location, addresses or account data).
+const SENDER_PROFILE_SELECT = {
+  id: true,
+  fullName: true,
+  displayName: true,
+  username: true,
+  nickname: true,
+  profilePic: true,
+  isVerified: true,
+  isOfficial: true,
+  isActive: true,
+  lastActive: true,
+  user: true,
+  userDoc: { select: { id: true, firstName: true, surname: true } },
+};
 const findSenderProfile = async (senderId) =>
   populated(
-    await prisma.profile.findUnique({
-      where: { id: String(senderId) },
-      include: { userDoc: { omit: { password: true, resetPasswordToken: true, resetPasswordExpire: true } } },
-    }),
+    await prisma.profile.findUnique({ where: { id: String(senderId) }, select: SENDER_PROFILE_SELECT }),
     "user",
   );
+// A reply's parent must be a message of the same conversation; any other id
+// would hand the sender someone else's message.
+const findReplyParent = async (parent, a, b) =>
+  parent && isValidObjectId(parent)
+    ? prisma.message.findFirst({
+        where: {
+          id: String(parent),
+          OR: [
+            { senderId: String(a), receiverId: String(b) },
+            { senderId: String(b), receiverId: String(a) },
+          ],
+        },
+        select: { id: true },
+      })
+    : null;
 
 module.exports = function messageSocket(io, socket, profileId) {
   const me = String(profileId || "");
@@ -244,8 +273,15 @@ module.exports = function messageSocket(io, socket, profileId) {
       const deleted = await prisma.message.findFirst({
         where: { id: String(messageId), senderId: String(profileId) },
       });
+      // Replies to it lose their link first: relationMode "prisma" refuses to
+      // delete a message that is still a reply's parent.
       const removed = deleted
-        ? await prisma.message.deleteMany({ where: { id: deleted.id } })
+        ? (
+            await prisma.$transaction([
+              prisma.message.updateMany({ where: { parent: deleted.id }, data: { parent: null } }),
+              prisma.message.deleteMany({ where: { id: deleted.id } }),
+            ])
+          )[1]
         : { count: 0 };
       if (deleted && removed.count) {
         io.to([
@@ -253,6 +289,9 @@ module.exports = function messageSocket(io, socket, profileId) {
           String(deleted.senderId),
           String(deleted.receiverId),
         ].filter(Boolean)).emit("deleteMessage", String(messageId));
+        // Same cleanup as POST /message/delete.
+        await deleteCloudinaryResources([deleted.attachment]);
+        await deleteSecureContent([deleted.id]);
       }
     } catch (error) {
       console.error("deleteMessage failed:", error?.message || error);
@@ -295,8 +334,8 @@ module.exports = function messageSocket(io, socket, profileId) {
       if (typeof ack === "function") ack({ ok: false, error: "Unable to update reaction" });
     }
   };
-  socket.on("reactMessage", (data = {}, ack) => updateReaction(data.messageId, data.reactType, false, ack));
-  socket.on("removeReactMessage", (data = {}, ack) => updateReaction(data.messageId, null, true, ack));
+  socket.on("reactMessage", (data, ack) => updateReaction(data?.messageId, data?.reactType, false, ack));
+  socket.on("removeReactMessage", (data, ack) => updateReaction(data?.messageId, null, true, ack));
 
   socket.on(
     "speak_message",
@@ -332,6 +371,13 @@ module.exports = function messageSocket(io, socket, profileId) {
           try {
             msgData = await findMessage(msgId);
           } catch (_e) {
+            msgData = null;
+          }
+        }
+        // Only a message between the sender and the target can be read out.
+        if (msgData) {
+          const participants = [String(msgData.senderId), String(msgData.receiverId)];
+          if (!participants.includes(senderProfileId) || !participants.includes(targetProfileId)) {
             msgData = null;
           }
         }
@@ -477,7 +523,7 @@ module.exports = function messageSocket(io, socket, profileId) {
       // another. allSettled keeps each failure reported where it was before.
       const checkBlocks = senderId && receiverId && String(senderId) !== String(receiverId);
       const validTarget = Boolean(senderId) && isValidObjectId(receiverId);
-      const [blocksResult, existingResult, senderResult] = await Promise.allSettled([
+      const [blocksResult, existingResult, senderResult, parentResult] = await Promise.allSettled([
         checkBlocks
           ? prisma.block.findMany({
               where: {
@@ -491,6 +537,7 @@ module.exports = function messageSocket(io, socket, profileId) {
           : [],
         validTarget && tempId ? findMessageWithParent({ senderId, tempId: String(tempId) }) : null,
         validTarget ? findSenderProfile(senderId) : null,
+        validTarget ? findReplyParent(parent, senderId, receiverId) : null,
       ]);
 
       // Prevent messaging if either user has blocked the other
@@ -555,12 +602,16 @@ module.exports = function messageSocket(io, socket, profileId) {
         }
       }
 
+      if (parentResult.status === "rejected") throw parentResult.reason;
+      // Clients send `parent: false` when not replying.
+      const replyTo = parentResult.value?.id || null;
+
       const newMessage = secureContent
         ? await createSecureMessage({
             room: chatRoom,
             senderId,
             receiverId,
-            parent,
+            parent: replyTo,
             tempId,
             content: secureContent,
           })
@@ -571,8 +622,7 @@ module.exports = function messageSocket(io, socket, profileId) {
           receiverId: String(receiverId),
           message: message == null ? undefined : String(message),
           attachment: attachment || undefined,
-          // Clients send `parent: false` when not replying.
-          ...(parent && isValidObjectId(parent) ? { parent: String(parent) } : {}),
+          ...(replyTo ? { parent: replyTo } : {}),
           messageType,
           duration: duration == null || Number.isNaN(Number(duration)) ? undefined : Number(duration),
           callType,
@@ -656,10 +706,11 @@ module.exports = function messageSocket(io, socket, profileId) {
   });
 
   // Unified handler to emit emotion change to one, many, or all connects
+  // The sender is always this socket's profile (a profileId in the payload is
+  // ignored), and only its connects receive it.
   async function handleEmotionChange(payload, ack) {
     const receivedAt = Date.now();
     const {
-      profileId,
       emotion,
       connectId,
       connectIds,
@@ -699,24 +750,22 @@ module.exports = function messageSocket(io, socket, profileId) {
         return;
       }
 
-      // Resolve target recipients
+      // Resolve target recipients (always among this profile's connects)
+      const connects = isValidObjectId(profileId)
+        ? await prisma.profileConnect.findMany({
+            where: { profile: String(profileId) },
+            select: { connect: true },
+          })
+        : [];
+      const connectSet = new Set(connects.map((row) => String(row.connect)));
       let targets = [];
       if (Array.isArray(connectIds) && connectIds.length > 0) {
-        console.log("connectIds.map(String)", connectIds.map(String));
-        targets = connectIds.map(String);
+        targets = [...new Set(connectIds.map(String))].filter((id) => connectSet.has(id));
       } else if (connectId && connectId !== "all") {
-        targets = [String(connectId)];
+        targets = connectSet.has(String(connectId)) ? [String(connectId)] : [];
       } else {
         // broadcast to all connects
-        const connects = isValidObjectId(profileId)
-          ? await prisma.profileConnect.findMany({
-              where: { profile: String(profileId) },
-              select: { connect: true },
-            })
-          : [];
-        if (connects.length > 0) {
-          targets = connects.map((row) => String(row.connect));
-        }
+        targets = [...connectSet];
       }
 
       if (!targets || targets.length === 0) {
@@ -870,7 +919,8 @@ module.exports = function messageSocket(io, socket, profileId) {
     },
   );
 
-  socket.on("update_type", ({ room, type } = {}) => {
+  socket.on("update_type", (payload) => {
+    const { room, type } = payload || {};
     if (!isOwnChatRoom(room)) return;
     io.to(room).emit("update_type", { type });
   });
@@ -912,10 +962,14 @@ module.exports = function messageSocket(io, socket, profileId) {
     }
   });
 
-  // Live voice relays (two-way Agora, auto-connect on the peer)
-  socket.on("live-voice-start", async ({ to, channelName }) => {
+  // Live voice relays (two-way Agora, auto-connect on the peer). The channel
+  // is always the 1:1 chat room of me and `to` (web and Expo both use it), so
+  // nobody can start or stop a session in someone else's room.
+  socket.on("live-voice-start", async (data) => {
+    const { to, channelName } = data || {};
     try {
       if (!to || !channelName) return;
+      if (!isValidObjectId(to) || String(channelName) !== roomWith(to)) return;
       let callerName = "Connect";
       try {
         const myProfileData = isValidObjectId(profileId)
@@ -940,9 +994,12 @@ module.exports = function messageSocket(io, socket, profileId) {
     }
   });
 
-  socket.on("live-voice-stop", ({ to, channelName }) => {
+  socket.on("live-voice-stop", (data) => {
+    const { to, channelName } = data || {};
     try {
       if (!to && !channelName) return;
+      if (channelName && !isOwnChatRoom(String(channelName))) return;
+      if (to && (!isValidObjectId(to) || (channelName && String(channelName) !== roomWith(to)))) return;
       const payload = {
         from: profileId,
         channelName: channelName || null,

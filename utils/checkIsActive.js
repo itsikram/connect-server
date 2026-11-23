@@ -33,7 +33,8 @@ module.exports = async (profileId, userId = null) => {
 
 
 
-    if (diff > fiveMinutes) {
+    // No recorded login is "not active" (the NaN diff used to count as active).
+    if (!userLastLogin || diff > fiveMinutes) {
         isActive = false
     } else {
         isActive = true

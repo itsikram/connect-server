@@ -78,9 +78,11 @@ exports.rejectPayout = async (req, res, next) => {
       req,
       "rejected",
       (p) => ({ id: p.userId, payoutReservedCoins: { gte: p.amountCoins } }),
+      // A request only reserved the coins (earnings were never reduced), so a
+      // reject just releases the reservation. Adding them back to earnings
+      // would hand the creator the amount a second time.
       (p) => ({
         payoutReservedCoins: { decrement: p.amountCoins },
-        creatorEarningsCoins: { increment: p.amountCoins },
       }),
       { rejectionReason: reason },
     );

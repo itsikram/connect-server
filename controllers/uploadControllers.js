@@ -120,8 +120,9 @@ exports.uploadVideo = async (req, res, next) => {
         await withCloudinaryAccount('video', (cloudinary) => new Promise((resolve, reject) => {
             const uploadStream = cloudinary.uploader.upload_stream(
                 {
+                    // No public_id: Cloudinary generates a unique one. An id built
+                    // from the file name (e.g. "upload.mp4") overwrote other users' videos.
                     resource_type: 'video',
-                    public_id: req.file.originalname.split('.')[0].replace(/[^a-z0-9_-]/gi, '_'),
                     chunk_size: 6000000
                 },
                 (error, result) => {

@@ -215,10 +215,10 @@ exports.postAddReact = async (req, res, next) => {
 
 exports.postRemoveReact = async (req, res, next) => {
     try {
+        // Always the signed-in user's own react; a `reactor` in the body is ignored.
         const profile = req.profile._id
-        let { id, postType, watchType, reactor } = req.body
+        let { id, postType, watchType } = req.body
         postType = postType || watchType
-        reactor = reactor || profile
 
         if (!id || !['post', 'story', 'watch'].includes(postType)) {
             return res.status(400).json({ message: 'Invalid reaction target' })
@@ -226,7 +226,7 @@ exports.postRemoveReact = async (req, res, next) => {
 
         switch (postType) {
             case 'post': {
-                const removePostReact = await removeReact(TARGETS.post, id, reactor)
+                const removePostReact = await removeReact(TARGETS.post, id, profile)
                 return res.status(200).json(removePostReact)
             }
             case 'story': {
@@ -234,7 +234,7 @@ exports.postRemoveReact = async (req, res, next) => {
                 return res.status(200).json(removeStoryReact)
             }
             case 'watch': {
-                const removeWatchReact = await removeReact(TARGETS.watch, id, reactor)
+                const removeWatchReact = await removeReact(TARGETS.watch, id, profile)
                 return res.status(200).json(removeWatchReact)
             }
             default:

@@ -7,6 +7,32 @@ const games = new Map(); // gameId -> game snapshot
 const userInvites = new Map(); // profileId -> [{ gameId, by, name, avatar, ts }]
 const playerSockets = new Map(); // profileId -> Set<socketId>
 
+// Games and invites live in memory only, so they are swept: finished games
+// shortly after gameover (a rematch resets them first), others once idle.
+const ENDED_GAME_TTL_MS = 10 * 60 * 1000;
+const IDLE_GAME_TTL_MS = 6 * 60 * 60 * 1000;
+const INVITE_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_GAMES_PER_CREATOR = 20;
+
+const sweep = () => {
+  const now = Date.now();
+  games.forEach((game, gameId) => {
+    const idle = now - (game.updatedAt || game.createdAt);
+    if ((game.endedAt && now - game.endedAt > ENDED_GAME_TTL_MS) || idle > IDLE_GAME_TTL_MS) {
+      games.delete(gameId);
+    }
+  });
+  userInvites.forEach((list, pid) => {
+    const fresh = list.filter((invite) => now - Number(invite.ts || 0) < INVITE_TTL_MS && games.has(invite.gameId));
+    if (fresh.length) userInvites.set(pid, fresh);
+    else userInvites.delete(pid);
+  });
+};
+setInterval(sweep, 5 * 60 * 1000).unref?.();
+
+const isPlayer = (game, pid) =>
+  !!game && !!pid && (game.whitePlayer === String(pid) || game.blackPlayer === String(pid));
+
 const publicGameState = (gameId, game) => ({
   gameId,
   fen: game?.fen || STARTING_FEN,
@@ -34,10 +60,19 @@ const attachPlayerInfo = (game, profileId, info = {}) => {
   }
 };
 
-const ensureGame = (gameId) => {
+// The game, created on first use; null when `creatorId` already has too many.
+const ensureGame = (gameId, creatorId) => {
   if (!games.has(gameId)) {
+    let created = 0;
+    games.forEach((game) => {
+      if (game.creatorId === String(creatorId || "")) created += 1;
+    });
+    if (created >= MAX_GAMES_PER_CREATOR) return null;
     games.set(gameId, {
+      creatorId: String(creatorId || ""),
       createdAt: Date.now(),
+      updatedAt: Date.now(),
+      endedAt: null,
       fen: STARTING_FEN,
       whitePlayer: null,
       blackPlayer: null,
@@ -136,8 +171,10 @@ function chessSocket(io, socket, profileId) {
 
   const joinRoom = (gameId) => {
     const room = `chess_${gameId}`;
+    const game = ensureGame(gameId, effectiveProfileId);
+    if (!game) return { room, game: null };
     socket.join(room);
-    const game = ensureGame(gameId);
+    game.updatedAt = Date.now();
 
     if (effectiveProfileId) {
       game.onlinePlayers.add(String(effectiveProfileId));
@@ -170,11 +207,12 @@ function chessSocket(io, socket, profileId) {
     io.to(`chess_${gameId}`).emit("chess:state", publicGameState(gameId, game));
   };
 
-  socket.on("chess:join", (payload = {}) => {
-    const { gameId, name, avatar } = payload;
+  socket.on("chess:join", (payload) => {
+    const { gameId, name, avatar } = payload || {};
     if (!gameId) return;
 
     const { room, game } = joinRoom(gameId);
+    if (!game) return;
     const roomSize = io?.sockets?.adapter?.rooms?.get(room)?.size || 0;
     const pid = effectiveProfileId ? String(effectiveProfileId) : null;
 
@@ -190,8 +228,8 @@ function chessSocket(io, socket, profileId) {
     emitState(gameId);
   });
 
-  socket.on("chess:create", (payload = {}) => {
-    const { gameId, name, avatar } = payload;
+  socket.on("chess:create", (payload) => {
+    const { gameId, name, avatar } = payload || {};
     if (!gameId) return;
 
     const { game } = joinRoom(gameId);
@@ -210,7 +248,8 @@ function chessSocket(io, socket, profileId) {
     if (!gameId || !move) return;
 
     const game = games.get(gameId);
-    if (!game) return;
+    if (!isPlayer(game, effectiveProfileId)) return;
+    game.updatedAt = Date.now();
 
     game.fen = move.fen;
     game.lastMove = {
@@ -230,7 +269,9 @@ function chessSocket(io, socket, profileId) {
     const { gameId, fen, whitePlayer, blackPlayer } = payload || {};
     if (!gameId) return;
 
-    const game = ensureGame(gameId);
+    const game = games.get(gameId);
+    if (!isPlayer(game, effectiveProfileId)) return;
+    game.updatedAt = Date.now();
     if (fen) game.fen = fen;
     if (whitePlayer) game.whitePlayer = String(whitePlayer);
     if (blackPlayer) game.blackPlayer = String(blackPlayer);
@@ -244,7 +285,7 @@ function chessSocket(io, socket, profileId) {
     if (!gameId || !assignProfileId || !color) return;
 
     const game = games.get(gameId);
-    if (!game) return;
+    if (!isPlayer(game, effectiveProfileId)) return;
 
     if (color === "white") {
       game.whitePlayer = String(assignProfileId);
@@ -255,13 +296,15 @@ function chessSocket(io, socket, profileId) {
     emitState(gameId);
   });
 
-  socket.on("chess:invite", (payload = {}) => {
+  socket.on("chess:invite", (raw) => {
+    const payload = raw || {};
     const { to, gameId } = payload;
-    if (!to || !gameId) return;
+    if (!to || !gameId || !effectiveProfileId) return;
 
     const invite = {
       ...payload,
-      by: payload.by || effectiveProfileId,
+      // Always from this socket's profile; a `by` in the payload is ignored.
+      by: String(effectiveProfileId),
       reinvite: payload.reinvite === true,
       inviteId:
         payload.inviteId ||
@@ -289,11 +332,13 @@ function chessSocket(io, socket, profileId) {
     io.to(`user_${to}`).emit("chess:invites", { invites: list });
   });
 
-  socket.on("chess:accept", (payload = {}) => {
+  socket.on("chess:accept", (raw) => {
+    const payload = raw || {};
     const { gameId, from, name, avatar } = payload;
     if (!gameId) return;
 
     const { room, game } = joinRoom(gameId);
+    if (!game) return;
     const pid = effectiveProfileId ? String(effectiveProfileId) : null;
 
     if (game && pid) {
@@ -328,10 +373,10 @@ function chessSocket(io, socket, profileId) {
     socket.emit("chess:invites", { invites });
   });
 
-  socket.on("chess:invites:dismiss", (payload = {}) => {
+  socket.on("chess:invites:dismiss", (payload) => {
     const pid = String(effectiveProfileId || "");
     if (!pid) return;
-    const { gameId, by } = payload;
+    const { gameId, by } = payload || {};
     if (!gameId) return;
 
     const list = userInvites.get(pid) || [];
@@ -346,15 +391,17 @@ function chessSocket(io, socket, profileId) {
     io.to(`user_${pid}`).emit("chess:invites", { invites: filtered });
   });
 
-  socket.on("chess:reset", (payload = {}) => {
-    const { gameId } = payload;
+  socket.on("chess:reset", (payload) => {
+    const { gameId } = payload || {};
     if (!gameId) return;
 
     const game = games.get(gameId);
-    if (!game) return;
+    if (!isPlayer(game, effectiveProfileId)) return;
 
     game.fen = STARTING_FEN;
     game.lastMove = null;
+    game.endedAt = null;
+    game.updatedAt = Date.now();
 
     io.to(`chess_${gameId}`).emit("chess:reset", {
       gameId,
@@ -363,9 +410,15 @@ function chessSocket(io, socket, profileId) {
     emitState(gameId);
   });
 
-  socket.on("chess:gameover", (payload = {}) => {
+  socket.on("chess:gameover", (raw) => {
+    const payload = raw || {};
     const { gameId } = payload;
     if (!gameId) return;
+
+    const game = games.get(gameId);
+    if (!isPlayer(game, effectiveProfileId)) return;
+    // Swept a few minutes later unless a rematch resets it.
+    game.endedAt = Date.now();
 
     io.to(`chess_${gameId}`).emit("chess:gameover", {
       ...payload,

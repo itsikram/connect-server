@@ -1,4 +1,5 @@
 const { prisma, toId, isDuplicate } = require("../utils/db");
+const { getPublicMonetizationConfig } = require("./monetizationSettingsController");
 
 // Mongoose-like facade over prisma.transaction so the handler can still take
 // an injectable model (see paymentsController.test.js).
@@ -92,7 +93,30 @@ const validateSubmission = (body = {}) => {
   };
 };
 
-const createSubmitPaymentHandler = ({ TransactionModel = Transaction } = {}) =>
+// The coin packs and plan prices the clients are offered, read through the
+// public config handler so the check uses exactly that list (defaults included).
+const loadPaymentConfig = () =>
+  new Promise((resolve) => {
+    getPublicMonetizationConfig({}, { json: resolve });
+  });
+
+// Approval credits the submitted coinsAmount / tier, so both must be an
+// offer the client was shown at its price, not numbers the client picked.
+const priceError = (value, config) => {
+  if (value.type === "wallet_topup") {
+    const pack = (config?.coinPacks || []).find((item) =>
+      Number(item?.coins) === value.coinsAmount && Number(item?.priceBDT) === value.amountBDT);
+    return pack ? null : "coinsAmount and amountBDT must match an available coin pack";
+  }
+  if (value.type === "subscription") {
+    const plan = config?.subscriptionTiers?.[value.subscriptionTier];
+    const ok = plan && plan.enabled !== false && Number(plan.priceBDT) === value.amountBDT;
+    return ok ? null : "subscriptionTier and amountBDT must match an available plan";
+  }
+  return null;
+};
+
+const createSubmitPaymentHandler = ({ TransactionModel = Transaction, loadConfig = loadPaymentConfig } = {}) =>
   async (req, res) => {
     const userId = getUserId(req);
     if (!userId) {
@@ -133,6 +157,15 @@ const createSubmitPaymentHandler = ({ TransactionModel = Transaction } = {}) =>
         return res.status(429).json({
           success: false,
           message: "You can have at most 5 pending payment submissions",
+        });
+      }
+
+      const mismatch = priceError(value, await loadConfig());
+      if (mismatch) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid payment submission",
+          errors: { amountBDT: mismatch },
         });
       }
 

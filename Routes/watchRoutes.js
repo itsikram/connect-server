@@ -1,6 +1,7 @@
 const Router = require('express').Router()
 const {createWatch,deleteWatch,getMyWatchs,getRelatedWatchs,searchWatches,getProfileWatch, getSingleWatch,updateWatch,shareWatch} = require('../controllers/watchController')
 const isAuth = require('../middlewares/isAuth')
+const optionalAuth = require('../middlewares/optionalAuth')
 const { cacheResponse, GRAPH_TAGS, CONTENT_TAGS, MESSAGE_TAGS, NOTIFICATION_TAGS } = require('../utils/cacheResponse')
 
 // Video is uploaded separately via /upload/video; create only receives JSON metadata.
@@ -10,8 +11,9 @@ Router.post('/update',isAuth, updateWatch)
 Router.get('/myWatchs',isAuth,cacheResponse({ ttl: 30, tags: CONTENT_TAGS }),getMyWatchs)
 Router.get('/related',isAuth,cacheResponse({ ttl: 60, tags: CONTENT_TAGS }),getRelatedWatchs)
 Router.get('/search',isAuth,searchWatches)
-Router.get('/profileWatch',cacheResponse({ ttl: 30, tags: CONTENT_TAGS }),getProfileWatch)
-Router.get('/single',getSingleWatch)
+// optionalAuth (before the cache, whose key is per viewer): the audience decides who may see a watch
+Router.get('/profileWatch',optionalAuth,cacheResponse({ ttl: 30, tags: CONTENT_TAGS }),getProfileWatch)
+Router.get('/single',optionalAuth,getSingleWatch)
 Router.post('/share', isAuth, shareWatch)
 
 module.exports = Router;

@@ -1,8 +1,9 @@
 const router = require("express").Router();
 const isAuth = require("../middlewares/isAuth");
+const requireFeatureFlag = require("../middlewares/requireFeatureFlag");
 const recovery = require("../controllers/recoveryController");
 
-router.use(isAuth);
+router.use(isAuth, requireFeatureFlag("recoveryEnabled", "Recovery is turned off."));
 router.get("/content", recovery.getContent);
 router.get("/resources", recovery.getResources);
 router.get("/profile", recovery.getProfile);

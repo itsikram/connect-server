@@ -256,7 +256,8 @@ function attachSocket(io, socket, profileId) {
     });
 
     socket.on('presence:unsubscribe', (payload) => {
-        const ids = Array.isArray(payload) ? payload : payload?.profileIds || [];
+        const ids = Array.isArray(payload) ? payload : payload?.profileIds;
+        if (!Array.isArray(ids)) return;
         ids.forEach((pid) => {
             if (String(pid) !== id) socket.leave(room(String(pid)));
         });

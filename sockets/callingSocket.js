@@ -116,6 +116,15 @@ const findCall = (channelName, me, other) => {
     return latest;
 };
 
+// A call registered on this server under `channelName` that `me` is not part
+// of. Events for it are someone else's guess at the channel name and are
+// dropped (only channels with no record here are relayed, for calls held by
+// another server).
+const isOthersCall = (channelName, me) => {
+    const call = channelName ? activeCalls.get(String(channelName)) : null;
+    return !!call && !isParticipant(call, me);
+};
+
 async function sendIncomingCallWebPush(to, {
     isAudio,
     callerId,
@@ -236,12 +245,16 @@ async function logCallMessage(io, { callerId, calleeId, isAudio, callEvent, dura
             }),
             'parent'
         );
+        // Sent to the callee: public fields only (as for chat messages).
         const senderProfile = callerId
             ? populated(
                 await prisma.profile.findUnique({
                     where: { id: String(callerId) },
-                    omit: { deviceTokens: true, browserIds: true, webPushSubscriptions: true },
-                    include: { userDoc: { omit: { password: true, resetPasswordToken: true, resetPasswordExpire: true } } },
+                    select: {
+                        id: true, fullName: true, displayName: true, username: true, nickname: true, profilePic: true,
+                        isVerified: true, isOfficial: true, isActive: true, lastActive: true, user: true,
+                        userDoc: { select: { id: true, firstName: true, surname: true } },
+                    },
                 }),
                 'user'
             )
@@ -341,6 +354,7 @@ const listenForCallSync = (io) => {
 async function rejectCallAs(io, me, { to, channelName, reason } = {}, isAudioHint, socket = null) {
     if (!to) return;
     const call = findCall(channelName, me, to);
+    if (!call && isOthersCall(channelName, me)) return;
     // A duplicate push/socket delivery can make one of the callee's
     // devices send reject after another device answered. Never
     // invalidate an accepted call.
@@ -383,7 +397,10 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
         if (calleeId === me) return;
         pruneStaleCalls();
 
-        // A re-sent start for the same channel replaces the old record.
+        // A re-sent start for the same channel replaces the old record, but
+        // never someone else's call that uses this channel name.
+        const previous = activeCalls.get(String(channelName));
+        if (previous && previous.callerId !== me) return;
         removeCall(String(channelName));
 
         // The person being called is already on another call: tell the caller
@@ -505,6 +522,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
     const cancelCall = async ({ to, channelName } = {}, isAudioHint) => {
         if (!to) return;
         const call = findCall(channelName, me, to);
+        if (!call && isOthersCall(channelName, me)) return;
         if (call && call.accepted) {
             // Already answered: treat as a normal hang-up.
             return endCall({ to, channelName: call.channelName }, call.isAudio);
@@ -539,6 +557,7 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
         if (!to) return;
         const connectId = String(to);
         const call = findCall(channelName, me, connectId);
+        if (!call && isOthersCall(channelName, me)) return;
         // Late duplicate for a call that was already cancelled/ended/timed out
         // (both apps send an end when they see the other side leave).
         if (!call && wasFinished(channelName)) return;
@@ -583,7 +602,9 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
         try {
             if (!to) return;
             const callerId = String(to);
-            const call = findCall(channelName, callerId, me);
+            const call = findCall(channelName, me, callerId);
+            // Only the callee answers, and only the call it was rung for.
+            if (call ? call.calleeId !== me || call.callerId !== callerId : isOthersCall(channelName, me)) return;
             const isAudio = call ? call.isAudio : !!isAudioHint;
             const type = callTypeOf(isAudio);
             const channel = channelName || call?.channelName;
@@ -699,7 +720,8 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
     // Captions are opt-in and scoped to the active call channel. Never relay
     // arbitrary text or audio; the authenticated socket identity is the sender.
     // Registered once per socket (it used to be re-registered on every answer).
-    socket.on('call-transcript', ({ to, channelName, text, isFinal = false } = {}) => {
+    socket.on('call-transcript', (payload) => {
+        const { to, channelName, text, isFinal = false } = payload || {};
         const target = String(to || '');
         const channel = String(channelName || '');
         const transcript = String(text || '').trim().slice(0, 500);
@@ -710,6 +732,18 @@ module.exports = function callingSocket(io, socket, profileId, onlineUsers) {
             text: transcript,
             isFinal: Boolean(isFinal),
         });
+    });
+
+    // Video filter the sender applied to its own camera, shown on the other
+    // side ({ to, filter } -> `apply-video-filter` { friendId, filter }). Only
+    // relayed to the other participant of a call the sender is in.
+    socket.on('filter-video', (payload) => {
+        const { to, channelName, filter } = payload || {};
+        const target = String(to || '');
+        if (!target || typeof filter !== 'string' || filter.length > 64) return;
+        const call = findCall(channelName, me, target);
+        if (!call || (call.callerId === me ? call.calleeId : call.callerId) !== target) return;
+        io.to(target).emit('apply-video-filter', { friendId: me, filter });
     });
 };
 

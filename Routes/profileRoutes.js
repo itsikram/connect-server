@@ -20,6 +20,7 @@ const {
 const coverPicUpload = require("../middlewares/UploadCover");
 const photosUpload = require("../middlewares/photosUpload");
 const isAuth = require("../middlewares/isAuth");
+const optionalAuth = require("../middlewares/optionalAuth");
 const multer = require("multer");
 const { cacheResponse, GRAPH_TAGS, CONTENT_TAGS, MESSAGE_TAGS, NOTIFICATION_TAGS } = require('../utils/cacheResponse')
 
@@ -28,7 +29,7 @@ const upload = multer({ storage: multer.memoryStorage() }); // Create an endpoin
 Router.get("/", isAuth, cacheResponse({ ttl: 30, tags: CONTENT_TAGS }), profileGet);
 Router.get("/public/:username", publicProfileGet); // no auth: SEO / logged-out profile view
 Router.get("/hasStory", prefileHasStory);
-Router.get("/getImages", getProfileImages);
+Router.get("/getImages", optionalAuth, getProfileImages); // post audience decides what the viewer sees
 Router.get("/nearby", isAuth, getNearbyProfiles); // Get nearby profiles endpoint
 Router.get("/nearby-places", isAuth, getNearbyPlaces); // Get nearby places from OpenStreetMap endpoint
 Router.get("/online-status", isAuth, getOnlineStatus); // Check online status endpoint

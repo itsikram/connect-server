@@ -143,43 +143,27 @@ exports.saveNotification = async (io, data) => {
   }
 };
 
-exports.postNotification = async (req, res, next) => {
-  let receiverId = req.body.receiverId;
-  let notificationText = req.body.text;
-  let notificationLink = req.body.link || "/";
-  let notificationIcon = req.body.icon || null;
-  let notificationType = req.body.type || null;
-  let newNotification = await prisma.notification.create({
-    data: {
-      receiverId: receiverId == null ? null : String(receiverId),
-      text: notificationText,
-      link: notificationLink,
-      icon: notificationIcon,
-      type: notificationType,
-    },
-  });
-  if (newNotification) {
-    return res.json({ message: "New Notification Created" }).json(200);
-  }
-  return res.json({ message: "Notification Creation Failed" }).json(400);
-};
-
 exports.notificationView = async (req, res, next) => {
-  let notificationId = req.body.notificationId;
+  try {
+    let notificationId = req.body.notificationId;
 
-  if (!isValidId(notificationId)) return next();
+    if (!isValidId(notificationId)) return next();
 
-  let updatedNotification = await prisma.notification.updateMany({
-    where: { id: String(notificationId) },
-    data: { isSeen: true },
-  });
+    // Only the signed-in user's own notification.
+    let updatedNotification = await prisma.notification.updateMany({
+      where: { id: String(notificationId), receiverId: String(req.profile._id) },
+      data: { isSeen: true },
+    });
 
-  if (updatedNotification.count > 0) {
-    return res
-      .json({ message: "Notification status updated successfully" })
-      .status(200);
+    if (updatedNotification.count > 0) {
+      return res
+        .json({ message: "Notification status updated successfully" })
+        .status(200);
+    }
+    return res.json({ message: "Something went wrong" }).status(400);
+  } catch (error) {
+    return next(error);
   }
-  res.json({ message: "Something went wrong" }).status(400);
 };
 exports.notificationViewAll = async (req, res, next) => {
   let profile = req.profile;

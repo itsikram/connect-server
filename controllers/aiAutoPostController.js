@@ -88,22 +88,26 @@ exports.publish = async (req, res) => {
   } catch (error) { return res.status(502).json({ message: publicError(error) }); }
 };
 
-exports.updateGenerated = async (req, res) => {
-  if (!(await findGenerated(req.params.id))) return res.status(404).json({ message: "Generated post not found" });
-  const data = { caption: String(req.body?.caption || "").trim().slice(0, 500) };
-  if (Array.isArray(req.body?.hashtags)) data.hashtags = req.body.hashtags.slice(0, 8);
-  const item = withHashtags(await prisma.aIGeneratedPost.update({ where: { id: req.params.id }, data }));
-  if (item.post) {
-    await prisma.post.updateMany({ where: { id: item.post }, data: { caption: captionWithTags(item) } });
-  }
-  return res.json(item);
+exports.updateGenerated = async (req, res, next) => {
+  try {
+    if (!(await findGenerated(req.params.id))) return res.status(404).json({ message: "Generated post not found" });
+    const data = { caption: String(req.body?.caption || "").trim().slice(0, 500) };
+    if (Array.isArray(req.body?.hashtags)) data.hashtags = req.body.hashtags.slice(0, 8);
+    const item = withHashtags(await prisma.aIGeneratedPost.update({ where: { id: req.params.id }, data }));
+    if (item.post) {
+      await prisma.post.updateMany({ where: { id: item.post }, data: { caption: captionWithTags(item) } });
+    }
+    return res.json(item);
+  } catch (error) { return next(error); }
 };
 
-exports.deleteGenerated = async (req, res) => {
-  if (!(await findGenerated(req.params.id))) return res.status(404).json({ message: "Generated post not found" });
-  const item = await prisma.aIGeneratedPost.update({ where: { id: req.params.id }, data: { status: "deleted" } });
-  if (item.post) await prisma.post.deleteMany({ where: { id: item.post } });
-  return res.json({ ok: true });
+exports.deleteGenerated = async (req, res, next) => {
+  try {
+    if (!(await findGenerated(req.params.id))) return res.status(404).json({ message: "Generated post not found" });
+    const item = await prisma.aIGeneratedPost.update({ where: { id: req.params.id }, data: { status: "deleted" } });
+    if (item.post) await prisma.post.deleteMany({ where: { id: item.post } });
+    return res.json({ ok: true });
+  } catch (error) { return next(error); }
 };
 
 exports.regenerate = async (req, res) => {

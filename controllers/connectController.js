@@ -18,26 +18,34 @@ const connectData = (body = {}) => {
 const findCurrent = () => prisma.connect.findFirst({ orderBy: { updatedAt: 'desc' } })
 
 exports.getData=async(req,res,next)=>{
-    let connect = await findCurrent()
-    if(connect) {
-        return res.json(connect).status(200)
+    try {
+        let connect = await findCurrent()
+        if(connect) {
+            return res.status(200).json(connect)
+        }
+        // Stays a 200 as before: the admin settings page does not catch errors here.
+        return res.status(200).json({message: 'Connect data not found'})
+    } catch (error) {
+        next(error)
     }
-    return res.json({message: 'Connect data not found'}).status(404)
 }
 
 exports.updateData=async(req,res,next)=>{
-    let connect = await findCurrent()
-    if(connect?.id) {
-        let updatedConnect = await prisma.connect.update({ where: { id: connect.id }, data: connectData(req.body) })
-        if(updatedConnect) {
-            return res.json(updatedConnect).status(200)
+    try {
+        let connect = await findCurrent()
+        if(connect?.id) {
+            let updatedConnect = await prisma.connect.update({ where: { id: connect.id }, data: connectData(req.body) })
+            if(updatedConnect) {
+                return res.status(200).json(updatedConnect)
+            }
+        }else {
+            let connect = await prisma.connect.create({ data: connectData(req.body) })
+            if(connect) {
+                return res.status(200).json(connect)
+            }
         }
-    }else {
-        let connect = await prisma.connect.create({ data: connectData(req.body) })
-        if(connect) {
-            return res.json(connect).status(200)
-        }
+        return res.status(404).json({message: 'Connect data not found'})
+    } catch (error) {
+        next(error)
     }
-    return res.json({message: 'Connect data not found'}).status(404)
-
 }

@@ -18,6 +18,7 @@ const {
   processLocationChatQuery,
   getFullConnectDetails,
 } = require("../services/ai/chatLocationService");
+const { isValidLocation, locationHiddenIds } = require("../services/ai/locationService");
 const { translate } = require("../utils/localization/translations");
 
 /**
@@ -59,7 +60,8 @@ exports.chatLocationQuery = async (req, res, next) => {
     const lat = parseFloat(latitude);
     const lon = parseFloat(longitude);
 
-    if (isNaN(lat) || isNaN(lon)) {
+    // Range too: the coordinates are saved as the user's location below.
+    if (!isValidLocation(lat, lon)) {
       return res.status(400).json({
         error: true,
         message: translate("invalidLocation", lang),
@@ -241,6 +243,10 @@ exports.getChatConnectsList = async (req, res, next) => {
     }
 
     const connectIds = userProfile.connects.map((connect) => connect.id);
+    const hidden = await locationHiddenIds(connectIds);
+    userProfile.connects.forEach((connect) => {
+      if (hidden.has(String(connect.id))) connect.lastLocation = null;
+    });
     const relationshipRows = await prisma.relationship.findMany({
       where: {
         OR: [
@@ -303,7 +309,7 @@ exports.getChatConnectsList = async (req, res, next) => {
       .sort((a, b) => {
         if (!a.distance && !b.distance) return 0;
         if (!a.distance) return 1;
-        if (!b.distance) return 1;
+        if (!b.distance) return -1;
         return a.distance.distance - b.distance.distance;
       });
 

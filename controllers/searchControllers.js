@@ -1,10 +1,26 @@
-const { prisma, populated, containsInsensitive } = require("../utils/db");
+const { prisma, populated, containsInsensitive, toId } = require("../utils/db");
 const { PRIVATE_OMIT } = require("../utils/profileGraph");
-const { postInclude, watchInclude, shapePost, shapeWatch } = require("../services/contentShape");
+const {
+  postInclude,
+  watchInclude,
+  shapePost,
+  shapeWatch,
+  audienceLists,
+  audienceWhere,
+  publicWhere,
+} = require("../services/contentShape");
 const {
   getSearchMatchScore,
   getSearchTokens,
 } = require("../utils/searchMatching");
+
+// Posts / watches `viewer` may see under the feed's audience rules (public
+// only when signed out); authors always see their own.
+const visibleWhere = async (viewer) => {
+  if (!viewer?._id) return publicWhere();
+  const viewerId = toId(viewer._id);
+  return { OR: [{ author: viewerId }, audienceWhere(viewerId, await audienceLists(viewer))] };
+};
 
 exports.getSearchResult = async (req, res, next) => {
   try {
@@ -40,9 +56,10 @@ exports.getSearchResult = async (req, res, next) => {
     }
 
     const authorArgs = { omit: PRIVATE_OMIT };
+    const visible = await visibleWhere(req.profile);
     let postsFound = (
       await prisma.post.findMany({
-        where: { caption: containsInsensitive(queryString) },
+        where: { AND: [{ caption: containsInsensitive(queryString) }, visible] },
         include: postInclude({ author: authorArgs }),
         take: 25,
       })
@@ -52,9 +69,14 @@ exports.getSearchResult = async (req, res, next) => {
       searchResponse.posts = postsFound;
     }
     const videoTokens = getSearchTokens(queryString);
-    const findVideos = (args) =>
+    const findVideos = ({ where, ...args }) =>
       prisma.watch
-        .findMany({ ...args, include: watchInclude({ author: authorArgs }), take: 100 })
+        .findMany({
+          ...args,
+          where: where ? { AND: [where, visible] } : visible,
+          include: watchInclude({ author: authorArgs }),
+          take: 100,
+        })
         .then((rows) => rows.map(shapeWatch));
     let videoCandidates = videoTokens.length
       ? await findVideos({

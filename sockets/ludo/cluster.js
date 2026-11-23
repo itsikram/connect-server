@@ -12,8 +12,9 @@ const FORWARD_TIMEOUT_MS = 6000;
 
 const normalizeUrl = (value = "") => String(value).trim().replace(/\/+$/, "");
 
-const getSecret = () =>
-  process.env.LB_INTERNAL_SECRET || process.env.JWT_SECRET || "connect-local-lb";
+// Never a built-in default: the repo is public, so a constant would let anyone
+// call the internal route as any player.
+const getSecret = () => String(process.env.LB_INTERNAL_SECRET || process.env.JWT_SECRET_KEY || "");
 
 const selfUrl = () =>
   normalizeUrl(process.env.INSTANCE_URL || `http://127.0.0.1:${process.env.PORT || 4000}`);
@@ -81,7 +82,8 @@ function createCluster(host) {
   const attachRoute = (app) => {
     if (!app || peerUrls().length === 0) return;
     app.post(INTERNAL_PATH, async (req, res) => {
-      if (req.get("x-connect-internal-secret") !== getSecret()) {
+      const secret = getSecret();
+      if (!secret || req.get("x-connect-internal-secret") !== secret) {
         return res.status(403).json({ ok: false, error: "forbidden" });
       }
       const { action, profileId, payload, ctx } = req.body || {};

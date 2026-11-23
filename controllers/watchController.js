@@ -11,7 +11,18 @@ const {
     shapePost,
     deleteCommentsWhere,
     removeContent,
+    audienceLists,
+    audienceWhere,
+    publicWhere,
 } = require('../services/contentShape')
+
+// Watches `viewer` may see under the feed's audience rules (public only when
+// signed out); authors always see their own, including Connects-only ones.
+const visibleWhere = async (viewer) => {
+    if (!viewer?._id) return publicWhere()
+    const viewerId = toId(viewer._id)
+    return { OR: [{ author: viewerId }, audienceWhere(viewerId, await audienceLists(viewer))] }
+}
 
 // comments: author (profilePic, user{firstName, surname}), replies with full author
 const watchComments = commentInclude(
@@ -134,6 +145,7 @@ exports.getRelatedWatchs = async (req, res, next) => {
     try {
         const pageSize = Math.min(parseInt(req.query.limit, 10) || 24, 40);
         const watches = await prisma.watch.findMany({
+            where: await visibleWhere(req.profile),
             select: {
                 ...listFields,
                 authorDoc: profileArgs(['profilePic', 'fullName', 'displayName'], ['firstName', 'surname']),
@@ -184,7 +196,7 @@ exports.searchWatches = async (req, res, next) => {
 
         const watches = await prisma.watch.findMany({
             where: {
-                AND: [{ videoUrl: { not: null } }, { videoUrl: { not: '' } }],
+                AND: [{ videoUrl: { not: null } }, { videoUrl: { not: '' } }, await visibleWhere(req.profile)],
                 OR: or,
             },
             select: {
@@ -211,7 +223,7 @@ exports.getMyWatchs = async (req, res, next) => {
         }
         if (!isValidId(profile_id)) return res.json().status(400)
         const watchs = await prisma.watch.findMany({
-            where: { author: toId(profile_id) },
+            where: { AND: [{ author: toId(profile_id) }, await visibleWhere(req.profile)] },
             include: fullWatchInclude(),
             orderBy: { createdAt: 'desc' },
         })
@@ -228,16 +240,24 @@ exports.getSingleWatch = async (req, res, next) => {
     try {
 
         let { watchId } = req.query
-        if (!isValidId(watchId)) return
-
-        const watch = shapeWatch(await prisma.watch.findUnique({ where: { id: String(watchId) }, include: fullWatchInclude() }))
-
-        if (watch) {
-            return res.json(watch).status(200)
+        if (!isValidId(watchId)) {
+            return res.status(400).json({ message: 'Invalid watch id' })
         }
+        watchId = String(watchId)
+
+        // A watch the viewer may not see answers like a missing one.
+        const visible = await prisma.watch.count({ where: { AND: [{ id: watchId }, await visibleWhere(req.profile)] } })
+        const watch = visible
+            ? shapeWatch(await prisma.watch.findUnique({ where: { id: watchId }, include: fullWatchInclude() }))
+            : null
+
+        if (!watch) {
+            return res.status(404).json({ message: 'Watch not found' })
+        }
+        return res.status(200).json(watch)
 
     } catch (error) {
-        console.log(error)
+        next(error)
     }
 }
 
@@ -281,13 +301,11 @@ exports.getProfileWatch = async (req, res, next) => {
     const pageNumber = Math.max(parseInt(req.query.pageNumber, 10) || 1, 1)
     const limit = 3
     try {
-        const where = {}
-        if (profileId) {
-            if (!isValidId(profileId)) {
-                return res.status(400).json({ message: 'Valid profile is required' })
-            }
-            where.author = String(profileId)
+        if (profileId && !isValidId(profileId)) {
+            return res.status(400).json({ message: 'Valid profile is required' })
         }
+        const where = { AND: [await visibleWhere(req.profile)] }
+        if (profileId) where.AND.push({ author: String(profileId) })
 
         const newsFeedWatchs = await prisma.watch.findMany({
             where,

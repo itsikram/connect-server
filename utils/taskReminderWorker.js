@@ -21,8 +21,14 @@ const { sendPushToProfile } = require("./pushNotifications");
 const { sendWebPushToProfile } = require("./webPush");
 
 const INTERVAL_MS = 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+// Daily reminders due in minutes a slow tick, timer drift or a restart
+// skipped (up to this long ago) are still sent; the lastReminderDate claim
+// stops a second send for the same day.
+const CATCH_UP_MS = 10 * 60 * 1000;
 let workerInterval = null;
 let isRunning = false;
+let lastTickAt = 0;
 
 function getLocalParts(date, timezone) {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -41,6 +47,8 @@ async function runTaskReminderTick(now = new Date()) {
   if (isRunning) return;
   isRunning = true;
   try {
+    const windowMs = Math.min(CATCH_UP_MS, Math.max(INTERVAL_MS, now.getTime() - lastTickAt));
+    const minuteStart = now.getTime() - (now.getTime() % 60000);
     const candidates = await prisma.task.findMany({
       where: {
         completed: false,
@@ -58,6 +66,7 @@ async function runTaskReminderTick(now = new Date()) {
         reminderTime: true,
         reminderTimezone: true,
         lastReminderDate: true,
+        updatedAt: true,
       },
     });
 
@@ -97,9 +106,19 @@ async function runTaskReminderTick(now = new Date()) {
         console.warn("[task-reminder] invalid timezone", task.reminderTimezone, error?.message || error);
         continue;
       }
-      const localDate = `${local.year}-${local.month}-${local.day}`;
-      const localTime = `${local.hour}:${local.minute}`;
-      if (task.reminderTime !== localTime || task.lastReminderDate === localDate) continue;
+      const [hour, minute] = String(task.reminderTime).split(":").map(Number);
+      if (!Number.isInteger(hour) || !Number.isInteger(minute)) continue;
+      // Local wall-clock times as UTC timestamps; the slot is the latest
+      // reminder time at or before now (yesterday's when today's is ahead).
+      const nowWall = Date.UTC(+local.year, +local.month - 1, +local.day, +local.hour, +local.minute);
+      const todayWall = Date.UTC(+local.year, +local.month - 1, +local.day, hour, minute);
+      const slotWall = todayWall <= nowWall ? todayWall : todayWall - DAY_MS;
+      const lateMs = nowWall - slotWall;
+      if (lateMs >= windowMs) continue;
+      // Set or edited after a missed slot: wait for the next one.
+      if (lateMs > 0 && task.updatedAt && new Date(task.updatedAt).getTime() >= minuteStart - lateMs + 60000) continue;
+      const localDate = new Date(slotWall).toISOString().slice(0, 10);
+      if (task.lastReminderDate === localDate) continue;
 
       const { count: claimed } = await prisma.task.updateMany({
         where: {
@@ -125,6 +144,7 @@ async function runTaskReminderTick(now = new Date()) {
         sendWebPushToProfile(task.user, payload),
       ]);
     }
+    lastTickAt = now.getTime();
   } catch (error) {
     console.error("[task-reminder] worker tick failed:", error?.message || error);
   } finally {

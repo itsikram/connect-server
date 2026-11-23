@@ -57,7 +57,9 @@ const deleteUserData = async (profileId) => {
         prisma.$executeRaw`DELETE FROM posts WHERE author = ${profileId}`,
         prisma.$executeRaw`DELETE FROM watches WHERE author = ${profileId}`,
         prisma.$executeRaw`DELETE FROM stories WHERE author = ${profileId}`,
-        prisma.message.deleteMany({ where: { OR: [{ senderId: profileId }, { receiverId: profileId }] } }),
+        // Raw too: a reply inside this set points at another message in it,
+        // which the emulated restrict on Message.parent would refuse.
+        prisma.$executeRaw`DELETE FROM messages WHERE senderId = ${profileId} OR receiverId = ${profileId}`,
         prisma.notification.deleteMany({ where: { receiverId: profileId } }),
 
         // Social graph

@@ -20,7 +20,7 @@ exports.postStory = async(req,res,next) => {
         let image = req.body.image || ''
         let storyBg = req.body.storyBg || ''
         let audience = parseInt(req.body.audience, 10) || 1
-        let savedData = await prisma.story.create({
+        await prisma.story.create({
             data: {
                 image,
                 bgColor: storyBg,
@@ -28,11 +28,9 @@ exports.postStory = async(req,res,next) => {
                 author: profileId
             }
         })
-        if(savedData) {
-            return res.json({
-                message: 'Story Created Successfully'
-            }).status(200)
-        }
+        return res.status(200).json({
+            message: 'Story Created Successfully'
+        })
 
     } catch (error) {
         next(error)
@@ -46,23 +44,28 @@ exports.deleteStory = async (req,res,next) => {
         let storyId = req.body.storyId
         let story = isValidId(storyId) ? await prisma.story.findUnique({ where: { id: String(storyId) } }) : null
 
-        if(story && sameId(profileId, story.author)) {
-            const { comments, replies, commentIds } = await deleteCommentsWhere({ story: story.id })
-            await removeContent('story', story.id)
-            await prisma.$transaction([
-                prisma.cmntReply.deleteMany({ where: { parent: { in: commentIds } } }),
-                prisma.comment.deleteMany({ where: { story: story.id } }),
-            ])
-            await deleteCloudinaryResources([
-                story.image,
-                story.music,
-                ...comments.map((comment) => comment.attachment),
-                ...replies.map((reply) => reply.attachment),
-            ])
-            return res.json({
-                message: 'Story Deleted Successfully'
-            }).status(200)
+        if (!story) {
+            return res.status(404).json({ message: 'Story not found' })
         }
+        if (!sameId(profileId, story.author)) {
+            return res.status(403).json({ message: 'You can only delete your own stories' })
+        }
+
+        const { comments, replies, commentIds } = await deleteCommentsWhere({ story: story.id })
+        await removeContent('story', story.id)
+        await prisma.$transaction([
+            prisma.cmntReply.deleteMany({ where: { parent: { in: commentIds } } }),
+            prisma.comment.deleteMany({ where: { story: story.id } }),
+        ])
+        await deleteCloudinaryResources([
+            story.image,
+            story.music,
+            ...comments.map((comment) => comment.attachment),
+            ...replies.map((reply) => reply.attachment),
+        ])
+        return res.status(200).json({
+            message: 'Story Deleted Successfully'
+        })
 
     } catch (error) {
         next(error)
@@ -114,7 +117,7 @@ exports.getSingleStory = async(req,res,next) => {
 
 
     } catch (error) {
-        console.log(error)
+        next(error)
     }
 }
 
