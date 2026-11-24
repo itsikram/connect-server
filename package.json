@@ -16,7 +16,7 @@
     "test:message-status": "node --test utils/messageStatus.test.js",
     "test:messages": "node --test sockets/messageSocket.test.js utils/conversationPage.test.js",
     "test:ludo": "node --test sockets/ludo/engine.test.js sockets/ludo/host.test.js sockets/ludo/cluster.test.js",
-    "test:ci": "npm run test:ai-feed && npm run test:recovery && npm run test:calls && npm run test:socket-auth && npm run test:access && npm run test:secure-messages && npm run test:message-status && npm run test:messages && npm run test:ludo",
+    "test:ci": "npm run test:ai-feed && npm run test:recovery && npm run test:calls && npm run test:socket-auth && npm run test:access && npm run test:secure-messages && npm run test:message-status && npm run test:messages && npm run test:ludo && npm run test:expression-bridge",
     "start:lb": "node load-balancer/start-cluster.js",
     "start:lb:2": "node load-balancer/start-cluster.js 2",
     "start:lb:4": "node load-balancer/start-cluster.js 4",
@@ -26,7 +26,8 @@
     "db:generate": "prisma generate",
     "db:push": "node scripts/prisma.js db push",
     "db:migrate": "node scripts/prisma.js migrate dev",
-    "db:studio": "node scripts/prisma.js studio"
+    "db:studio": "node scripts/prisma.js studio",
+    "test:expression-bridge": "node --test sockets/expressionBridge.test.js"
   },
   "keywords": [],
   "author": "",

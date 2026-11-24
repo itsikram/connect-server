@@ -9,14 +9,18 @@ const SECRET_KEY = process.env.JWT_SECRET_KEY;
 const deleteUserData = require('../utils/deleteUserData')
 const sendEmailNotification = require('../utils/sendEmailNotification');
 const { getFaceServiceConfig } = require('../utils/faceServiceSync');
+const { getFaceApiUrl, isBridgeEnabled } = require('../sockets/expressionBridge');
 
 // JWTs are stateless; clearing the client token completes logout.
 exports.logout = async (req, res) => {
     return res.status(200).json({ success: true, message: 'Logged out successfully' });
 };
 
+// With the expression bridge on, face login uses the same hosted face
+// service (cPanel) as expression analysis.
 const getFaceServiceUrl = () =>
-    (getFaceServiceConfig().url || 'http://localhost:5001').replace(/\/+$/, '');
+    (isBridgeEnabled() ? getFaceApiUrl() : getFaceServiceConfig().url || 'http://localhost:5001')
+        .replace(/\/+$/, '');
 const FACE_SERVICE_TIMEOUT_MS = 60000;
 
 const callFaceService = async (path, payload) => {

@@ -30,6 +30,13 @@ app.set("trust proxy", 1);
 // body-less 304 responses that the mobile client cannot use.
 app.disable("etag");
 const socketHandler = require("./sockets/socketHandler");
+const {
+  attachExpressionBridge,
+  checkFaceApi,
+  isBridgeEnabled: isExpressionBridgeEnabled,
+  issueExpressionToken,
+  publicOriginOf,
+} = require("./sockets/expressionBridge");
 const { initializeSpeechWebSocketServer } = require("./speech/speechWsServer");
 const httpServer = createServer(app);
 const admin = require("firebase-admin");
@@ -516,6 +523,7 @@ const io = socketIo(httpServer, {
 global.io = io;
 
 socketHandler(io);
+attachExpressionBridge(io);
 initializeSpeechWebSocketServer(httpServer);
 startCpuSampler();
 attachPeerAdapter(io);
@@ -722,6 +730,16 @@ app.post("/api/youtube/cobalt-url", (req, res) => {
 // FACE_SERVICE_API_KEY: the API key lets its holder register faces for any
 // username, so only this server may hold it.
 app.get("/api/face-service-config", isAuth, (req, res) => {
+  // Expression bridge: clients open their /expressions socket on this server,
+  // which forwards frames to the hosted face service (see expressionBridge.js).
+  const bridgeOrigin = isExpressionBridgeEnabled() ? publicOriginOf(req) : "";
+  if (bridgeOrigin) {
+    return res.json({
+      url: bridgeOrigin,
+      source: "bridge",
+      socketToken: issueExpressionToken(req.profile?._id || req.profile?.id),
+    });
+  }
   const config = getFaceServiceConfig();
   const url = config.url || "http://localhost:5001";
   res.json({
@@ -729,6 +747,19 @@ app.get("/api/face-service-config", isAuth, (req, res) => {
     url,
     source: config.source === "unset" ? "default" : config.source,
     socketToken: String(process.env.FACE_SERVICE_SOCKET_TOKEN || "").trim(),
+  });
+});
+
+// Public: whether the hosted face service is reachable and accepts this
+// server's key. Reports booleans and timing only.
+app.get("/api/face-service-status", async (req, res) => {
+  const status = await checkFaceApi();
+  res.json({
+    enabled: status.enabled,
+    url: status.url,
+    reachable: status.reachable,
+    authorized: status.authorized,
+    ms: status.ms,
   });
 });
 
