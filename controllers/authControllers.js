@@ -10,6 +10,13 @@ const deleteUserData = require('../utils/deleteUserData')
 const sendEmailNotification = require('../utils/sendEmailNotification');
 const { getFaceServiceConfig } = require('../utils/faceServiceSync');
 const { getFaceApiUrl, isBridgeEnabled } = require('../sockets/expressionBridge');
+const {
+    findBestMatch,
+    isValidVector,
+    loadEncodings,
+    removeEncodings,
+    saveEncoding,
+} = require('../utils/faceEncodingStore');
 
 // JWTs are stateless; clearing the client token completes logout.
 exports.logout = async (req, res) => {
@@ -523,16 +530,12 @@ exports.faceRegister = async (req, res, next) => {
     }
 
     try {
-        const { response, data } = await callFaceService('/api/face/register', {
-            username,
-            frames,
-        });
+        const { response, data } = await callFaceService('/api/face/encode', { frames });
 
-        if (!response.ok || !data.success) {
-            // The face service uses 401 for a failed liveness check. That is
-            // not an expired Connect session and must not trigger client
-            // logout/token refresh behavior.
-            const status = response.status >= 500 ? 503 : response.status === 409 ? 409 : 400;
+        if (!response.ok || !data.success || !isValidVector(data.encoding)) {
+            // A failed liveness check is not an expired Connect session and
+            // must not trigger client logout/token refresh behavior.
+            const status = response.status >= 500 ? 503 : 400;
             return res.status(status).json({
                 success: false,
                 message: data.message || (status === 503
@@ -541,6 +544,17 @@ exports.faceRegister = async (req, res, next) => {
             });
         }
 
+        const profileId = String(req.profile.id || req.profile._id);
+        const vector = data.encoding.map(Number);
+        const match = findBestMatch(vector, await loadEncodings(prisma));
+        if (match && match.profile !== profileId) {
+            return res.status(409).json({
+                success: false,
+                code: 'face_already_registered',
+                message: 'This face is already registered to another account.',
+            });
+        }
+        await saveEncoding(prisma, { profileId, name: username, vector });
         await prisma.user.update({ where: { id: String(req.profile.user._id) }, data: { faceLoginEnabled: true } });
         return res.status(200).json({
             success: true,
@@ -570,19 +584,8 @@ exports.faceRegister = async (req, res, next) => {
 };
 
 exports.faceRemove = async (req, res, next) => {
-    const username = req.profile?.username || req.profile?.user?.email;
-    if (!username) {
-        return res.status(400).json({ success: false, message: 'Your account has no username or email' });
-    }
-
     try {
-        const { response, data } = await callFaceService('/api/face/remove', { username });
-        if (!response.ok || !data.success) {
-            return res.status(response.status >= 500 ? 503 : 400).json({
-                success: false,
-                message: data.message || 'Could not remove face login',
-            });
-        }
+        await removeEncodings(prisma, req.profile.id || req.profile._id);
         await prisma.user.update({ where: { id: String(req.profile.user._id) }, data: { faceLoginEnabled: false } });
         return res.status(200).json({ success: true, message: 'Face login removed successfully' });
     } catch (error) {
@@ -608,9 +611,9 @@ exports.faceLogin = async (req, res, next) => {
     }
 
     try {
-        const { response, data } = await callFaceService('/api/face/login', { frames });
+        const { response, data } = await callFaceService('/api/face/encode', { frames });
 
-        if (!response.ok || !data.success) {
+        if (!response.ok || !data.success || !isValidVector(data.encoding)) {
             const status = response.status >= 500 ? 503 : response.status === 400 ? 400 : 401;
             return res.status(status).json({
                 success: false,
@@ -620,20 +623,18 @@ exports.faceLogin = async (req, res, next) => {
             });
         }
 
-        // Faces are enrolled by username. Only sign in when exactly one
-        // account has that username and it turned face login on itself.
-        const matches = data.username
-            ? await prisma.profile.findMany({
-                where: { username: String(data.username) },
-                include: { userDoc: true },
-                take: 2,
-            })
-            : [];
-        const user = matches.length === 1 ? matches[0].userDoc : null;
+        // Faces are stored per profile in MySQL; sign in only when the
+        // closest face belongs to an account that turned face login on.
+        const match = findBestMatch(data.encoding.map(Number), await loadEncodings(prisma));
+        if (!match) {
+            return res.status(401).json({ success: false, message: 'face not recognized' });
+        }
+        const matchedProfile = await prisma.profile.findUnique({
+            where: { id: match.profile },
+            include: { userDoc: true },
+        });
+        const user = matchedProfile?.userDoc || null;
         if (!user || !user.faceLoginEnabled) {
-            if (matches.length > 1) {
-                console.warn('[face-auth] face login refused: username is shared by several profiles');
-            }
             return res.status(404).json({
                 success: false,
                 message: 'No matching Connect account was found',
