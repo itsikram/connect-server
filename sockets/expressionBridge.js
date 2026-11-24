@@ -67,16 +67,29 @@ const publicOriginOf = (req) => {
   return host ? `${proto}://${host}` : "";
 };
 
+const isTimeout = (error) => error?.name === "TimeoutError" || error?.name === "AbortError";
+
 const callFaceApi = async (fetchImpl, body) => {
-  const response = await fetchImpl(`${getFaceApiUrl()}/api/expression/analyze`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Face-Service-Key": String(process.env.FACE_SERVICE_API_KEY || ""),
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(ANALYZE_TIMEOUT_MS),
-  });
+  const request = () =>
+    fetchImpl(`${getFaceApiUrl()}/api/expression/analyze`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Face-Service-Key": String(process.env.FACE_SERVICE_API_KEY || ""),
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(ANALYZE_TIMEOUT_MS),
+    });
+  let response;
+  try {
+    response = await request();
+  } catch (error) {
+    // Apache on the face host closes idle keep-alive connections after a
+    // few seconds; the first frame after a pause can hit a closed socket.
+    // Retry that once on a fresh connection, but never a timeout.
+    if (isTimeout(error)) throw error;
+    response = await request();
+  }
   const data = await response.json().catch(() => ({}));
   return { status: response.status, ok: response.ok, data };
 };

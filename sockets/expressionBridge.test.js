@@ -205,6 +205,24 @@ test("an unreachable face service is reported, and disconnect frees the session"
   }
 });
 
+test("a dropped keep-alive connection is retried once; a timeout is not", async () => {
+  let failures = 1;
+  const flaky = fakeFaceApi(() => {
+    if (failures-- > 0) throw new TypeError("fetch failed: other side closed");
+    return { data: { ok: true } };
+  });
+  assert.equal((await checkFaceApi(flaky.fetchImpl)).authorized, true);
+  assert.equal(flaky.calls.length, 2);
+
+  const timeout = fakeFaceApi(() => {
+    const error = new Error("The operation was aborted due to timeout");
+    error.name = "TimeoutError";
+    throw error;
+  });
+  assert.equal((await checkFaceApi(timeout.fetchImpl)).reachable, false);
+  assert.equal(timeout.calls.length, 1);
+});
+
 test("status check reports reachability and whether the key is accepted", async () => {
   const ok = fakeFaceApi(() => ({ status: 200, data: { ok: true } }));
   assert.deepEqual(
