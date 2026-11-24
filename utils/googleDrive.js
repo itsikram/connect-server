@@ -243,16 +243,64 @@ const parseDriveMediaUrl = (value) => {
     return match ? { account: match[1], fileId: match[2] } : null
 }
 
-// `req` may be null for background jobs; then the configured public base URL is used
-const buildMediaUrl = async (req, { account, fileId, name }) => {
+// The public address this server was last reached at, for background jobs
+// (YouTube downloads, AI posts, the Cloudinary move) that have no request.
+let lastRequestBase = ''
+
+const baseFromRequest = (req) => {
+    const host = String(req.get('x-forwarded-host') || req.get('host') || '').split(',')[0].trim()
+    if (!host) return ''
+    const local = /^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(host)
+    const proto = String(req.get('x-forwarded-proto') || req.protocol || 'https').split(',')[0].trim()
+    return `${local ? proto : 'https'}://${host}`
+}
+
+/**
+ * Base URL for /api/media links. `source` is a request, a base URL string, or
+ * null. Order: admin setting / MEDIA_PUBLIC_BASE_URL, then the given request
+ * or URL, then PUBLIC_SERVER_URL, then the last address this server was reached at.
+ */
+const resolveMediaBase = async (source = null) => {
     const { publicBaseUrl } = await getEffectiveDriveConfig()
-    const fallback = req
-        ? `${req.protocol}://${req.get('host')}`
-        : (process.env.PUBLIC_SERVER_URL || '')
-    const base = (publicBaseUrl || fallback).replace(/\/+$/, '')
+    let given = ''
+    if (source && typeof source === 'object' && typeof source.get === 'function') {
+        given = baseFromRequest(source)
+        if (given) lastRequestBase = given
+    } else if (typeof source === 'string') {
+        given = source
+    }
+    const base = String(publicBaseUrl || given || process.env.PUBLIC_SERVER_URL || lastRequestBase || '').replace(/\/+$/, '')
     if (!base) throw new Error('Set the Drive public base URL (admin) or MEDIA_PUBLIC_BASE_URL to build media links')
+    return base
+}
+
+const mediaUrlFor = (base, { account, fileId, name }) => {
     const safeName = encodeURIComponent(String(name || 'file').replace(/[\\/]/g, '_'))
-    return `${base}/api/media/${account}/${fileId}/${safeName}`
+    return `${String(base).replace(/\/+$/, '')}/api/media/${account}/${fileId}/${safeName}`
+}
+
+// `source`: the request, a base URL string, or null for background jobs
+const buildMediaUrl = async (source, stored) => mediaUrlFor(await resolveMediaBase(source), stored)
+
+// Files this app created whose name contains `text`, across all accounts
+const listAppFiles = async (text) => {
+    const escaped = String(text).replace(/'/g, "\\'")
+    const files = []
+    for (const account of await getAccounts()) {
+        let pageToken
+        do {
+            const { data } = await account.drive.files.list({
+                q: `name contains '${escaped}' and trashed = false`,
+                fields: 'nextPageToken, files(id,name)',
+                spaces: 'drive',
+                pageSize: 1000,
+                pageToken,
+            })
+            for (const file of data.files || []) files.push({ account: account.name, fileId: file.id, name: file.name })
+            pageToken = data.nextPageToken
+        } while (pageToken)
+    }
+    return files
 }
 
 const getDriveStorageStatus = async () => Promise.all((await getAccounts()).map(async (account) => {
@@ -276,5 +324,8 @@ module.exports = {
     deleteFromDrive,
     parseDriveMediaUrl,
     buildMediaUrl,
+    resolveMediaBase,
+    mediaUrlFor,
+    listAppFiles,
     getDriveStorageStatus,
 }

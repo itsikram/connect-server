@@ -81,9 +81,11 @@ const guessMimeType = (name, fallback = 'application/octet-stream') => {
  * fallback when an admin turns Drive uploads off. Pass `filePath`, `buffer`
  * or `sourceUrl`. Returns a Cloudinary-like result (secure_url, url, public_id).
  */
-const storeMedia = async ({ filePath, buffer, sourceUrl, mimeType, name, kind = 'file', folder, req = null }) => {
-    const { isDriveStorageEnabled } = require('./googleDrive')
+const storeMedia = async ({ filePath, buffer, sourceUrl, mimeType, name, kind = 'file', folder, req = null, baseUrl = null }) => {
+    const { isDriveStorageEnabled, resolveMediaBase, mediaUrlFor } = require('./googleDrive')
     if (await isDriveStorageEnabled()) {
+        // Work out the link first, so a missing base URL never leaves an unlinked file in Drive
+        const base = await resolveMediaBase(req || baseUrl)
         let size
         if (sourceUrl && !buffer && !filePath) {
             const response = await require('axios').get(sourceUrl, { responseType: 'arraybuffer', timeout: 120000 })
@@ -102,7 +104,7 @@ const storeMedia = async ({ filePath, buffer, sourceUrl, mimeType, name, kind = 
             mimeType: type,
             name: `${kind}-${Date.now()}-${uuidv4().slice(0, 8)}-${stem}${ext}`,
         })
-        const url = await buildMediaUrl(req, stored)
+        const url = mediaUrlFor(base, stored)
         return {
             provider: 'gdrive',
             public_id: `${stored.account}/${stored.fileId}`,

@@ -43,7 +43,13 @@ try {
   });
 
   // Step 3: Upload to media storage (Google Drive, Cloudinary only if Drive is off)
+  // A Drive-served video's own address is the right base for its thumbnail link
+  let baseUrl = null;
+  if (/\/api\/media\//.test(String(videoUrl))) {
+    try { baseUrl = new URL(videoUrl).origin; } catch (_) {}
+  }
   const result = await storeMedia({
+    baseUrl,
     filePath: thumbnailPath,
     mimeType: 'image/png',
     kind: 'thumbnail',

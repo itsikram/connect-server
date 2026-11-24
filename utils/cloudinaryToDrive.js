@@ -13,7 +13,7 @@ const crypto = require('crypto')
 const axios = require('axios')
 const { prisma } = require('./db')
 const { allTextRows } = require('./dbTextScan')
-const { uploadToDrive, buildMediaUrl, isDriveStorageEnabled } = require('./googleDrive')
+const { uploadToDrive, resolveMediaBase, mediaUrlFor, isDriveStorageEnabled, listAppFiles, deleteFromDrive, parseDriveMediaUrl } = require('./googleDrive')
 const { guessMimeType } = require('./mediaStorage')
 
 const CLOUDINARY_URL_RE = /https?:\/\/(?:res\.cloudinary\.com|[a-z0-9-]+\.res\.cloudinary\.com)\/[^\s"'<>()\\]+/gi
@@ -100,12 +100,13 @@ const fileNameFromUrl = (url) => {
     }
 }
 
-const copyOne = async (url) => {
+const copyOne = async (url, base) => {
     fs.mkdirSync(TEMP_DIR, { recursive: true })
     const tempPath = path.join(TEMP_DIR, `${crypto.randomUUID()}.bin`)
     try {
         const response = await axios.get(url, { responseType: 'stream', timeout: 0, validateStatus: () => true })
-        if (response.status === 404 || response.status === 410) {
+        // 401/403: the Cloudinary account no longer serves it (e.g. an old or closed account)
+        if ([401, 403, 404, 410].includes(response.status)) {
             response.data.resume()
             return { status: 'missing', error: `Cloudinary returned HTTP ${response.status}` }
         }
@@ -125,11 +126,31 @@ const copyOne = async (url) => {
         const headerType = String(response.headers['content-type'] || '').split(';')[0].trim()
         const mimeType = headerType && headerType !== 'application/octet-stream' ? headerType : guessMimeType(name)
         const stored = await uploadToDrive({ filePath: tempPath, size, mimeType, name: `migrated-${Date.now()}-${name}` })
-        const driveUrl = await buildMediaUrl(null, stored)
+        const driveUrl = mediaUrlFor(base, stored)
         return { status: 'done', driveUrl, bytes: size }
     } finally {
         fs.promises.unlink(tempPath).catch(() => {})
     }
+}
+
+// Files named migrated-* that no recorded copy points to
+const removeOrphans = async (mapping, state) => {
+    const recorded = new Set()
+    for (const row of mapping.values()) {
+        const parsed = row.status === 'done' && parseDriveMediaUrl(row.driveUrl)
+        if (parsed) recorded.add(`${parsed.account}:${parsed.fileId}`)
+    }
+    let removed = 0
+    for (const file of await listAppFiles('migrated-')) {
+        if (!file.name.startsWith('migrated-') || recorded.has(`${file.account}:${file.fileId}`)) continue
+        try {
+            await deleteFromDrive(file.account, file.fileId)
+            removed += 1
+        } catch (error) {
+            if (state.errors.length < 50) state.errors.push({ reason: `Could not remove unlinked copy ${file.name}: ${error?.message || error}` })
+        }
+    }
+    return removed
 }
 
 let job = null
@@ -137,7 +158,7 @@ let job = null
 const getMigrationStatus = () => job
 
 /** Starts the migration in the background. dryRun only counts the files to move. */
-const startMigration = async ({ dryRun = false } = {}) => {
+const startMigration = async ({ dryRun = false, baseUrl = null } = {}) => {
     if (job && !job.finishedAt) {
         const error = new Error('A migration is already running')
         error.status = 409
@@ -149,6 +170,8 @@ const startMigration = async ({ dryRun = false } = {}) => {
         throw error
     }
     await ensureTable()
+    // Resolve the link address up front: no file is uploaded if links cannot be built
+    const base = dryRun ? null : await resolveMediaBase(baseUrl)
 
     job = {
         id: crypto.randomUUID(),
@@ -163,13 +186,14 @@ const startMigration = async ({ dryRun = false } = {}) => {
         copied: 0,
         missing: 0,
         failed: 0,
+        orphansRemoved: 0,
         bytesCopied: 0,
         rowsUpdated: 0,
         linksUpdated: 0,
         errors: [],
     }
     const current = job
-    run(current).catch((error) => {
+    run(current, base).catch((error) => {
         current.phase = 'failed'
         current.errors.push({ reason: error?.message || String(error) })
         current.finishedAt = new Date().toISOString()
@@ -178,7 +202,7 @@ const startMigration = async ({ dryRun = false } = {}) => {
     return current
 }
 
-const run = async (state) => {
+const run = async (state, base) => {
     // 1. Find every Cloudinary URL in the database
     const found = new Set()
     for await (const { model, row } of allTextRows()) {
@@ -199,14 +223,19 @@ const run = async (state) => {
         return
     }
 
-    // 2. Copy each file to Drive (a few at a time), recording each copy
+    // 2. Remove Drive copies an earlier run uploaded but never recorded (they were
+    //    never linked anywhere), so retries do not leave duplicates behind
+    state.phase = 'cleaning'
+    state.orphansRemoved = await removeOrphans(mapping, state)
+
+    // 3. Copy each file to Drive (a few at a time), recording each copy
     state.phase = 'copying'
     let index = 0
     const worker = async () => {
         while (index < pending.length) {
             const url = pending[index++]
             try {
-                const result = await copyOne(url)
+                const result = await copyOne(url, base)
                 await saveMapping(url, result)
                 if (result.status === 'done') {
                     state.copied += 1
@@ -228,7 +257,7 @@ const run = async (state) => {
     }
     await Promise.all(Array.from({ length: CONCURRENCY }, worker))
 
-    // 3. Point the database at the Drive copies
+    // 4. Point the database at the Drive copies
     state.phase = 'rewriting'
     const done = new Map()
     for (const [url, row] of await loadMapping()) {

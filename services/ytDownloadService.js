@@ -223,9 +223,10 @@ const downloadToFileYtdlCore = (info, format, filePath, agent, onProgress) =>
   });
 
 // Google Drive when Drive storage is on; Cloudinary only as the fallback
-const uploadDownloadedMedia = (filePath, folder = "yt-downloads", audioOnly = false) =>
+const uploadDownloadedMedia = (filePath, folder = "yt-downloads", audioOnly = false, baseUrl = null) =>
   storeMedia({
     filePath,
+    baseUrl,
     folder,
     kind: audioOnly ? "audio" : "video",
     mimeType: audioOnly ? undefined : "video/mp4",
@@ -706,7 +707,7 @@ const runDownloadJob = async ({
       : audioOnly
         ? "yt-downloads-audio"
         : "yt-downloads";
-    const uploadResult = await uploadDownloadedMedia(filePath, uploadFolder, audioOnly);
+    const uploadResult = await uploadDownloadedMedia(filePath, uploadFolder, audioOnly, baseUrl);
     if (!uploadResult?.secure_url) {
       throw new Error("Failed to upload the downloaded file to media storage");
     }

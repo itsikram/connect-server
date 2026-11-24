@@ -129,7 +129,7 @@ Router.get('/gdrive/migrate-cloudinary', isAdminAuth, (req, res) => {
 });
 Router.post('/gdrive/migrate-cloudinary', isAdminAuth, async (req, res) => {
     try {
-        const job = await cloudinaryToDrive.startMigration({ dryRun: req.body?.dryRun === true });
+        const job = await cloudinaryToDrive.startMigration({ dryRun: req.body?.dryRun === true, baseUrl: req });
         res.status(202).json({ job });
     } catch (error) {
         res.status(error.status || 500).json({ message: error.message || 'Could not start the migration' });
