@@ -1,3 +1,4 @@
+const validDriveAttachment = require('../utils/personalDriveMessage');
 const { isValidObjectId } = require("mongoose");
 const Message = require("../models/Message");
 const Profile = require("../models/Profile");
@@ -306,6 +307,12 @@ module.exports = function messageSocket(io, socket, profileId) {
           (typeof attachment === "string" && attachment) ||
           (typeof msgData?.attachment === "string" ? msgData.attachment : "");
 
+        if (resolvedAttachment.startsWith('drive-chat:')) {
+          const participants = [String(msgData?.senderId), String(msgData?.receiverId)];
+          if (msgData?.attachment !== resolvedAttachment ||
+              !participants.includes(senderProfileId) || !participants.includes(targetProfileId)) return;
+        }
+
         const resolvedMessage =
           (typeof message === "string" && message) ||
           (typeof msgData?.message === "string" ? msgData.message : "");
@@ -483,6 +490,11 @@ module.exports = function messageSocket(io, socket, profileId) {
           });
           return;
         }
+      }
+
+      if (!(await validDriveAttachment(attachment, senderId, receiverId))) {
+        reply({ ok: false, error: 'Upload this Drive attachment for the selected chat first.' });
+        return;
       }
 
       const newMessage = new Message({

@@ -1,3 +1,4 @@
+const validDriveAttachment = require('../utils/personalDriveMessage');
 const { isValidObjectId } = require('mongoose')
 const Message = require('../models/Message')
 const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
@@ -351,6 +352,10 @@ exports.sendMessage = async (req, res, next) => {
                     reason: senderBlockedReceiver ? 'You blocked this user' : 'You are blocked by this user'
                 });
             }
+        }
+
+        if (!(await validDriveAttachment(attachment, senderId, receiverId))) {
+            return res.status(400).json({ message: 'Upload this Drive attachment for the selected chat first.' });
         }
 
         const newMessage = new Message({

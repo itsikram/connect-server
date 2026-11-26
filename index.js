@@ -471,7 +471,7 @@ app.use(
       "Cache-Control",
       "Pragma",
     ],
-    exposedHeaders: ["Content-Range", "X-Content-Range"],
+    exposedHeaders: ["Content-Range", "X-Content-Range", "Content-Disposition"],
   }),
 );
 

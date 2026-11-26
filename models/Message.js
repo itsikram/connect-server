@@ -48,6 +48,10 @@ const messageSchema = new Schema({
 });
 
 messageSchema.index({ senderId: 1, receiverId: 1, timestamp: -1 });
+messageSchema.index(
+    { senderId: 1, receiverId: 1, attachment: 1 },
+    { partialFilterExpression: { attachment: { $type: 'string' } } }
+);
 messageSchema.index({ receiverId: 1, timestamp: -1 });
 messageSchema.index({ senderId: 1, timestamp: -1 });
 messageSchema.index({ receiverId: 1, isSeen: 1, timestamp: -1 });
