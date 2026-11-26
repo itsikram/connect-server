@@ -30,6 +30,27 @@ const getFaceServiceUrl = () =>
         .replace(/\/+$/, '');
 const FACE_SERVICE_TIMEOUT_MS = 60000;
 
+// The face service's host rejects request bodies over 1 MB ("413 Payload Too
+// Large"), and detailed phone frames can pass that. Keep evenly spaced frames,
+// so the capture still spans the same time, until it fits.
+const FACE_UPLOAD_LIMIT = 980 * 1000;
+const fitFrames = (frames, minFrames) => {
+    const size = (list) => list.reduce((total, frame) => total + frame.length + 3, 100);
+    let fitted = frames;
+    for (let count = frames.length - 1; size(fitted) > FACE_UPLOAD_LIMIT && count >= minFrames; count -= 1) {
+        fitted = Array.from({ length: count }, (_, i) => frames[Math.round((i * (frames.length - 1)) / (count - 1))]);
+    }
+    return size(fitted) > FACE_UPLOAD_LIMIT ? null : fitted;
+};
+const FACE_TOO_LARGE = {
+    success: false,
+    code: 'capture_too_large',
+    message: 'The camera pictures are too large to send. Refresh the page or use the Connect website, then try again.',
+};
+// A blink needs closely spaced frames; registration only needs clear ones.
+const MIN_LOGIN_FRAMES = 12;
+const MIN_REGISTER_FRAMES = 5;
+
 const callFaceService = async (path, payload) => {
     for (let attempt = 0; attempt < 2; attempt += 1) {
         const controller = new AbortController();
@@ -532,7 +553,9 @@ exports.faceRegister = async (req, res, next) => {
     try {
         // 'register' makes the face service average several eyes-open
         // frames, so the stored template is steadier than a single frame.
-        const { response, data } = await callFaceService('/api/face/encode', { frames, purpose: 'register' });
+        const fitted = fitFrames(frames, MIN_REGISTER_FRAMES);
+        if (!fitted) return res.status(413).json(FACE_TOO_LARGE);
+        const { response, data } = await callFaceService('/api/face/encode', { frames: fitted, purpose: 'register' });
 
         if (!response.ok || !data.success || !isValidVector(data.encoding)) {
             // A failed liveness check is not an expired Connect session and
@@ -576,7 +599,8 @@ exports.faceRegister = async (req, res, next) => {
                 message: 'Face verification service is unavailable. Please try again later.',
             });
         }
-        if (error.status >= 500) {
+        if (error.status === 413) return res.status(413).json(FACE_TOO_LARGE);
+        if (error.status) {
             return res.status(503).json({
                 success: false,
                 message: 'Face verification service failed while processing the camera frames. Please try again.',
@@ -632,7 +656,9 @@ exports.faceLogin = async (req, res, next) => {
     }
 
     try {
-        const { response, data } = await callFaceService('/api/face/encode', { frames, purpose: 'login' });
+        const fitted = fitFrames(frames, MIN_LOGIN_FRAMES);
+        if (!fitted) return res.status(413).json(FACE_TOO_LARGE);
+        const { response, data } = await callFaceService('/api/face/encode', { frames: fitted, purpose: 'login' });
 
         if (!response.ok || !data.success || !isValidVector(data.encoding)) {
             const status = response.status >= 500 ? 503 : response.status === 400 ? 400 : 401;
@@ -690,7 +716,8 @@ exports.faceLogin = async (req, res, next) => {
                 message: 'Face verification service is unavailable. Please try again later.',
             });
         }
-        if (error.status >= 500) {
+        if (error.status === 413) return res.status(413).json(FACE_TOO_LARGE);
+        if (error.status) {
             return res.status(503).json({
                 success: false,
                 message: 'Face verification service failed while processing the camera frames. Please try again.',

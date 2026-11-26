@@ -178,3 +178,35 @@ test("login refuses an account that turned face login off", async () => {
   nextFaceReply = encoded(face(2));
   assert.equal((await call(faceLogin, { body: { frames } })).status, 404);
 });
+
+test("oversized captures are thinned to fit the face host's upload limit", async () => {
+  const big = Array.from({ length: 24 }, (_, i) => `data:image/jpeg;base64,${i}`.padEnd(60000, "A"));
+  nextFaceReply = encoded(face(21));
+  await call(faceLogin, { body: { frames: big } });
+  const sent = faceCalls.at(-1).body.frames;
+  assert.ok(JSON.stringify(faceCalls.at(-1).body).length < 1000000);
+  assert.ok(sent.length >= 12 && sent.length < 24);
+  assert.equal(sent[0], big[0]);
+  assert.equal(sent.at(-1), big.at(-1));
+});
+
+test("a capture that cannot fit gets a reason, not an HTML error page", async () => {
+  const huge = Array.from({ length: 15 }, () => "A".repeat(300000));
+  const before = faceCalls.length;
+  const { status, body } = await call(faceRegister, { ...alice.req, body: { frames: huge } });
+  assert.equal(status, 413);
+  assert.match(body.message, /too large/);
+  assert.equal(faceCalls.length, before);
+});
+
+test("a plain-text 413 from the face host still answers with a message", async () => {
+  const realFetch = global.fetch;
+  global.fetch = async () => ({ ok: false, status: 413, headers: { get: () => "text/plain" }, text: async () => "413 Payload Too Large" });
+  try {
+    const { status, body } = await call(faceRegister, alice.req);
+    assert.equal(status, 413);
+    assert.ok(body.message);
+  } finally {
+    global.fetch = realFetch;
+  }
+});
