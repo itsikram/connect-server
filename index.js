@@ -475,7 +475,7 @@ app.use(
       "Cache-Control",
       "Pragma",
     ],
-    exposedHeaders: ["Content-Range", "X-Content-Range"],
+    exposedHeaders: ["Content-Range", "X-Content-Range", "Content-Disposition"],
   }),
 );
 
@@ -682,6 +682,7 @@ const healthReport = (req, res) => {
     ...getMetrics({ io }),
     database: ready ? "connected" : "disconnected",
     mysql: ready ? "connected" : "disconnected",
+    personalDriveConfigured: Boolean(require("./services/personalDrive").settings()),
   });
 };
 app.get("/health", healthReport);

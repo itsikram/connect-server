@@ -1428,3 +1428,37 @@ model YtDownloadProgress {
   @@index([updatedAt])
   @@map("ytdownloadprogresses")
 }
+
+model PersonalDriveConnection {
+  id            String  @id @db.VarChar(64)
+  googleSubject String  @db.VarChar(255)
+  email         String  @db.VarChar(320)
+  refreshToken  String  @db.Text
+  enabled       Boolean @default(true)
+
+  @@map("personal_drive_connections")
+}
+
+model PersonalDriveConsent {
+  id        String   @id @db.VarChar(64)
+  owner     String   @db.VarChar(64)
+  verifier  String   @db.VarChar(128)
+  expiresAt DateTime
+
+  @@index([owner])
+  @@index([expiresAt])
+  @@map("personal_drive_consents")
+}
+
+model PersonalDriveFile {
+  id            String @id @db.VarChar(32)
+  owner         String @db.VarChar(64)
+  recipient     String @db.VarChar(64)
+  googleSubject String @db.VarChar(255)
+  driveId       String @db.VarChar(255)
+  name          String @db.VarChar(255)
+  mime          String @db.VarChar(64)
+  kind          String @db.VarChar(16)
+
+  @@map("personal_drive_files")
+}

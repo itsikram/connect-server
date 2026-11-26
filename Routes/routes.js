@@ -5,6 +5,7 @@ const relationshipRoutes = require("./relationshipRoutes");
 const reactRoutes = require("./reactRoutes");
 const commentRoutes = require("./commentRoutes");
 const uploadRoute = require("./uploadRoute");
+const personalDriveRoutes = require("./personalDriveRoutes");
 const storyRoutes = require("./storyRoutes");
 const settingRoutes = require("./settingRoutes");
 const notificationRoutes = require("./notificationRoutes");
@@ -74,6 +75,10 @@ const routes = [
   {
     path: "/api/story",
     handler: storyRoutes,
+  },
+  {
+    path: "/api/personal-drive",
+    handler: personalDriveRoutes,
   },
   {
     path: "/api/upload",

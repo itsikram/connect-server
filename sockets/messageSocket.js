@@ -1,3 +1,4 @@
+const validDriveAttachment = require('../utils/personalDriveMessage');
 const { prisma, isValidId: isValidObjectId, populated } = require("../utils/db");
 const { profileIdOf } = require("./socketAuth");
 const checkIsActive = require("../utils/checkIsActive");
@@ -397,6 +398,12 @@ module.exports = function messageSocket(io, socket, profileId) {
           (typeof attachment === "string" && attachment) ||
           (typeof msgData?.attachment === "string" ? msgData.attachment : "");
 
+        if (resolvedAttachment.startsWith('drive-chat:')) {
+          const participants = [String(msgData?.senderId), String(msgData?.receiverId)];
+          if (msgData?.attachment !== resolvedAttachment ||
+              !participants.includes(senderProfileId) || !participants.includes(targetProfileId)) return;
+        }
+
         const resolvedMessage =
           (typeof message === "string" && message) ||
           (typeof msgData?.message === "string" ? msgData.message : "");
@@ -605,6 +612,12 @@ module.exports = function messageSocket(io, socket, profileId) {
       if (parentResult.status === "rejected") throw parentResult.reason;
       // Clients send `parent: false` when not replying.
       const replyTo = parentResult.value?.id || null;
+
+      if ((secure && typeof attachment === 'string' && attachment.startsWith('drive-chat:')) ||
+          !(await validDriveAttachment(attachment, senderId, receiverId))) {
+        reply({ ok: false, error: 'Upload this Drive attachment for the selected standard chat first.' });
+        return;
+      }
 
       const newMessage = secureContent
         ? await createSecureMessage({

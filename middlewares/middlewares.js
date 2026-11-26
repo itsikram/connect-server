@@ -33,6 +33,7 @@ const middilewares = [
             return (
                 url.startsWith("/health") ||
                 url.startsWith("/api/health") ||
+                url.startsWith("/api/personal-drive/callback") ||
                 url.startsWith("/__internal/")
             );
         },

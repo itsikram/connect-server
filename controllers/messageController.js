@@ -1,3 +1,4 @@
+const validDriveAttachment = require('../utils/personalDriveMessage');
 const { prisma, isValidId: isValidObjectId, populated } = require('../utils/db')
 const { deleteCloudinaryResources } = require('../utils/cloudinaryCleanup')
 const { notifyNewChatMessage } = require('../utils/chatNotifications')
@@ -435,6 +436,11 @@ exports.sendMessage = async (req, res, next) => {
                     reason: senderBlockedReceiver ? 'You blocked this user' : 'You are blocked by this user'
                 });
             }
+        }
+
+        if ((secure && typeof attachment === 'string' && attachment.startsWith('drive-chat:')) ||
+            !(await validDriveAttachment(attachment, senderId, receiverId))) {
+            return res.status(400).json({ message: 'Upload this Drive attachment for the selected standard chat first.' });
         }
 
         const newMessage = secureContent
