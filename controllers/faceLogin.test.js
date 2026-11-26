@@ -104,7 +104,9 @@ test("register stores a tagged encoding in MySQL and turns face login on", async
   assert.equal(status, 200, JSON.stringify(body));
   assert.equal(faceCalls.at(-1).url, "https://face.example.test/face-api/api/face/encode");
   assert.equal(faceCalls.at(-1).headers["X-Face-Service-Key"], "server-key");
-  assert.deepEqual(Object.keys(faceCalls.at(-1).body), ["frames"]);
+  // Only the frames and what they are for leave this server: no username.
+  assert.deepEqual(Object.keys(faceCalls.at(-1).body), ["frames", "purpose"]);
+  assert.equal(faceCalls.at(-1).body.purpose, "register");
   const rows = db.faceencodings.filter((row) => row.profile === "profile1");
   assert.equal(rows.length, 1);
   assert.equal(rows[0].faceEncoding.model, FACE_MODEL);
@@ -148,12 +150,16 @@ test("old face-api.js rows are never matched", async () => {
 
 test("a failed liveness check is not a session error and stores nothing", async () => {
   const before = db.faceencodings.length;
-  nextFaceReply = { status: 422, data: { success: false, message: "liveness check failed" } };
+  nextFaceReply = { status: 422, data: { success: false, code: "liveness_failed", message: "liveness check failed" } };
   const register = await call(faceRegister, alice.req);
   assert.equal(register.status, 400);
   assert.match(register.body.message, /liveness/);
+  // The client retries a missed blink automatically when it sees this code.
+  assert.equal(register.body.code, "liveness_failed");
   const login = await call(faceLogin, { body: { frames } });
   assert.equal(login.status, 401);
+  assert.equal(login.body.code, "liveness_failed");
+  assert.equal(faceCalls.at(-1).body.purpose, "login");
   assert.equal(db.faceencodings.length, before);
 });
 

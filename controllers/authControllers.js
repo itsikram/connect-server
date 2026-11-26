@@ -530,7 +530,9 @@ exports.faceRegister = async (req, res, next) => {
     }
 
     try {
-        const { response, data } = await callFaceService('/api/face/encode', { frames });
+        // 'register' makes the face service average several eyes-open
+        // frames, so the stored template is steadier than a single frame.
+        const { response, data } = await callFaceService('/api/face/encode', { frames, purpose: 'register' });
 
         if (!response.ok || !data.success || !isValidVector(data.encoding)) {
             // A failed liveness check is not an expired Connect session and
@@ -538,6 +540,7 @@ exports.faceRegister = async (req, res, next) => {
             const status = response.status >= 500 ? 503 : 400;
             return res.status(status).json({
                 success: false,
+                code: data.code,
                 message: data.message || (status === 503
                     ? 'Face verification service failed while processing the camera frames'
                     : 'Face registration failed'),
@@ -611,12 +614,13 @@ exports.faceLogin = async (req, res, next) => {
     }
 
     try {
-        const { response, data } = await callFaceService('/api/face/encode', { frames });
+        const { response, data } = await callFaceService('/api/face/encode', { frames, purpose: 'login' });
 
         if (!response.ok || !data.success || !isValidVector(data.encoding)) {
             const status = response.status >= 500 ? 503 : response.status === 400 ? 400 : 401;
             return res.status(status).json({
                 success: false,
+                code: data.code,
                 message: data.message || (status === 503
                     ? 'Face verification service failed while processing the camera frames'
                     : 'Could not verify your face'),
@@ -627,7 +631,11 @@ exports.faceLogin = async (req, res, next) => {
         // closest face belongs to an account that turned face login on.
         const match = findBestMatch(data.encoding.map(Number), await loadEncodings(prisma));
         if (!match) {
-            return res.status(401).json({ success: false, message: 'face not recognized' });
+            return res.status(401).json({
+                success: false,
+                code: 'face_not_recognized',
+                message: 'Face not recognized. Use the account you registered your face on, or update your face in Settings.',
+            });
         }
         const matchedProfile = await prisma.profile.findUnique({
             where: { id: match.profile },
