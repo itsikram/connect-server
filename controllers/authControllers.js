@@ -597,6 +597,24 @@ exports.faceRemove = async (req, res, next) => {
     }
 };
 
+// The face service loads its recognition models on first use (~10 s on
+// the host after it was idle). The camera panel calls this when it opens so
+// the models are loading while the user is still framing their face.
+const FACE_WARMUP_INTERVAL_MS = 60 * 1000;
+let lastFaceWarmupAt = 0;
+exports.faceWarmup = (req, res) => {
+    const now = Date.now();
+    if (now - lastFaceWarmupAt >= FACE_WARMUP_INTERVAL_MS) {
+        lastFaceWarmupAt = now;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        fetch(`${getFaceServiceUrl()}/api/face/warmup`, { method: 'POST', signal: controller.signal })
+            .catch((error) => console.warn('[face-auth] warmup failed', error?.message))
+            .finally(() => clearTimeout(timeout));
+    }
+    return res.status(202).json({ ok: true });
+};
+
 exports.faceLogin = async (req, res, next) => {
     const frames = req.body?.frames;
 

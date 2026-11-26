@@ -1,5 +1,5 @@
 const Router = require("express").Router();
-const {signUp,login,googleSignIn,changePass,deleteAccount,changeEmail,forgotPassword,resetPassword,faceRegister,faceRemove,faceLogin,logout} = require('../controllers/authControllers')
+const {signUp,login,googleSignIn,changePass,deleteAccount,changeEmail,forgotPassword,resetPassword,faceRegister,faceRemove,faceLogin,faceWarmup,logout} = require('../controllers/authControllers')
 const isAuth = require('../middlewares/isAuth')
 
 const faceLoginAttempts = new Map();
@@ -48,6 +48,7 @@ Router.post('/logout', logout)
 Router.post('/face/register', isAuth, faceRegister)
 Router.post('/face/remove', isAuth, faceRemove)
 Router.post('/face/login', faceLoginRateLimit, faceLogin)
+Router.post('/face/warmup', faceWarmup)
 Router.post('/google-signin',googleSignIn)
 Router.post('/forgot-password', forgotPassword)
 Router.post('/reset-password/:token', resetPassword)
